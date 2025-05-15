@@ -168,7 +168,8 @@ def braggcalib(scanlogDic={}, use_xrf=True, man_correction={}):
 
     energyDic = {'Cu': 8.979, 'Se': 12.658, 'Zr': 17.998, 'Nb': 18.986,
                  'Ti': 4.966, 'Cr': 5.989, 'Co': 7.709, 'V': 5.465,
-                 'Ni': 8.333, 'Fe': 7.112, 'Mn': 6.539, 'Zn': 9.659}
+                 'Ni': 8.333, 'Fe': 7.112, 'Mn': 6.539, 'Zn': 9.659,
+                 'Mo': 20.000}
 
     BraggRBVDic = {}
     EnergyRBVDic = {}
