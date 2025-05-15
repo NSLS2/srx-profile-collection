@@ -44,7 +44,7 @@ def if_touch_beamline(envvar="TOUCHBEAMLINE"):
 
 
 def print_now():
-    return datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S.%f")
+    return datetime.datetime.strftime(datetime.datetime.now(), "%Y-%m-%d %H:%M:%S.%f")
 
 
 def wait_for_connection_base(self, timeout=DEFAULT_CONNECTION_TIMEOUT):

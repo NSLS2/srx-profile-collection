@@ -725,7 +725,7 @@ class FlyerIDMono(Device):
         # for scan_num in range(self.num_scans):
             current_scan = self.flying_dev.parameters.current_scan.get()
 
-            print(f"{print_now()}: current_scan: ")
+            print(f"{print_now()}: current_scan: {current_scan}")
 
             formatted_scan_num = f"scan_{current_scan:03d}"
             return_dict[formatted_scan_num] = \
