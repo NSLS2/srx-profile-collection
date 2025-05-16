@@ -1214,8 +1214,8 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
     flyer_id_mono.flying_dev.parameters.harmonic.put(harmonic)
 
     if md is None:
-        md = {}
-    md = get_stock_md(md)
+        md = {"scan": {}}
+    # md = get_stock_md(md)
     md['scan']['type'] = 'XAS_FLY'
     md['scan']['energy'] = list(np.linspace(e_start, e_stop, num=num_pts))
     md['scan']['num_points'] = num_pts
@@ -1264,7 +1264,7 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
 
 
     @subs_decorator(livepopup)
-    @monitor_during_decorator([xs_id_mono_fly.channel01.mcaroi01.total_rbv, xbpm2.sumT])
+    # @monitor_during_decorator([xs_id_mono_fly.channel01.mcaroi01.total_rbv, xbpm2.sumT])
     def plan():
         yield from check_shutters(shutter, 'Open')
         uid = yield from bps.open_run(md)
