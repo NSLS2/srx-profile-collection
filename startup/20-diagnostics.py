@@ -187,4 +187,22 @@ class HACK_SRX_NSLS_EM(Device):
 xbpm1 = HACK_SRX_NSLS_EM('XF:05ID-BI{EM:BPM1}', name='xbpm1')
 xbpm2 = HACK_SRX_NSLS_EM('XF:05ID-BI{EM:BPM2}', name='xbpm2')
 
+# EJM addition
+class ScalerPreAmp(Device):
+    _DEFAULT_TIMEOUT = 2
 
+    sens_num = Cpt(EpicsSignal, 'sens_num', string=True, timeout=_DEFAULT_TIMEOUT) # XF:05IDD-CT{SR570:N}sens_num
+    sens_unit = Cpt(EpicsSignal, 'sens_unit', string=True, timeout=_DEFAULT_TIMEOUT) # XF:05IDD-CT{SR570:N}sens_unit
+    offset_on = Cpt(EpicsSignal, 'offset_on', string=True, timeout=_DEFAULT_TIMEOUT) # XF:05IDD-CT{SR570:N}offset_on
+    offset_sign = Cpt(EpicsSignal, 'offset_sign', string=True, timeout=_DEFAULT_TIMEOUT) # XF:05IDD-CT{SR570:N}offset_sign
+    offset_num = Cpt(EpicsSignal, 'offset_num', string=True, timeout=_DEFAULT_TIMEOUT) # XF:05IDD-CT{SR570:N}offset_num
+    offset_unit = Cpt(EpicsSignal, 'offset_unit', string=True, timeout=_DEFAULT_TIMEOUT) # XF:05IDD-CT{SR570:N}offset_unit
+    # invert = Cpt(EpicsSignal, 'invert_on', string=True, timeout=_DEFAULT_TIMEOUT)  # XF:05IDD-CT{SR570:N}invert_on
+    off_u_put = Cpt(EpicsSignal, 'off_u_put', kind=Kind.omitted) # XF:05IDD-CT{SR570:N}off_u_put
+    offset_u_tweak = Cpt(EpicsSignal, 'offset_u_tweak', kind=Kind.omitted) # XF:05IDD-CT{SR570:N}offset_u_tweak
+    offset_cal = Cpt(EpicsSignal, 'offset_cal', kind=Kind.omitted) # XF:05IDD-CT{SR570:N}offset_cal
+
+
+i0_preamp = ScalerPreAmp('XF:05IDD-CT{SR570:1}', name='i0_preamp')
+im_preamp = ScalerPreAmp('XF:05IDD-CT{SR570:2}', name='im_preamp')
+it_preamp = ScalerPreAmp('XF:05IDD-CT{SR570:3}', name='it_preamp')
