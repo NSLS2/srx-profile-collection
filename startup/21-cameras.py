@@ -54,7 +54,8 @@ class SRXCamera(SingleTrigger, AreaDetector):
     tiff = Cpt(SRXTIFFPlugin, 'TIFF1:',
                write_path_template='%Y/%m/%d/',
                read_path_template='%Y/%m/%d/',
-               root='')
+               # root=root_path)
+               )
 
 def create_camera(pv, name, root_path='/nsls2/data/srx/assets'):
     try:
