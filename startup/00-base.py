@@ -14,7 +14,7 @@ import redis
 from bluesky_queueserver import is_re_worker_active, parameter_annotation_decorator
 from IPython.terminal.prompts import Prompts, Token
 from ophyd.signal import DEFAULT_CONNECTION_TIMEOUT, EpicsSignal, EpicsSignalBase
-# from redis_json_dict import RedisJSONDict
+from redis_json_dict import RedisJSONDict
 from tiled.client import from_profile, from_uri
 
 
@@ -94,20 +94,20 @@ EpicsSignalBase.set_defaults(timeout=timeout, connection_timeout=timeout)  # new
 ip = get_ipython()
 nslsii.configure_base(
     ip.user_ns,
-    # "srx",
-    "temp",
-    # publish_documents_with_kafka=True,
+    "srx",
+    # "temp",
+    publish_documents_with_kafka=True,
 )
 
-# RE.unsubscribe(0)
+RE.unsubscribe(0)
 
 # Define tiled catalog
-# srx_raw = from_profile("nsls2", api_key=os.environ["TILED_BLUESKY_WRITING_API_KEY_SRX"])["srx"]["raw"]
+srx_raw = from_profile("nsls2", api_key=os.environ["TILED_BLUESKY_WRITING_API_KEY_SRX"])["srx"]["raw"]
 
-# c = tiled_reading_client = from_uri(
-#         "https://tiled.nsls2.bnl.gov/api/v1/metadata/srx/raw",
-#         include_data_sources=True, username="akiss",
-# )
+c = tiled_reading_client = from_uri(
+        "https://tiled.nsls2.bnl.gov/api/v1/metadata/srx/raw",
+        include_data_sources=True, username="akiss",
+)
 
 discard_liveplot_data = True
 descriptor_uids = []
@@ -140,7 +140,7 @@ def post_document(name, doc):
         raise error
 
 
-# RE.subscribe(post_document)
+RE.subscribe(post_document)
 
 ip.log.setLevel("WARNING")
 
@@ -157,14 +157,14 @@ bec.disable_table()
 # Disable BestEffortCallback to plot ring current
 bec.disable_plots()
 
-# RE.md = RedisJSONDict(redis.Redis("info.srx.nsls2.bnl.gov"), prefix="")
+RE.md = RedisJSONDict(redis.Redis("info.srx.nsls2.bnl.gov"), prefix="")
 
 # Optional: set any metadata that rarely changes.
 # RE.md["beamline_id"] = "SRX"
 # RE.md["md_version"] = "1.1"
 
-RE.md["cycle"] = "2025-2"
-RE.md["proposal"] = {"proposal_id": "318777", "title": "Troubleshooting fly-mono scan", "cycle": "2025-2", "pi_name": "A. Kiss"}
+# RE.md["cycle"] = "2025-2"
+# RE.md["proposal"] = {"proposal_id": "318777", "title": "Troubleshooting fly-mono scan", "cycle": "2025-2", "pi_name": "A. Kiss"}
 
 class SRXPrompt(Prompts):
     def in_prompt_tokens(self, cli=None):

@@ -617,6 +617,8 @@ class FlyerIDMono(Device):
         speed = self.flying_dev.parameters.speed.get()
 
         self.num_scans = num_scans = self.flying_dev.parameters.num_scans.get()
+        print(f"\n\n!!! {num_scans = }\n\n")
+
         self.num_triggers = num_triggers = int(self.flying_dev.parameters.num_triggers.get())
 
         self.flying_dev.parameters.paused_timeout.put(self.paused_timeout)
@@ -725,20 +727,23 @@ class FlyerIDMono(Device):
         # for scan_num in range(self.num_scans):
             current_scan = self.flying_dev.parameters.current_scan.get()
 
+            # current_scan = scan_num + 1
+
             print(f"{print_now()}: current_scan: {current_scan}")
 
             formatted_scan_num = f"scan_{current_scan:03d}"
             return_dict[formatted_scan_num] = \
-                {'energy': {'source': self.flying_dev.name,
-                            'dtype': 'number',
-                            # We need just 1 scalar value for the energy.
-                            # 'shape': [self._traj_info['num_triggers']]},
-                            # TODO: double-check the shape is right for databroker v2.
-                            'shape': []},
-                 'i0_time': {'source': 'scaler', 'dtype': 'array', 'shape': []},
-                 'i0': {'source': 'scaler', 'dtype': 'array', 'shape': []},
-                 'im': {'source': 'scaler', 'dtype': 'array', 'shape': []},
-                 'it': {'source': 'scaler', 'dtype': 'array', 'shape': []},
+                {
+                #     'energy': {'source': self.flying_dev.name,
+                #             'dtype': 'number',
+                #             # We need just 1 scalar value for the energy.
+                #             # 'shape': [self._traj_info['num_triggers']]},
+                #             # TODO: double-check the shape is right for databroker v2.
+                #             'shape': []},
+                #  'i0_time': {'source': 'scaler', 'dtype': 'array', 'shape': []},
+                #  'i0': {'source': 'scaler', 'dtype': 'array', 'shape': []},
+                #  'im': {'source': 'scaler', 'dtype': 'array', 'shape': []},
+                #  'it': {'source': 'scaler', 'dtype': 'array', 'shape': []},
                  # f'{self.detector.name}_image': {'source': '...',
                  #           'dtype': 'array',
                  #           'shape': [self._array_size['height'],
@@ -762,7 +767,7 @@ class FlyerIDMono(Device):
                                                                                   xs_det.hdf5.array_size.width.get()],
                                                                         'external': 'FILESTORE:'}
         import pprint
-        # pprint.pprint(return_dict)
+        pprint.pprint(return_dict)
 
         print(f"\n\n{print_now()}: describe_collect ended")
 
@@ -838,7 +843,7 @@ class FlyerIDMono(Device):
             i0 = np.concatenate((i0, np.ones((num_triggers-len(i0),))))
             im = np.concatenate((im, np.ones((num_triggers-len(im),))))
             it = np.concatenate((it, np.ones((num_triggers-len(it),))))
-            print(f'{len(i0_time)=}')
+            # print(f'{len(i0_time)=}')
 
         print(f"{print_now()}: before unstage of xs in collect")
 
@@ -917,10 +922,10 @@ class FlyerIDMono(Device):
 
 
     def collect_asset_docs(self):
-        print(f"{print_now()}: before collecting asset docs from xs in collect_asset_docs")
+        # print(f"{print_now()}: before collecting asset docs from xs in collect_asset_docs")
         for xs_det in self.xs_detectors:
             yield from xs_det.collect_asset_docs()
-        print(f"{print_now()}: after collecting asset docs from xs in collect_asset_docs")
+        # print(f"{print_now()}: after collecting asset docs from xs in collect_asset_docs")
 
     def stop(self):
         # I don't think this is running on stop :-(
@@ -1193,6 +1198,7 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
         raise ValueError(f'Unknown scan type! {scan_type}')
 
     v = e_width / dwell
+
     flyer_id_mono.flying_dev.parameters.speed.put(v)
     e_step = (e_stop - e_start) / (num_pts- 1)
     dt = e_width / v
@@ -1214,8 +1220,8 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
     flyer_id_mono.flying_dev.parameters.harmonic.put(harmonic)
 
     if md is None:
-        md = {"scan": {}}
-    # md = get_stock_md(md)
+        md = {}
+    md = get_stock_md(md)
     md['scan']['type'] = 'XAS_FLY'
     md['scan']['energy'] = list(np.linspace(e_start, e_stop, num=num_pts))
     md['scan']['num_points'] = num_pts
@@ -1269,6 +1275,18 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
         yield from check_shutters(shutter, 'Open')
         uid = yield from bps.open_run(md)
         yield from mv(sclr1.count_mode, 0)
+
+        # Declare streams:
+        objects = []
+        for xs_det in [xs]:
+            for channel in xs_det.iterate_channels():
+                obj = getattr(xs_det, f"channel{channel.channel_number:02}")
+                objects.append(obj)
+
+        for n in range(num_scans):
+            for flyer in flyers:
+                yield from bps.declare_stream(*objects, name=f"scan_{n+1:03d}")
+
         print(f"Kickoff: {flyers}")
         for flyer in flyers:
             print(f"  Kicking off {flyer}...")
