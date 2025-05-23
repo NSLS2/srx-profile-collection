@@ -114,6 +114,11 @@ def xanes_plan(erange=[], estep=[], acqtime=1., samplename='', filename='',
     yield from abs_set(det_xs.total_points, len(ept))
 
     # Setup the scaler
+    # TODO: Is there a better way to consider this?
+    # Right now, this will clear 'present_time' in stage_sigs
+    # This will get the desired result but is there a time when
+    # using stage_sigs is correct/better
+    sclr1.stage_sigs.pop('preset_time', None)
     yield from abs_set(sclr1.preset_time, acqtime)
 
     # Setup DCM/energy options

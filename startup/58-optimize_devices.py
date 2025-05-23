@@ -263,7 +263,11 @@ def optimize_scalers(dwell=0.5,
 
             yield Msg('save')
     
-    return (yield from optimize_all_preamps())
+    # return (yield from optimize_all_preamps())
+    uid = (yield from optimize_all_preamps())
+    sclr1.stage_sigs.pop('preset_time', None)
+    return uid
+
 
 
 ## WIP
