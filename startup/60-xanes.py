@@ -1087,12 +1087,14 @@ def plot_flyer_id_mono_data(uid_or_scanid, e_min=None, e_max=None, fname=None, r
     return res
 
 # Export data function
-def export_flyer_id_mono_data(uid_or_scanid, roi=1, e_min=None, e_max=None, fname=None, root='/home/xf05id1/current_user_data/', flyer=flyer_id_mono):
-    hdr = db[uid_or_scanid]
-    stream_names = hdr.stream_names
-    stream_names.remove('baseline')
+def export_flyer_id_mono_data(uid_or_scanid, roi=1, e_min=None, e_max=None, fname=None, root='/home/xf05id1/test_flyingID/', flyer=flyer_id_mono):
+    hdr = c[uid_or_scanid]
+    scan_streams = list(hdr)
+    scan_streams.remove('baseline')
+    scan_streams = [s for s in scan_streams if "monitor" not in s]
 
     # Assuming first detector in the xs_detectors list has the correct ROI in ROI1
+    # TODO: This should not look at the object! This should be stored in metadata
     if (e_min is None):
         e_min = getattr(flyer.xs_detectors[0].channel01, f"mcaroi{roi:02}").min_x.get()
         # e_min = flyer.xs_detectors[0].channel01.mcaroi01.min_x.get()
@@ -1100,7 +1102,7 @@ def export_flyer_id_mono_data(uid_or_scanid, roi=1, e_min=None, e_max=None, fnam
         e_max = getattr(flyer.xs_detectors[0].channel01, f"mcaroi{roi:02}").min_x.get() + getattr(flyer.xs_detectors[0].channel01, f"mcaroi{roi:02}").size_x.get()
         # e_max = flyer.xs_detectors[0].channel01.mcaroi01.min_x.get() + flyer.xs_detectors[0].channel01.mcaroi01.size_x.get()
 
-    ring_current_start = f"{list(hdr.data('ring_current', stream_name='baseline'))[0]:.2f}"
+    ring_current_start = str(hdr["baseline"]["data"]["ring_current"][0].round(2))
 
     staticheader = f"# XDI/1.0 MX/2.0\n" \
                  + f"# Beamline.name: {hdr.start['beamline_id']}\n" \
@@ -1117,34 +1119,36 @@ def export_flyer_id_mono_data(uid_or_scanid, roi=1, e_min=None, e_max=None, fnam
                  + f"# Scan.ROI.range: {f'[{e_min}:{e_max}]'}\n" \
                  + f"# \n"
 
-    for stream in sorted(stream_names):
-        if 'monitor' in stream:
-            continue
-
+    for stream in sorted(scan_streams):
         fname = f"scan_{hdr.start['scan_id']}_{stream}.txt"
         fname = root + fname
 
         print(f'{stream}')
+        print(f"  Export to {fname}")
         print(f'  Collecting data...')
         # Get the full table
-        tbl = hdr.table(stream_name=stream, fill=True)
+        tbl = hdr[stream]["data"]
+        df = pd.DataFrame()
+        keys = [k for k in tbl.keys()[:] if "time" not in k]
+        for k in keys:
+            print(f"{k=}")
+            if "channel" in k:
+                # We will process later
+                continue
+            df[k] = tbl[k].read()
 
         print(f'  Processing data...')
-        # Set energy as the axis/index
-        tbl.set_index('energy', drop=True, inplace=True)
-        # Remove unnecessary columns
-        tbl.drop(columns=['time', 'i0_time'], inplace=True)
-        # Apply ROI to each xs column and rename the column
-        ch_names = [_ for _ in tbl.keys() if 'xs' in _]
+        print(f"{df=}")
+        df.set_index("energy", drop=True, inplace=True)
+
+        ch_names = [ch for ch in keys if "channel" in ch]
         for ch in ch_names:
-            tbl[ch] = tbl[ch].apply(lambda row : np.sum(row[e_min:e_max]))
-            tbl.rename(columns={ch : ch.split('_')[-1]}, inplace=True)
-        # Sum the ROIs
-        ch_names = [_ for _ in tbl.keys() if 'ch' in _]
-        tbl['ch_sum'] = tbl[ch_names].sum(axis=1)
+            df[ch] = np.sum(tbl[ch].read()[:, e_min:e_max], axis=1)
+            df.rename(columns={ch : ch.split('_')[-1]}, inplace=True)
+        df['ch_sum'] = df[[ch for ch in df.keys() if "channel" in ch]].sum(axis=1)
 
         # Prepare for export
-        col_names = [tbl.index.name] + list(tbl.columns)
+        col_names = [df.index.name] + list(df.columns)
         for i, col in enumerate(col_names):
             staticheader += f"# Column {i+1:02}: {col}\n"
         staticheader += "# \n# "
@@ -1153,7 +1157,7 @@ def export_flyer_id_mono_data(uid_or_scanid, roi=1, e_min=None, e_max=None, fnam
         # Export data to file
         with open(fname, 'w') as f:
             f.write(staticheader)
-        tbl.to_csv(fname, float_format="%.3f", sep=' ', mode='a')
+        df.to_csv(fname, float_format="%.3f", sep=' ', mode='a')
 
         print('  Complete!')
 
