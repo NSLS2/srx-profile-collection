@@ -1269,7 +1269,7 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
 
 
     @subs_decorator(livepopup)
-    @monitor_during_decorator([xs_id_mono_fly.channel01.mcaroi01.total_rbv, xbpm2.sumT])
+    # @monitor_during_decorator([xs_id_mono_fly.channel01.mcaroi01.total_rbv, xbpm2.sumT])
     def plan():
         yield from check_shutters(shutter, 'Open')
         uid = yield from bps.open_run(md)
