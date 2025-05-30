@@ -734,21 +734,21 @@ class FlyerIDMono(Device):
             formatted_scan_num = f"scan_{current_scan:03d}"
             return_dict[formatted_scan_num] = \
                 {
-                #     'energy': {'source': self.flying_dev.name,
-                #             'dtype': 'number',
-                #             # We need just 1 scalar value for the energy.
-                #             # 'shape': [self._traj_info['num_triggers']]},
-                #             # TODO: double-check the shape is right for databroker v2.
-                #             'shape': []},
-                #  'i0_time': {'source': 'scaler', 'dtype': 'array', 'shape': []},
-                #  'i0': {'source': 'scaler', 'dtype': 'array', 'shape': []},
-                #  'im': {'source': 'scaler', 'dtype': 'array', 'shape': []},
-                #  'it': {'source': 'scaler', 'dtype': 'array', 'shape': []},
-                 # f'{self.detector.name}_image': {'source': '...',
-                 #           'dtype': 'array',
-                 #           'shape': [self._array_size['height'],
-                 #                     self._array_size['width']],
-                 #           'external': 'FILESTORE:'}
+                    'energy': {'source': self.flying_dev.name,
+                            'dtype': 'number',
+                            # We need just 1 scalar value for the energy.
+                            # 'shape': [self._traj_info['num_triggers']]},
+                            # TODO: double-check the shape is right for databroker v2.
+                            'shape': []},
+                    'i0_time': {'source': 'scaler', 'dtype': 'array', 'shape': []},
+                    'i0': {'source': 'scaler', 'dtype': 'array', 'shape': []},
+                    'im': {'source': 'scaler', 'dtype': 'array', 'shape': []},
+                    'it': {'source': 'scaler', 'dtype': 'array', 'shape': []},
+                        #    f'{self.detector.name}_image': {'source': '...',
+                        #    'dtype': 'array',
+                        #    'shape': [self._array_size['height'],
+                        #              self._array_size['width']],
+                        #    'external': 'FILESTORE:'}
                 }
 
             for xs_det in self.xs_detectors:
@@ -774,6 +774,9 @@ class FlyerIDMono(Device):
         return return_dict
 
     def collect(self, *args, **kwargs):
+
+        # yield Msg("nuke_the_cache")
+
 
         # TODO: test that feature.
         if not self._continue_after_pausing:
@@ -1277,15 +1280,15 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
         yield from mv(sclr1.count_mode, 0)
 
         # Declare streams:
-        objects = []
-        for xs_det in [xs]:
-            for channel in xs_det.iterate_channels():
-                obj = getattr(xs_det, f"channel{channel.channel_number:02}")
-                objects.append(obj)
+        # objects = []
+        # for xs_det in [xs]:
+        #     for channel in xs_det.iterate_channels():
+        #         obj = getattr(xs_det, f"channel{channel.channel_number:02}")
+        #         objects.append(obj)
 
-        for n in range(num_scans):
-            for flyer in flyers:
-                yield from bps.declare_stream(*objects, name=f"scan_{n+1:03d}")
+        # for n in range(num_scans):
+        #     for flyer in flyers:
+        #         yield from bps.declare_stream(*objects, name=f"scan_{n+1:03d}")
 
         print(f"Kickoff: {flyers}")
         for flyer in flyers:
@@ -1295,6 +1298,7 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
             yield from bps.kickoff(flyer, wait=True)
         for n in range(num_scans):
             print(f"\n\n*** {print_now()} Iteration #{n+1} ***\n")
+            # yield Msg("nuke_the_cache", flyer_id_mono)
             yield from bps.checkpoint()
             # flyer_id_mono.scaler.erase_start.put(1)
             for flyer in flyers:
@@ -1304,6 +1308,8 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
                 print(f"  {flyer} collect...", end='', flush=True)
                 yield from bps.collect(flyer)
                 print("done")
+            yield Msg("nuke_the_cache", flyer_id_mono)
+
         yield from check_shutters(shutter, 'Close')
         yield from mv(sclr1.count_mode, 1)
         yield from bps.close_run()
