@@ -798,9 +798,11 @@ class SRXFlyer1Axis(Device):
         elif mode == 'time':
             self._encoder.pc.gate_start.put(tacc + t_delay)
             ttime.sleep(t_delay)
-            self._encoder.pc.gate_step.put(extent / v)
+            # self._encoder.pc.gate_step.put(extent / v)
+            self._encoder.pc.gate_step.put(extent / v + 0.100)
             ttime.sleep(t_delay)
-            self._encoder.pc.gate_width.put(extent / v + 0.050)
+            # self._encoder.pc.gate_width.put(extent / v + 0.050)
+            self._encoder.pc.gate_width.put(extent / v)
             ttime.sleep(t_delay)
 
 
@@ -865,9 +867,13 @@ class SRXFlyer1Axis(Device):
             ttime.sleep(0.01)
             if (ttime.monotonic() - t0) > 60:
                 print(f"{self.name} is behaving badly!")
+                print(f"Number of points captured:   {self._encoder.pc.data.num_cap.get()}")
+                print(f"Number of points downloaded: {self._encoder.pc.data.num_down.get()}")
                 self._encoder.pc.disarm.put(1)
                 ttime.sleep(0.100)
                 if self._encoder.pc.data_in_progress.get() == 1:
+                    print("Last row of data is lost :-(")
+                    print("Aborting scan")
                     raise TimeoutError
 
         # ttime.sleep(.1)
