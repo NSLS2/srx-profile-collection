@@ -1295,6 +1295,7 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
                 print(f"  {flyer} collect...", end='', flush=True)
                 yield from bps.collect(flyer)
                 print("done")
+            yield Msg("nuke_the_cache", flyer_id_mono)
         yield from check_shutters(shutter, 'Close')
         yield from mv(sclr1.count_mode, 1)
         yield from bps.close_run()
