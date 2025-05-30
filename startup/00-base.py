@@ -98,9 +98,9 @@ nslsii.configure_base(
     publish_documents_with_kafka=True,
 )
 
+# This is a workaround until the flyer can be rewritten
 if 'nuke_the_cache' not in RE.commands:
     async def _nuke_cache(msg, *, self = RE):
-        # print(f"\n\n*** {print_now()} Iteration #{n+1} ***\n")
         print(f"{print_now()}: Nuking cache...")
         run_key = msg.run
         obj = msg.obj
