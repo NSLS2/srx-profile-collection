@@ -1272,10 +1272,10 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
                                         xlabel='Energy [eV]')]
 
 
-    @subs_decorator(livepopup)
+    # @subs_decorator(livepopup)
     # @monitor_during_decorator([xs_id_mono_fly.channel01.mcaroi01.total_rbv, xbpm2.sumT])
     def plan():
-        yield from check_shutters(shutter, 'Open')
+        # yield from check_shutters(shutter, 'Open')
         uid = yield from bps.open_run(md)
         yield from mv(sclr1.count_mode, 0)
         print(f"Kickoff: {flyers}")
@@ -1287,10 +1287,14 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
         for n in range(num_scans):
             print(f"\n\n*** {print_now()} Iteration #{n+1} ***\n")
             yield from bps.checkpoint()
+            if shutter is True:
+                yield from abs_set(shut_d.request_open, 1, wait=True, timeout=2)
             # flyer_id_mono.scaler.erase_start.put(1)
             for flyer in flyers:
                 print(f"  {flyer.name} complete...")
                 yield from bps.complete(flyer, wait=True)
+            if shutter is True:
+                yield from abs_set(shut_d.request_open, 0, wait=False)
             for flyer in flyers:
                 print(f"  {flyer} collect...", end='', flush=True)
                 yield from bps.collect(flyer)
