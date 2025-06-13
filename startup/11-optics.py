@@ -9,10 +9,15 @@ from ophyd.status import WaitTimeoutError
 from nslsii.devices import TwoButtonShutter
 
 
+# SRX-specific TwoButtonShutter
+class SRXTwoButtonShutter(TwoButtonShutter):
+    def stop(self, success=False):
+        pass
+
 # Setup photon shutters
-shut_fe = TwoButtonShutter("XF:05ID-PPS{Sh:WB}", name="shut_fe")
-shut_a = TwoButtonShutter("XF:05IDA-PPS:1{PSh:2}", name="shut_a")
-shut_b = TwoButtonShutter("XF:05IDB-PPS:1{PSh:4}", name="shut_b")
+shut_fe = SRXTwoButtonShutter("XF:05ID-PPS{Sh:WB}", name="shut_fe")
+shut_a = SRXTwoButtonShutter("XF:05IDA-PPS:1{PSh:2}", name="shut_a")
+shut_b = SRXTwoButtonShutter("XF:05IDB-PPS:1{PSh:4}", name="shut_b")
 
 class SRXFastShutter(Device):
     # Based on HXN Fast Shutter code
