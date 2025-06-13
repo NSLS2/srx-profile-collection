@@ -842,8 +842,8 @@ class SRXFlyer1Axis(Device):
         # self._encoder.pc.enc_pos4_sync.put(1)  # None
 
         # Do a block reset on the zebra
-        self._encoder.pc.block_state_reset.put(1)
-        ttime.sleep(t_delay)
+        # self._encoder.pc.block_state_reset.put(1)
+        # ttime.sleep(t_delay)
 
         st = (
             NullStatus()
