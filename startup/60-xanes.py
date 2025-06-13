@@ -5,8 +5,11 @@ import collections
 from collections import deque
 
 import numpy as np
+import pandas as pd
 import time as ttime
+import xraylib as xrl
 import matplotlib.pyplot as plt
+from os.path import join
 
 import bluesky.plans as bp
 from bluesky.plans import list_scan
@@ -14,12 +17,8 @@ import bluesky.plan_stubs as bps
 from bluesky.plan_stubs import mv
 from bluesky.preprocessors import (finalize_wrapper, subs_wrapper)
 from bluesky.utils import short_uid as _short_uid
-from epics import PV
-# from databroker import DataBroker as db
 
 # From flying-undulator branch
-# from databroker import get_events
-from numpy.lib.stride_tricks import as_strided
 from ophyd.status import SubscriptionStatus
 from ophyd.sim import NullStatus
 
@@ -1093,21 +1092,28 @@ def plot_flyer_id_mono_data(uid_or_scanid, e_min=None, e_max=None, fname=None, r
         ax.legend()
     return res
 
+
 # Export data function
-def export_flyer_id_mono_data(uid_or_scanid, roi=1, e_min=None, e_max=None, fname=None, root='/home/xf05id1/test_flyingID/', flyer=flyer_id_mono):
+def export_flyer_id_mono_data(uid_or_scanid, fname=None, root='.'):
     hdr = c[uid_or_scanid]
     scan_streams = list(hdr)
     scan_streams.remove('baseline')
     scan_streams = [s for s in scan_streams if "monitor" not in s]
 
-    # Assuming first detector in the xs_detectors list has the correct ROI in ROI1
-    # TODO: This should not look at the object! This should be stored in metadata
-    if (e_min is None):
-        e_min = getattr(flyer.xs_detectors[0].channel01, f"mcaroi{roi:02}").min_x.get()
-        # e_min = flyer.xs_detectors[0].channel01.mcaroi01.min_x.get()
-    if (e_max is None):
-        e_max = getattr(flyer.xs_detectors[0].channel01, f"mcaroi{roi:02}").min_x.get() + getattr(flyer.xs_detectors[0].channel01, f"mcaroi{roi:02}").size_x.get()
-        # e_max = flyer.xs_detectors[0].channel01.mcaroi01.min_x.get() + flyer.xs_detectors[0].channel01.mcaroi01.size_x.get()
+    start_doc = hdr.start
+    roi = start_doc["scan"]["roi_num"] - 1  # subtract 1 to convert from ROI number (1...4) to index (0...3)
+    roi_name = start_doc["scan"]["roi_names"][roi]
+    roi_symbol, roi_edge = roi_name.split("_")
+    Z = xrl.SymbolToAtomicNumber(roi_symbol)
+    # match-case added to python 3.10
+    match roi_edge:
+        case "ka1":
+            edge = xrl.KA1_LINE
+        case "la1":
+            edge = xrl.LA1_LINE
+
+    e_min = round(100 * xrl.LineEnergy(Z, edge)) - 10
+    e_max = round(100 * xrl.LineEnergy(Z, edge)) + 10
 
     ring_current_start = str(hdr["baseline"]["data"]["ring_current"][0].round(2))
 
@@ -1128,7 +1134,7 @@ def export_flyer_id_mono_data(uid_or_scanid, roi=1, e_min=None, e_max=None, fnam
 
     for stream in sorted(scan_streams):
         fname = f"scan_{hdr.start['scan_id']}_{stream}.txt"
-        fname = root + fname
+        fname = join(root, fname)
 
         print(f'{stream}')
         print(f"  Export to {fname}")
@@ -1145,7 +1151,7 @@ def export_flyer_id_mono_data(uid_or_scanid, roi=1, e_min=None, e_max=None, fnam
             df[k] = tbl[k].read()
 
         print(f'  Processing data...')
-        print(f"{df=}")
+        # print(f"{df=}")
         df.set_index("energy", drop=True, inplace=True)
 
         ch_names = [ch for ch in keys if "channel" in ch]
@@ -1167,6 +1173,7 @@ def export_flyer_id_mono_data(uid_or_scanid, roi=1, e_min=None, e_max=None, fnam
         df.to_csv(fname, float_format="%.3f", sep=' ', mode='a')
 
         print('  Complete!')
+
 
 def flying_xas(num_passes=1, shutter=True, md=None):
     v = flyer_id_mono.flying_dev.parameters.speed.get()
