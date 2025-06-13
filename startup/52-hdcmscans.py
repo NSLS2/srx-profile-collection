@@ -123,14 +123,34 @@ def scanderive(xaxis, yaxis, ax, xlabel='', ylabel='', title='', edge_ind=None):
     return p, xaxis, dyaxis, edge_ind
 
 
-def find_edge(scanid, use_xrf=True, element='', sclr_key="sclr_i0"):
-    tbl = c[scanid]["primary"]["data"]
-    braggpoints = tbl["energy_bragg"].read()
-    energypoints = tbl["energy_energy_setpoint"].read()
+def find_edge(scanid, use_xrf=True, element='', norm_key="i0"):
+    # Allow for step or fly scans
+    h = c[scanid]
+    if "XAS_STEP" in h.start["scan"]["type"]:
+        tbl = h["primary"]["data"]
+        braggpoints = tbl["energy_bragg"].read()
+        energypoints = tbl["energy_energy_setpoint"].read()
+        if "i0" in norm_key.lower():
+            i0 = tbl["sclr_i0"].read()
+        elif "im" in norm_key.lower():
+            i0 = tbl["sclr_im"].read()
+        else:
+            raise KeyError(f"{norm_key} not recognized!")
+        if use_xrf is False:
+            it = tbl["sclr_it"].read()
+    else:
+        tbl = h["scan_001"]["data"]
+        energypoints = tbl["energy"].read()
+        if "i0" in norm_key.lower():
+            i0 = tbl["i0"].read()
+        elif "im" in norm_key.lower():
+            i0 = tbl["im"].read()
+        else:
+            raise KeyError(f"{norm_key} not recognized!")
+        if use_xrf is False:
+            it = tbl["it"].read()
 
     if use_xrf is False:
-        it = np.array(tbl['sclr_it'])
-        i0 = np.array(tbl['sclr_i0'])
         tau = it / i0
         norm_tau = (tau - tau[0]) / (tau[-1] - tau[0])
         mu = -1 * np.log(np.abs(norm_tau))
@@ -142,11 +162,7 @@ def find_edge(scanid, use_xrf=True, element='', sclr_key="sclr_i0"):
             for i in range(1, 8):
                 ch_name = f"xs_channel{i:02}_mcaroi01_total_rbv"
                 mu += tbl[ch_name].read()
-
-            # get scaler data
-            I0 = tbl[sclr_key].read()
-
-            mu /= I0
+            mu /= i0
 
     fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2)
     fig.suptitle(element)
