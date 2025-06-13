@@ -5,7 +5,7 @@ import time as ttime
 
 # Run a knife-edge scan
 def nano_knife_edge(motor, start, stop, stepsize, acqtime,
-                    normalize=True, use_trans=False,
+                    roi="Pt", normalize=True, use_trans=False,
                     scan_only=False, shutter=True, plot=True, plot_guess=False):
     """
     motor       motor   motor used for scan
@@ -20,6 +20,9 @@ def nano_knife_edge(motor, start, stop, stepsize, acqtime,
 
     # Need to convert stepsize to number of points
     num = np.round((stop - start) / stepsize) + 1
+
+    # Set the roi
+    setroi(1, roi)
 
     # Run the scan
     if (motor.name == 'nano_stage_sx'):
