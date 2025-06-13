@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 import pandas as pd
 import warnings
+import logging
 
 import matplotlib as mpl
 import nslsii
@@ -134,6 +135,9 @@ c = tiled_reading_client = from_uri(
 discard_liveplot_data = True
 descriptor_uids = []
 
+# Temporary: This is for debugging post document
+log_ipy = logging.getLogger('bluesky')
+
 def post_document(name, doc):
     if name == "start":
         doc = copy.deepcopy(doc)
@@ -150,10 +154,14 @@ def post_document(name, doc):
     error = None
     for attempt in range(ATTEMPTS):
         try:
+            start_time = ttime.time()
             srx_raw.post_document(name, doc)
+            # print(f"{name} {doc} Post dt = {ttime.time() - start_time}")
+            # log_ipy.debug(f"{name} {doc} Post dt = {ttime.time() - start_time}")
         except Exception as exc:
             print("Document saving failure:", repr(exc))
             error = exc
+            # raise exc
         else:
             break
         time.sleep(2)
