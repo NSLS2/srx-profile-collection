@@ -50,13 +50,3 @@ def xs2_1d_relscan(stage, neg_dx, pos_dx, nx, dwell, dets=[xs, sclr1], shutter=T
     )
     yield from check_shutters(shutter, 'Close')
 
-def overnight():
-    x0 = -2.0
-    x1 = 2.0
-    nx = 41
-
-    x = np.linspace(x0, x1, num=nx)
-    for xi in x:
-        yield from mov(confocal_stage.x, xi)
-        yield from xs2_1d_relscan(confocal_stage.y, -0.1, 0.1, 41, .5)
-        yield from xs2_1d_relscan(confocal_stage.z, -0.1, 0.1, 41, .5)
