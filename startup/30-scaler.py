@@ -103,7 +103,7 @@ def export_sis_data(ion, filepath, zebra):
         it = ion.mca4.get(timeout=5.0)
 
     if len(i) != N:
-        print(f'Scaler did not receive collect enough points.')
+        print(f'Scaler did not collect enough points.')
         ## Try one more time
         t = ion.mca1.get(timeout=5.0)
         i = ion.mca2.get(timeout=5.0)

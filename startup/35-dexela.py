@@ -87,24 +87,25 @@ class DexelaFileStoreHDF5(FileStoreBase):
             return super().generate_datum(key, timestamp, datum_kwargs)
 
     def stage(self):
+        # Timeout
+        _TIMEOUT = 10
         # Make a filename.
         filename, read_path, write_path = self.make_filename()
 
         # Ensure we do not have an old file open.
-        timeout=10
-        self.capture.set(0, timeout=timeout).wait()
+        self.capture.set(0, timeout=_TIMEOUT).wait()
 
         # These must be set before parent is staged (specifically
         # before capture mode is turned on. They will not be reset
         # on 'unstage' anyway.
-        self.file_path.set(write_path, timeout=timeout).wait()
+        self.file_path.set(write_path, timeout=_TIMEOUT).wait()
         self.file_name.put(filename)
         # AMK does not like this
         if self.file_number.get() != 0:
-            self.file_number.set(0, timeout=timeout).wait()
+            self.file_number.set(0, timeout=_TIMEOUT).wait()
 
         if self.parent._mode is SRXMode.step:
-            self.num_capture.set(self.parent.total_points.get(), timeout=timeout).wait()
+            self.num_capture.set(self.parent.total_points.get(), timeout=_TIMEOUT).wait()
 
         staged = super().stage()
 
@@ -122,7 +123,7 @@ class DexelaFileStoreHDF5(FileStoreBase):
         if self.parent._mode is SRXMode.fly:
             res_kwargs = {}
         else:
-            self.parent.cam.num_images.set(1, timeout=timeout).wait()
+            self.parent.cam.num_images.set(1, timeout=_TIMEOUT).wait()
             res_kwargs = {'frame_per_point': 1}
 
             self._point_counter = itertools.count()
@@ -227,6 +228,10 @@ class SRXDexelaDetector(SingleTrigger, DexelaDetector):
         # self.cam.trigger_mode = EpicsSignalWithRBV("XF:05IDD-ES{Dexela:1}cam1:TriggerMode")
 
     def stage(self):
+        # EJM: Clear counter for consistency with Xspress3
+        _TIMEOUT = 2
+        self.cam.array_counter.set(0, timeout=_TIMEOUT).wait()
+
         # do the latching
         if self.fly_next.get():
             self.fly_next.put(False)

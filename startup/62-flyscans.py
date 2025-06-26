@@ -384,20 +384,35 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
         row_str = short_uid('row')
         if verbose:
             print('Data collection:')
+        st_list = []
         for d in flying_zebra.detectors:
-            if verbose:
+            # TODO: Create a list of status object so that we will know when all detectors have completed
+            if True:
                 print(f'  triggering {d.name}')
             st = yield from bps.trigger(d, group=row_str)
-            if verbose:
-                st.add_callback(lambda x: toc(t_datacollect, str=f"  status object  {datetime.datetime.strftime(datetime.datetime.now(), '%Y-%m-%d %H:%M:%S.%f')}", log_file=log_file))
-            if (d.name == 'dexela'):
+            st_list.append(st)
+
+            if True:
+                st.add_callback(
+                    lambda x: toc(0,
+                                  str=f"  status object  {datetime.datetime.strftime(datetime.datetime.now(), '%Y-%m-%d %H:%M:%S.%f')}",
+                                  log_file=log_file)
+                                )
+            ## TODO: Make sure we trigger and wait for dexela first, and then trigger the zebra last
+            if d.name == 'dexela':
                 if verbose:
                     print("    sleeping for dexela...")
                 state = 0
-                while (state == 0):
+                while state == 0:
                     yield from bps.sleep(0.1)
                     state = d.cam.detector_state.get()
-                yield from bps.sleep(1)
+                    print(f"    Dexela is idle!")
+                # yield from bps.sleep(1)
+
+        # Creating one status object of all triggers
+        all_st = st_list[0]
+        for st in st_list[1:]:
+            all_st = all_st & st
 
         # AMK paranoid check
         t0 = ttime.monotonic()
@@ -444,12 +459,13 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
                 print(f"  Desired position: {row_stop}")
                 print(f"  Move status:      {xmotor.moving}")
                 print("Continuing...")
+        t0 = ttime.time()
         if verbose:
             yield from timer_wrapper(move_row, log_file=log_file)
         else:
             yield from move_row()
 
-        if verbose and True:
+        if verbose:
             # ttime.sleep(0.1)
             # while (xmotor.motor_is_moving.get()):
             #     ttime.sleep(0.001)
@@ -462,41 +478,77 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
             toc(t_datacollect, str='  sclr1 done', log_file=log_file)
         # wait for the motor and detectors to all agree they are done
         try:
+            # TODO: See note above!
             # print('Waiting for x3x...\n')
-            st.wait(timeout=xnum*dwell + 20)
+            # print('Waiting for st_xs...', end="")
+            # t0_st_xs = ttime.time()
+            # st_xs.wait(timeout=xnum*dwell + 20)
+            # print(f"{ttime.time()-t0_st_xs}")
+            print('Waiting for all_st...', end="")
+            t0_st_xs = ttime.time()
+            all_st.wait(timeout=xnum*dwell + 20)
+            print(f"{ttime.time()-t0_st_xs}")
+            # xs.hdf5.capture.set("Done")
+            # while True:
+            #     # print("in while loop!")
+            #     # print(f"{ttime.time()-t0}\t{xnum*dwell+20}")
+            #     if (ttime.time() - t0) > (xnum*dwell + 20):
+            #         print("  Row capture failed!")
+            #         raise WaitTimeoutError
+            #     elif xs.hdf5.capture.get(as_string=True) == "Done":
+            #         print("  Row capture is done")
+            #         break
+            #     yield from bps.sleep(0.1)
             # print('Waiting done.\n')
             # yield from bps.wait(group=row_str)
         except WaitTimeoutError as e:
             print('WaitTimeoutError!')
-            N_xs = get_me_the_cam(xs).array_counter.get()
-            print(f"  {N_xs=}\n")
-            if N_xs == 0:
-                print("X3X did not receive any pulses!")
-            elif N_xs != xnum:
-                print(f"X3X did not receive {xnum} pulses! ({N_xs}/{xnum})")
-            else:
-                print("Unknown error!")
+
+            ERROR_FOUND = False
+            for d in flying_zebra.detectors:
+                N_acq = get_me_the_cam(d).array_counter.get()
+                print(f"   {N_acq} frames acquired for {d.name}")
+                if N_acq == 0:
+                    print(f'{d.name} did not receive any pulses!')
+                    ERROR_FOUND = True
+                elif N_acq != xnum:
+                    print(f"{d.name} did not receive {xnum} pulses! ({N_acq}/{xnum})")
+                    ERROR_FOUND = True
+
+            if not ERROR_FOUND:
+                print('Unknown error!')
                 print(e)
+
+            # N_xs = get_me_the_cam(xs).array_counter.get()
+            # print(f"  {N_xs=}\n")
+            # if N_xs == 0:
+            #     print("X3X did not receive any pulses!")
+            # elif N_xs != xnum:
+            #     print(f"X3X did not receive {xnum} pulses! ({N_xs}/{xnum})")
+            # else:
+            #     print("Unknown error!")
+            #     print(e)
 
             # Cleanup
             ## Clean up X3X
             try:
                 yield from abs_set(xs.hdf5.capture, 'Done', wait=True, timeout=10)
-                yield from abs_set(xs.hdf5.write_file, 1, wait=True, timeout=10)
+                # yield from abs_set(xs.hdf5.write_file, 1, wait=True, timeout=10) # EJM thinks this is useless
             except Exception as ex:
                 print('Hopefully a timeout error while cleaning up X3X...')
                 print(ex)
             ## Clean up scaler
             try:
-                yield from abs_set(ion.stop_all, 1, timeout=10)  # stop acquiring scaler
+                if ion.acquiring.get(as_string=True) == 'Acquiring':
+                    yield from abs_set(ion.stop_all, 1, timeout=10)  # stop acquiring scaler
             except Exception as ex:
-                print('Hopefully a timeout error while cleaning up scaler...')
+                print('Hopefully a timeout error while stopping scaler...')
                 print(ex)
             ## Clean up zebra
             try:
                 yield from abs_set(flying_zebra._encoder.pc.disarm, 1, timeout=10)  # stop acquiring zebra
             except Exception as ex:
-                print('Hopefully a timeout error while cleaning up scaler...')
+                print('Hopefully a timeout error while disarming zebra...')
                 print(ex)
 
             flag_raise_timeout = False
@@ -514,9 +566,10 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
         # we still know about ion from above
         ## YY: added a timeout
         try:
-            yield from abs_set(ion.stop_all, 1, timeout = 10)  # stop acquiring scaler
+            if ion.acquiring.get(as_string=True) == 'Acquiring':
+                yield from abs_set(ion.stop_all, 1, timeout = 10)  # stop acquiring scaler
         except Exception as ex:
-            print('Hopefully another timeout error while cleaning up scaler...')
+            print('Hopefully another timeout error while stopping scaler again...')
             print(ex)
 
         def zebra_complete():

@@ -103,17 +103,14 @@ class MerlinFileStoreHDF5(FileStoreBase):
         filename, read_path, write_path = self.make_filename()
 
         # Ensure we do not have an old file open.
-        # set_and_wait(self.capture, 0)  // deprecated
-        self.capture.set(0).wait()
+        _TIMEOUT = 2
+        self.capture.set(0, timeout=_TIMEOUT).wait()
         # These must be set before parent is staged (specifically
         # before capture mode is turned on. They will not be reset
         # on 'unstage' anyway.
-        # set_and_wait(self.file_path, write_path)
-        self.file_path.set(write_path).wait()
-        # set_and_wait(self.file_name, filename)  // deprecated
-        self.file_name.set(filename).wait()
-        # set_and_wait(self.file_number, 0)  // deprecated
-        self.file_number.set(0).wait()
+        self.file_path.set(write_path, timeout=_TIMEOUT).wait()
+        self.file_name.set(filename, timeout=_TIMEOUT).wait()
+        self.file_number.set(0, timeout=_TIMEOUT).wait()
         staged = super().stage()
 
         # AD does this same templating in C, but we can't access it
@@ -199,6 +196,10 @@ class SRXMerlin(SingleTrigger, MerlinDetector):
         return ret
 
     def stage(self):
+        # EJM: Clear counter for consistency with Xspress3
+        _TIMEOUT = 2
+        self.cam.array_counter.set(0, timeout=_TIMEOUT).wait()
+
         # do the latching
         if self.fly_next.get():
             self.fly_next.put(False)
