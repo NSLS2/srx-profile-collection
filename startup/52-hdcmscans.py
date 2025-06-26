@@ -506,8 +506,16 @@ def smart_peakup(start=None,
     return (yield from smart_max_core(start))
 
 
+# TEMP
+def doms_peakup():
+    yield from check_shutters(True, 'Open')
+    yield from smart_peakup(detectors=[dcm.c2_pitch, bpm4, sclr1], target_fields=['bpm4_total_current', 'sclr_im'])
+    yield from check_shutters(True, 'Close')
+
+
 # Setup alias/synonym
-peakup = smart_peakup
+# peakup = smart_peakup
+peakup = doms_peakup
 
 
 def plot_all_peakup(scanid=-1):
