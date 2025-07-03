@@ -107,7 +107,8 @@ def xanes_plan(erange=[], estep=[], acqtime=1., samplename='', filename='',
 
     # Register the detectors
     det_xs.mode = SRXMode.step
-    det = [ring_current, sclr1, xbpm2, det_xs]
+    # det = [ring_current, sclr1, xbpm2, det_xs] # EJM removed xpbm2 when disconnected. June 30th 2025
+    det = [ring_current, sclr1, det_xs]
     # Setup xspress3
     yield from abs_set(det_xs.external_trig, False)
     yield from abs_set(get_me_the_cam(det_xs).acquire_time, acqtime)
