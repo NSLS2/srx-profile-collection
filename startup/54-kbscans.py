@@ -101,7 +101,7 @@ def nano_knife_edge(motor, start, stop, stepsize, acqtime,
 
     # Do not do fitting, only do the scan
     if (not scan_only):
-        plot_knife_edge(scanid=db[-1].start['scan_id'], plot_guess=False, plotme=plotme)
+        return plot_knife_edge(scanid=db[-1].start['scan_id'], plot_guess=False, plotme=plotme)
 
 
 # Make nice alias
@@ -207,4 +207,4 @@ def plot_knife_edge(scanid=-1, fluor_key='xs_fluor', use_trans=False, normalize=
         ax.set_ylabel('ROI Counts')
     ax.legend()
 
-    return cent_position
+    return cent_position, C * np.mean([popt[1], popt[5]])
