@@ -1,5 +1,7 @@
 print(f'Loading {__file__}...')
 
+from bluesky.utils import FailedStatus
+
 # SRX Enable PVs
 sr_permit = EpicsSignalRO("SR-EPS{PLC:1}Sts:MstrSh-Sts")
 srx_permit = EpicsSignalRO("XF:05ID-CT{}Prmt:Remote-Sel")
@@ -36,6 +38,7 @@ def auto_align(all_checks=True):
                 except FailedStatus as e:
                     print(f'Cannot close {shut.name}!')
                     raise e
+
         # Close D-shutter
         try:
             yield from check_shutters('Close', True)
