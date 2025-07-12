@@ -78,6 +78,10 @@ class SRXNanoDet(Device):
     x = Cpt(EpicsMotor, 'X}Mtr')  # XF:05IDD-ES:1{nKB:Det-Ax:X}Mtr.RBV
     y = Cpt(EpicsMotor, 'Y}Mtr')  # XF:05IDD-ES:1{nKB:Det-Ax:Y}Mtr.RBV
     z = Cpt(EpicsMotor, 'Z}Mtr')  # XF:05IDD-ES:1{nKB:Det-Ax:Z}Mtr.RBV
+    sample2detector = Cpt(EpicsSignalRO,
+                          "XF:05IDD-ES:1{nKB:Det-Ax:Dist}MTR:RBV",
+                          name="sample2detector",
+                          add_prefix="")
 
 
 nano_det = SRXNanoDet('XF:05IDD-ES:1{nKB:Det-Ax:', name='nano_det')
