@@ -2,6 +2,7 @@ print(f'Loading {__file__}...')
 import datetime
 import json
 from bluesky.utils import short_uid
+from tqdm import tqdm
 
 #####
 # Pseudocode for fly scanning
@@ -387,12 +388,12 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
         st_list = []
         for d in flying_zebra.detectors:
             # TODO: Create a list of status object so that we will know when all detectors have completed
-            if True:
+            if False:
                 print(f'  triggering {d.name}')
             st = yield from bps.trigger(d, group=row_str)
             st_list.append(st)
 
-            if True:
+            if False:
                 st.add_callback(
                     lambda x: toc(0,
                                   str=f"  status object  {datetime.datetime.strftime(datetime.datetime.now(), '%Y-%m-%d %H:%M:%S.%f')}",
@@ -412,12 +413,10 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
                 yield from bps.sleep(0.3) # EJM quick fix 20250714
                 print(f"    [{print_now()}] awake!")
 
-        # Creating one status object of all triggers
+        # Creating one status object to rule them all
         all_st = st_list[0]
         for st in st_list[1:]:
             all_st = all_st & st
-
-        # _ = input("Let's go!")
 
         # AMK paranoid check
         t0 = ttime.monotonic()
@@ -455,8 +454,9 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
             t_mv = (xnum * dwell) + (2 * accel_time) + MV_DELAY
             # Move from start to finish for the row
             try:
-                st_mv = yield from abs_set(xmotor, row_stop)
-                st_mv.wait(timeout=t_mv)
+                yield from mov(xmotor, row_stop, wait=True, timeout=t_mv)
+                # st_mv = yield from abs_set(xmotor, row_stop)
+                # st_mv.wait(timeout=t_mv)
             except WaitTimeoutError as e:
                 # print(e)
                 print(f"{ttime.ctime()} Move did not complete!")
@@ -489,10 +489,10 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
             # t0_st_xs = ttime.time()
             # st_xs.wait(timeout=xnum*dwell + 20)
             # print(f"{ttime.time()-t0_st_xs}")
-            print('Waiting for all_st...', end="")
+            # print('Waiting for all_st...', end="")
             t0_st_xs = ttime.time()
             all_st.wait(timeout=xnum*dwell + 20)
-            print(f"{ttime.time()-t0_st_xs}")
+            # print(f"{ttime.time()-t0_st_xs}")
             # xs.hdf5.capture.set("Done")
             # while True:
             #     # print("in while loop!")
@@ -668,7 +668,7 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
         yield from abs_set(xs.channel01.mcaroi.ts_num_points, xnum, wait=True, timeout=10)
 
         ystep = 0
-        for step in np.linspace(ystart, ystop, ynum):
+        for step in tqdm(np.linspace(ystart, ystop, ynum), desc="Scan progress", position=0, leave=True, unit="row"):
             yield from abs_set(scanrecord.time_remaining,
                                (ynum - ystep) * ( dwell * xnum + 3.8 ) / 3600.,
                                timeout=10)
@@ -712,13 +712,16 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
             # print('return from step\t',time.time())
             ystep = ystep + 1
 
+        # Print 3 extra lines for tqdm
+        print("\n\n\n", end="")
+
         # TODO this should be taken care of by stage sigs
         ion = flying_zebra.sclr
         yield from bps.mov(xs.external_trig, False,
                            ion.count_mode, 1)
         if xs2 in flying_zebra.detectors:
             yield from bps.mov(xs2.external_trig, False)
-        yield from mv(nano_stage.sx, 0, nano_stage.sy, 0, nano_stage.sz, 0)
+        # yield from mv(nano_stage.sx, 0, nano_stage.sy, 0, nano_stage.sz, 0)
 
     # Setup the final scan plan
     if shutter:
