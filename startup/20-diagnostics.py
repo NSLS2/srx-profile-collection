@@ -97,6 +97,8 @@ class BPM_TetrAMM(Device):
 
 bpm3 = BPM_TetrAMM('XF:05IDA-BI{BPM:3}', name='bpm3')
 bpm4 = BPM_TetrAMM('XF:05IDA-BI{BPM:4}', name='bpm4')
+# Temporary replacement for xbpm2
+xbpm2 = BPM_TetrAMM('XF:05IDA-BI{BPM:02}AH501:', name='xbpm2')  # XF:05IDA-BI{BPM:02}AH501:SumX:MeanValue_RBV
 
 
 class SRX_AH501(QuadEM):
@@ -185,7 +187,7 @@ class HACK_SRX_NSLS_EM(Device):
        return np.sqrt(np.power(self.balanceX(), 2) + np.power(self.balanceY(), 2)) / np.sqrt(2)
 
 xbpm1 = HACK_SRX_NSLS_EM('XF:05ID-BI{EM:BPM1}', name='xbpm1')
-xbpm2 = HACK_SRX_NSLS_EM('XF:05ID-BI{EM:BPM2}', name='xbpm2')
+# xbpm2 = HACK_SRX_NSLS_EM('XF:05ID-BI{EM:BPM2}', name='xbpm2')
 
 # EJM addition
 class ScalerPreAmp(Device):

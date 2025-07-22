@@ -320,7 +320,8 @@ def smart_peakup(start=None,
                  shutter=True,
                  motor=dcm.c2_fine,
                  detectors=[dcm.c2_pitch, bpm4, xbpm2],
-                 target_fields=['bpm4_total_current', 'xbpm2_sumT'],
+                 # target_fields=['bpm4_total_current', 'xbpm2_sumT'],
+                 target_fields=['bpm4_total_current', 'xbpm2_total_current'],
                  MAX_ITERS=100,
                  md=None,
                  verbose=False):
@@ -514,8 +515,8 @@ def doms_peakup():
 
 
 # Setup alias/synonym
-# peakup = smart_peakup
-peakup = doms_peakup
+peakup = smart_peakup
+# peakup = doms_peakup
 
 
 def plot_all_peakup(scanid=-1):
