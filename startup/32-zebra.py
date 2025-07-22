@@ -173,7 +173,7 @@ class ZebraPositionCapture(Device):
     data = Cpt(ZebraPositionCaptureData, "")
 
     def stage(self):
-        self.arm.put(1)
+        # self.arm.put(1)
 
         super().stage()
 
@@ -755,7 +755,7 @@ class SRXFlyer1Axis(Device):
         mode = self.mode.get()
         # print(f'{mode=}')
 
-        self._encoder.pc.arm.put(0)
+        self._encoder.pc.disarm.put(0)
         ttime.sleep(t_delay)
         self._mode = "kicked off"
         self._npts = int(xnum)
