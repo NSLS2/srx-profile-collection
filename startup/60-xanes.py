@@ -14,8 +14,8 @@ import bluesky.plan_stubs as bps
 from bluesky.plan_stubs import mv
 from bluesky.preprocessors import (finalize_wrapper, subs_wrapper)
 from bluesky.utils import short_uid as _short_uid
-from epics import PV
 # from databroker import DataBroker as db
+from scipy.interpolate import make_interp_spline
 
 # From flying-undulator branch
 # from databroker import get_events
@@ -403,6 +403,20 @@ class FlyerIDMono(Device):
         self.xs_detectors = xs_detectors
         self.scaler = scaler
         self._staging_delay = 0.010
+
+        # LUTs
+        self.lut_u = EpicsSignal(
+                         "SR:C5-ID:G1{IVU21:1}FlyLUT-Gap-RB",
+                         write_pv="SR:C5-ID:G1{IVU21:1}FlyLUT-Gap-SP",
+                         name="lut_u",
+                         kind="omitted"
+                         )
+        self.lut_e = EpicsSignal(
+                         "SR:C5-ID:G1{IVU21:1}FlyLUT-Energy-RB",
+                         write_pv="SR:C5-ID:G1{IVU21:1}FlyLUT-Energy-SP",
+                         name="lut_e",
+                         kind="omitted"
+                         )
 
         # The pulse width has to be set both in Zebra and the Scan Engine.
         if pulse_cpt is None:
@@ -1339,6 +1353,36 @@ def flying_xas_reset():
     sclr1 = SRXScaler("XF:05IDD-ES:1{Sclr:1}", name="sclr1")
     sclr1.read_attrs = ["channels.chan2", "channels.chan3", "channels.chan4"]
     yield from mv(sclr1.count_mode, 1)
+
+
+def update_ivu_lut():
+    N = 20  # Number of points in LUT
+
+    # Make some assumptions:
+    # Let's assume that we calibrate from 6.5 mm gap to 12 mm gap
+    # These points would be true "calibration" points
+    Umin = 6.5 * 1000
+    Umax = 12 * 1000
+    ugap = np.linspace(Umin/1000, Umax/1000, num=12)
+    Ecal = energy.utoelookup(ugap)
+
+    # Make a new spline fit, using the new way (not deprecated)
+    u2e = make_interp_spline(1000*ugap, 1000*Ecal)
+
+    # Make new PV values
+    uRBV = np.linspace(Umin, Umax, N, dtype=int)
+    eRBV = np.round(u2e(uRBV)).astype(int)
+
+    # Output
+    if flyer_id_mono.lut_u.write_access:
+        flyer_id.mono.lut_u.put(uRBV)
+    else:
+        print(f"No write access to LUT-Gap\n{uRBV=}")
+    if flyer_id_mono.lut_e.write_access:
+        flyer_id.mono.lut_e.put(eRBV)
+    else:
+        print(f"No write access to LUT-Energy\n{eRBV=}")
+
 
 """
 TODO: All scan directions and modes (uni/bi-directional), DONE
