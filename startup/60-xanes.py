@@ -978,6 +978,36 @@ class FlyerIDMono(Device):
     def abort(self):
         self.stop()
 
+    def update_lut(self):
+        # Make some assumptions:
+        N = 20  # Number of points in LUT
+        # Let's assume that we calibrate from 6.5 mm gap to 12 mm gap
+        # These points would be true "calibration" points
+        Umin = 6.5 * 1000
+        Umax = 12 * 1000
+        ugap = np.linspace(Umin/1000, Umax/1000, num=12)
+        Ecal = energy.utoelookup(ugap)
+
+        # Make a new spline fit, using the new way (not deprecated)
+        u2e = make_interp_spline(1000*ugap, 1000*Ecal)
+
+        # Make new PV values
+        uRBV = np.linspace(Umin, Umax, N, dtype=int)
+        eRBV = np.round(u2e(uRBV)).astype(int)
+
+        # Output
+        if self.lut_u.write_access:
+            self.lut_u.put(uRBV)
+        else:
+            print(f"No write access to LUT-Gap\n{uRBV=}")
+        if self.lut_e.write_access:
+            self.lut_e.put(eRBV)
+        else:
+            print(f"No write access to LUT-Energy\n{eRBV=}")
+
+
+
+
 
 def setup_zebra_for_xas(flyer):
     # Common stage_sigs
@@ -1353,35 +1383,6 @@ def flying_xas_reset():
     sclr1 = SRXScaler("XF:05IDD-ES:1{Sclr:1}", name="sclr1")
     sclr1.read_attrs = ["channels.chan2", "channels.chan3", "channels.chan4"]
     yield from mv(sclr1.count_mode, 1)
-
-
-def update_ivu_lut():
-    N = 20  # Number of points in LUT
-
-    # Make some assumptions:
-    # Let's assume that we calibrate from 6.5 mm gap to 12 mm gap
-    # These points would be true "calibration" points
-    Umin = 6.5 * 1000
-    Umax = 12 * 1000
-    ugap = np.linspace(Umin/1000, Umax/1000, num=12)
-    Ecal = energy.utoelookup(ugap)
-
-    # Make a new spline fit, using the new way (not deprecated)
-    u2e = make_interp_spline(1000*ugap, 1000*Ecal)
-
-    # Make new PV values
-    uRBV = np.linspace(Umin, Umax, N, dtype=int)
-    eRBV = np.round(u2e(uRBV)).astype(int)
-
-    # Output
-    if flyer_id_mono.lut_u.write_access:
-        flyer_id.mono.lut_u.put(uRBV)
-    else:
-        print(f"No write access to LUT-Gap\n{uRBV=}")
-    if flyer_id_mono.lut_e.write_access:
-        flyer_id.mono.lut_e.put(eRBV)
-    else:
-        print(f"No write access to LUT-Energy\n{eRBV=}")
 
 
 """
