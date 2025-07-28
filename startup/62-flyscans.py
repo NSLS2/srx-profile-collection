@@ -300,7 +300,7 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
         i = 0
         DEADBAND = 0.050  # retry deadband of nPoint scanner
         while (np.abs(x_set - x_dial) > DEADBAND):
-            if (i == 0):
+            if i == 0:
                 if verbose:
                     print('Waiting for motor to reach starting position...',
                           end='', flush=True)
@@ -308,6 +308,8 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
             yield from mv(xmotor, row_start)
             yield from bps.sleep(0.1)
             x_dial = xmotor.user_readback.get()
+            if i > 20:
+                raise RuntimeError(f"{xmotor.name} did not reach starting position!")
         if (i != 0 and verbose):
             print('done')
 
@@ -767,11 +769,10 @@ def nano_scan_and_fly(xstart, xstop, xnum, ystart, ystop, ynum, dwell, *, extra_
         extra_dets = []
     dets = [_xs] + extra_dets
     if center:
-        move_to_scanner_center(timeout=10)
-
+        yield from move_to_scanner_center(timeout=10)
     yield from scan_and_fly_base(dets, xstart, xstop, xnum, ystart, ystop, ynum, dwell, **kwargs)
     if center:
-        move_to_scanner_center(timeout=10)
+        yield from move_to_scanner_center(timeout=10)
 
 
 def nano_y_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
@@ -787,10 +788,10 @@ def nano_y_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
     dets = [_xs] + extra_dets
 
     if center:
-        move_to_scanner_center(timeout=10)
+        yield from move_to_scanner_center(timeout=10)
     yield from scan_and_fly_base(dets, *args, **kwargs)
     if center:
-        move_to_scanner_center(timeout=10)
+        yield from move_to_scanner_center(timeout=10)
 
 
 
@@ -806,10 +807,10 @@ def nano_z_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
     dets = [_xs] + extra_dets
 
     if center:
-        move_to_scanner_center(timeout=10)
+        yield from move_to_scanner_center(timeout=10)
     yield from scan_and_fly_base(dets, *args, **kwargs)
     if center:
-        move_to_scanner_center(timeout=10)
+        yield from move_to_scanner_center(timeout=10)
 
 
 def coarse_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
@@ -825,10 +826,10 @@ def coarse_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
     dets = [_xs] + extra_dets
 
     if center:
-        move_to_scanner_center(timeout=10)
+        yield from move_to_scanner_center(timeout=10)
     yield from scan_and_fly_base(dets, *args, **kwargs)
     if center:
-        move_to_scanner_center(timeout=10)
+        yield from move_to_scanner_center(timeout=10)
 
 
 def coarse_y_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
@@ -851,10 +852,10 @@ def coarse_y_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
     dets = [_xs] + extra_dets
 
     if center:
-        move_to_scanner_center(timeout=10)
+        yield from move_to_scanner_center(timeout=10)
     yield from scan_and_fly_base(dets, *args, **kwargs)
     if center:
-        move_to_scanner_center(timeout=10)
+        yield from move_to_scanner_center(timeout=10)
 
 
 # This class is not used in this file
