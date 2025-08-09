@@ -1235,7 +1235,7 @@ def flying_xas(num_passes=1, shutter=True, md=None):
     }
 })
 def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
-                        num_scans=1, scan_type='uni', shutter=True, plot=True,
+                        num_scans=1, scan_type='uni', shutter=True, plot=False,
                         flyers=[flyer_id_mono], harmonic=1, roi_num=1, md=None):
     """This is a modified version of bp.fly to support multiple passes of the flyer."""
     flyer_id_mono.flying_dev.parameters.first_trigger.put(e_start)
@@ -1306,25 +1306,27 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
 
     livepopup = []
     if (plot is True):
-         unit_epts = np.concatenate((-1*np.ones((1,)), np.linspace(e_start, e_stop, num_pts)))
-         if scan_type == 'unidirectional':
-             plot_epts = np.tile(unit_epts, num_scans)
-         else:
-             for i in range(num_scans):
-                 if i == 0:
-                     plot_epts = np.copy(unit_epts)
-                     continue
+         plot = False
+         print("Plotting is broken! :-(")
+         # unit_epts = np.concatenate((-1*np.ones((1,)), np.linspace(e_start, e_stop, num_pts)))
+         # if scan_type == 'unidirectional':
+         #     plot_epts = np.tile(unit_epts, num_scans)
+         # else:
+         #     for i in range(num_scans):
+         #         if i == 0:
+         #             plot_epts = np.copy(unit_epts)
+         #             continue
 
-                 if i % 2 == 1:
-                     plot_epts = np.concatenate((plot_epts, np.flipud(unit_epts)))
-                 else:
-                     plot_epts = np.concatenate((plot_epts, unit_epts))
-         plot_epts = np.concatenate((plot_epts, -1*np.ones((1,))))
+         #         if i % 2 == 1:
+         #             plot_epts = np.concatenate((plot_epts, np.flipud(unit_epts)))
+         #         else:
+         #             plot_epts = np.concatenate((plot_epts, unit_epts))
+         # plot_epts = np.concatenate((plot_epts, -1*np.ones((1,))))
 
-         livepopup = [LivePlotFlyingXAS(xs_id_mono_fly.channel01.mcaroi01.total_rbv.name,
-                                        y_norm=xbpm2.sumT.name,
-                                        e_pts=plot_epts,
-                                        xlabel='Energy [eV]')]
+         # livepopup = [LivePlotFlyingXAS(xs_id_mono_fly.channel01.mcaroi01.total_rbv.name,
+         #                                y_norm=xbpm2.sumT.name,
+         #                                e_pts=plot_epts,
+         #                                xlabel='Energy [eV]')]
 
     # Set the currect pulse length for zebra1 - microZebra
     yield from bps.mov(microZebra.pulse1.width, dwell, timeout=3)
