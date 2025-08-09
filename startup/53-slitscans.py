@@ -431,7 +431,7 @@ def slit_nanoflyscan_cal(scan_id_list=[], interp_range=None, orthogonality=False
 
     #if (np.abs(defocus) < 100 or orthogonality == 1):
     if orthogonality == 1:
-        delta_fine_pitch = calpoly_fit[0][0]/conversion_factor_orth*1e-3*pitch_motion_conversion
+        delta_fine_pitch = -1*calpoly_fit[0][0]/conversion_factor_orth*1e-3*pitch_motion_conversion
         delta_theta_quad = calpoly_fit[0][0]/conversion_factor_orth
         delta_focal_plane_z = delta_theta_quad*1e-3/C_theta*C_f
         print('\nOrthagonality correction:')
