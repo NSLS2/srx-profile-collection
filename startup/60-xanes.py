@@ -456,8 +456,8 @@ class FlyerIDMono(Device):
         ttime.sleep(0.050)
         self.scaler.nuse_all.put(2*total_points)
         ttime.sleep(0.050)
-        self.scaler.erase_start.put(1)
         self._stage_with_delay()
+        self.scaler.erase_start.put(1)  # This is basically triggering the detector so it should be done last
 
     def _stage_with_delay(self):
         # Staging taken from https://github.com/bluesky/ophyd/blob/master/ophyd/device.py
@@ -992,8 +992,8 @@ class FlyerIDMono(Device):
         u2e = make_interp_spline(1000*ugap, 1000*Ecal)
 
         # Make new PV values
-        uRBV = np.linspace(Umin, Umax, N, dtype=int)
-        eRBV = np.round(u2e(uRBV)).astype(int)
+        uRBV = np.linspace(Umin, Umax, N, dtype=float)
+        eRBV = np.round(u2e(uRBV)).astype(float)
 
         # Output
         if self.lut_u.write_access:
@@ -1026,10 +1026,14 @@ def setup_zebra_for_xas(flyer):
     flyer.stage_sigs[flyer.zebra.pc.enc_pos3_sync] = 1
     flyer.stage_sigs[flyer.zebra.pc.enc_pos4_sync] = 1
     ## SYS tab
-    flyer.stage_sigs[flyer.zebra.output1.ttl.addr] = 52  # PULSE_1 --> TTL1 --> xs
-    flyer.stage_sigs[flyer.zebra.output2.ttl.addr] = 52  # PULSE_1 --> TTL2 --> merlin
+    # flyer.stage_sigs[flyer.zebra.output1.ttl.addr] = 52  # PULSE_1 --> TTL1 --> xs
+    # flyer.stage_sigs[flyer.zebra.output2.ttl.addr] = 52  # PULSE_1 --> TTL2 --> merlin
+    # flyer.stage_sigs[flyer.zebra.output3.ttl.addr] = 36  # OR1 --> TTL3 --> scaler
+    # flyer.stage_sigs[flyer.zebra.output4.ttl.addr] = 52  # PULSE_1 --> TTL4 --> dexela
+    flyer.stage_sigs[flyer.zebra.output1.ttl.addr] = 1  # IN1_TTL --> TTL1 --> xs
+    flyer.stage_sigs[flyer.zebra.output2.ttl.addr] = 1  # IN1_TTL --> TTL2 --> merlin
     flyer.stage_sigs[flyer.zebra.output3.ttl.addr] = 36  # OR1 --> TTL3 --> scaler
-    flyer.stage_sigs[flyer.zebra.output4.ttl.addr] = 52  # PULSE_1 --> TTL4 --> dexela
+    flyer.stage_sigs[flyer.zebra.output4.ttl.addr] = 1  # IN1_TTL --> TTL4 --> dexela
 
     ## Specific stage sigs for Zebra - XAS_FLY
     # PC Tab
@@ -1061,7 +1065,7 @@ def setup_zebra_for_xas(flyer):
     flyer.stage_sigs[flyer.zebra.or1.invert3] = 0
     flyer.stage_sigs[flyer.zebra.or1.invert4] = 0
     ## PULSE Tab
-    flyer.stage_sigs[flyer.zebra.pulse1.input_addr] = 1
+    flyer.stage_sigs[flyer.zebra.pulse1.input_addr] = 0
     flyer.stage_sigs[flyer.zebra.pulse1.input_edge] = 0  # 0 = rising, 1 = falling
     flyer.stage_sigs[flyer.zebra.pulse1.delay] = 0.0
     # flyer.stage_sigs[flyer.zebra.pulse1.width] = 0.1  # Written by plan
@@ -1071,13 +1075,13 @@ def setup_zebra_for_xas(flyer):
     # flyer.stage_sigs[flyer.zebra.pulse2.delay] = 0
     # flyer.stage_sigs[flyer.zebra.pulse2.width] = 0.1
     # flyer.stage_sigs[flyer.zebra.pulse2.time_units] = 0
-    flyer.stage_sigs[flyer.zebra.pulse3.input_addr] = 52
+    flyer.stage_sigs[flyer.zebra.pulse3.input_addr] = 1  # IN1_TTL, not PULSE1 or 52
     flyer.stage_sigs[flyer.zebra.pulse3.input_edge] = 0  # 0 = rising, 1 = falling
     flyer.stage_sigs[flyer.zebra.pulse3.delay] = 0.0
     flyer.stage_sigs[flyer.zebra.pulse3.width] = 0.1
     flyer.stage_sigs[flyer.zebra.pulse3.time_units] = 'ms'
 
-    flyer.stage_sigs[flyer.zebra.pulse4.input_addr] = 52
+    flyer.stage_sigs[flyer.zebra.pulse4.input_addr] = 1  # IN1_TTL, not PULSE1 or 52
     flyer.stage_sigs[flyer.zebra.pulse4.input_edge] = 1  # 0 = rising, 1 = falling
     flyer.stage_sigs[flyer.zebra.pulse4.delay] = 0
     flyer.stage_sigs[flyer.zebra.pulse4.width] = 0.1
@@ -1322,6 +1326,9 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
                                         e_pts=plot_epts,
                                         xlabel='Energy [eV]')]
 
+    # Set the currect pulse length for zebra1 - microZebra
+    yield from bps.mov(microZebra.pulse1.width, dwell, timeout=3)
+    yield from bps.mov(microZebra.pulse2.width, dwell, timeout=3)
 
     # @subs_decorator(livepopup)
     # @monitor_during_decorator([xs_id_mono_fly.channel01.mcaroi01.total_rbv, xbpm2.sumT])
@@ -1329,6 +1336,9 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
         # yield from check_shutters(shutter, 'Open')
         uid = yield from bps.open_run(md)
         yield from mv(sclr1.count_mode, 0)
+        # Wait for scaler to be "done"
+        yield from bps.sleep(2)  # TODO: THIS SHOULD BE SMARTER!
+        yield from bps.mov(sclr1.erase_all, 1)
         # print(f"Kickoff: {flyers}")
         for flyer in flyers:
             # print(f"  Kicking off {flyer}...")
