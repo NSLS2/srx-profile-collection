@@ -2,6 +2,7 @@ print(f'Loading {__file__}...')
 
 
 import sys
+import functools
 from ophyd.areadetector import (AreaDetector, ImagePlugin,
                                 TIFFPlugin, StatsPlugin,
                                 ROIPlugin, TransformPlugin,
@@ -71,12 +72,36 @@ def create_camera(pv, name, root_path='/nsls2/data/srx/assets'):
 
 hfm_cam = create_camera('XF:05IDA-BI:1{FS:1-Cam:1}', 'hfm_cam')
 bpmA_cam = create_camera('XF:05IDA-BI:1{BPM:1-Cam:1}', 'bpmA_cam')
-nano_vlm = create_camera('XF:05ID1-ES{PG-Cam:1}', 'nano_vlm', root_path='/nsls2/data/srx/legacy')
+# nano_vlm = create_camera('XF:05ID1-ES{PG-Cam:1}', 'nano_vlm', root_path='/nsls2/data/srx/legacy')
+nano_vlm = create_camera('XF:05ID1-ES{PG-Cam:1}', 'nano_vlm', root_path='/nsls2/data/srx/proposals/commissioning/pass-318777')
 # hfvlm_AD = create_camera('XF:05IDD-BI:1{Mscp:1-Cam:1}', 'hfvlmAD', root_path='/nsls2/data/srx/legacy')
 camd01 = create_camera('XF:05IDD-BI:1{Mscp:1-Cam:1}', 'camd01', root_path='/nsls2/data/srx/legacy')
 if camd01 is not None:
     camd01.read_attrs = ['tiff', 'stats1', 'stats2', 'stats3', 'stats4']
     camd01.tiff.read_attrs = []
 # camd05 = create_camera('XF:05IDD-BI:1{Cam:5}', 'camd05', root_path='/nsls2/data/srx/legacy')
-camd06 = create_camera('XF:05IDD-BI:1{Cam:6}', 'camd06', root_path='/nsls2/data/srx/legacy')
+# camd06 = create_camera('XF:05IDD-BI:1{Cam:6}', 'camd06', root_path='/nsls2/data/srx/legacy')
 camd08 = create_camera('XF:05IDD-BI:1{Cam:8}', 'camd08', root_path='/nsls2/data/srx/legacy')
+
+
+# Treat like plan stub and use within a run decorator
+def _camera_snapshot(cameras=[nano_vlm]):
+    
+    if len(cameras) > 0:
+        print('Acquiring camera snapshot...')
+        # Unstaging as precautionary measure. Likely all cameras are unstaged
+        staging_list = [cam._staged == Staged.yes for cam in cameras]
+        for staged, cam in zip(staging_list, cameras):
+            if staged:
+                yield from bps.unstage(cam)
+            yield from bps.stage(cam)
+        
+        # Snapshot!
+        # Should even work with different dwell times
+        yield from bps.trigger_and_read(cameras, name='camera_snapshot')
+        
+        # Precautionary unstaging
+        for staged, cam in zip(staging_list, cameras):
+            yield from bps.unstage(cam)
+            if staged:
+                yield from bps.stage(cam)
