@@ -49,7 +49,8 @@ class DexelaFileStoreHDF5(FileStoreBase):
     def filestore_spec(self):
         if self.parent._mode is SRXMode.fly:
             return BulkDexela.HANDLER_NAME
-        return 'TPX_HDF5'
+        # return 'TPX_HDF5'
+        return 'AD_HDF5'
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
