@@ -100,7 +100,9 @@ def toc(t0, str='', log_file=None):
 def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell, *,
                       flying_zebra, xmotor, ymotor,
                       delta=None, shutter=True, plot=True,
-                      md=None, snake=False, verbose=False):
+                      md=None, snake=False,
+                      vlm_snapshot=False,
+                      N_dark=10, verbose=False):
     """Read IO from SIS3820.
     Zebra buffers x(t) points as a flyer.
     Xpress3 is our detector.
@@ -180,40 +182,9 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
 
     dets_by_name = {d.name : d
                     for d in detectors}
-
-    # Set up the merlin
-    if 'merlin' in dets_by_name:
-        dpc = dets_by_name['merlin']
-        # TODO use stage sigs
-        # Set trigger mode
-        # dpc.cam.trigger_mode.put(2)
-        # Make sure we respect whatever the exposure time is set to
-        if (dwell < 0.0066392):
-            print('The Merlin should not operate faster than 7 ms.')
-            print('Changing the scan dwell time to 7 ms.')
-            dwell = 0.007
-        # According to Ken's comments in hxntools, this is a de-bounce time
-        # when in external trigger mode
-        # dpc.cam.stage_sigs['acquire_time'] = 0.001
-        # dpc.cam.stage_sigs['acquire_period'] = 0.003
-        dpc.cam.stage_sigs['acquire_time'] = 0.9*dwell - 0.002
-        dpc.cam.stage_sigs['acquire_period'] = 0.9*dwell
-        dpc.cam.stage_sigs['num_images'] = 1
-        dpc.stage_sigs['total_points'] = xnum
-        dpc.hdf5.stage_sigs['num_capture'] = xnum
-        del dpc
-
-    # Setup dexela
-    if ('dexela' in dets_by_name):
-        xrd = dets_by_name['dexela']
-        # If the dexela is acquiring, stop
-        if xrd.cam.detector_state.get() == 1:
-            xrd.cam.acquire.set(0)
-        xrd.cam.stage_sigs['acquire_time'] = dwell
-        del xrd
+    setup_xrd_dets(detectors, dwell, xnum)
 
     # If delta is None, set delta based on time for acceleration
-    #MIN_DELTA = 0.200  # default value
     # EJM edit
     MIN_DELTA = 1.00  # default value
     if (delta is None):
@@ -319,17 +290,6 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
                 xs2.hdf5.num_capture, xnum,
                 xs2.cam.num_images, xnum   # JL changed settings to cam
             )
-
-        if ('merlin' in dets_by_name):
-            merlin = dets_by_name['merlin']
-            yield from abs_set(merlin.hdf5.num_capture, xnum, wait=True)
-            yield from abs_set(merlin.cam.num_images, xnum, wait=True)
-
-        if ('dexela' in dets_by_name):
-            dexela = dets_by_name['dexela']
-            yield from abs_set(dexela.hdf5.num_capture, xnum, wait=True)
-            # yield from abs_set(dexela.hdf5.num_frames_chunks, xnum, wait=True)
-            yield from abs_set(dexela.cam.num_images, xnum, wait=True)
 
         ion = flying_zebra.sclr
         # TODO Can this be done just once per scan instead of each line?
@@ -649,6 +609,7 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
     @subs_decorator({'stop': finalize_scan})
     @ts_monitor_during_decorator([roi_pv])
     # @monitor_during_decorator([roi_pv])
+    # @vlm_snapshot
     @stage_decorator([flying_zebra])  # Below, 'scan' stage ymotor.
     @run_decorator(md=md)
     def plan():
@@ -656,6 +617,15 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
             # open file
             # log_file = os.path.join(log_path, f"scan2D_{db[-1].start['scan_id']}.log")
             toc(t_setup, str='Setup time + into plan()', log_file=log_file)
+        
+        # # Acquire vlm snapshot
+        if vlm_snapshot:
+            yield from _camera_snapshot([nano_vlm])
+        
+        # Acquire dark field before shutters, but after setting up scan data
+        yield from _continuous_dark_fields(detectors,
+                                           N_dark=N_dark,
+                                           shutter=shutter)
 
         # TODO move this to stage sigs
         for d in flying_zebra.detectors:
