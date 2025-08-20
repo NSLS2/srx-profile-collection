@@ -121,6 +121,23 @@ if 'nuke_the_cache' not in RE.commands:
     RE.register_command('nuke_the_cache', _nuke_cache)
 
 
+# Hack from above for creating streams with different data shapes
+# This message clears the describe cache for a specified detector
+if 'clear_describe_cache' not in RE.commands:
+    async def _clear_describe_cache(msg, *, self = RE):
+        run_key = msg.run
+        obj = msg.obj
+        if (
+                current_run := self._run_bundlers.get(run_key, key_absence_sentinel := object())
+        ) is key_absence_sentinel:
+            current_run = None
+        if current_run is not None:
+            if obj in current_run._describe_cache.keys():
+                current_run._describe_cache.pop(obj)
+
+    RE.register_command('clear_describe_cache', _clear_describe_cache)
+
+
 
 RE.unsubscribe(0)
 
