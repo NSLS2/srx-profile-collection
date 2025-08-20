@@ -105,3 +105,7 @@ def _camera_snapshot(cameras=[nano_vlm]):
             yield from bps.unstage(cam)
             if staged:
                 yield from bps.stage(cam)
+        
+        # Clear descripter cache
+        for cam in cameras:
+            yield Msg("clear_describe_cache", cam)
