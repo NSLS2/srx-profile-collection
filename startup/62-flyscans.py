@@ -102,7 +102,7 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
                       delta=None, shutter=True, plot=True,
                       md=None, snake=False,
                       vlm_snapshot=False,
-                      N_dark=10, verbose=False):
+                      N_dark=0, verbose=False):
     """Read IO from SIS3820.
     Zebra buffers x(t) points as a flyer.
     Xpress3 is our detector.
@@ -609,7 +609,6 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
     @subs_decorator({'stop': finalize_scan})
     @ts_monitor_during_decorator([roi_pv])
     # @monitor_during_decorator([roi_pv])
-    # @vlm_snapshot
     @stage_decorator([flying_zebra])  # Below, 'scan' stage ymotor.
     @run_decorator(md=md)
     def plan():
