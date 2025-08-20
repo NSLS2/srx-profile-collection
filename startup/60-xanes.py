@@ -223,7 +223,7 @@ def xanes_plan(erange=[], estep=[], acqtime=1., samplename='', filename='',
 
 
     energy.move(ept[0])
-    myscan = list_scan(det, energy, list(ept), per_step=per_step, md=scan_md)
+    myscan = mod_list_scan(det, energy, list(ept), per_step=per_step, md=scan_md)
     myscan = finalize_wrapper(myscan, finalize_scan)
 
     # Open B shutter
