@@ -3,8 +3,31 @@ print(f'Loading {__file__}...')
 import skimage.io as io
 import numpy as np
 import time as ttime
+import inspect
 
-from bluesky.plans import count, list_scan
+try:
+    # cytools is a drop-in replacement for toolz, implemented in Cython
+    from cytools import partition
+except ImportError:
+    from toolz import partition
+
+from bluesky.plans import (
+    count,
+    list_scan,
+    _check_detectors_type_input
+)
+
+from bluesky import plan_patterns, utils
+from bluesky import plan_stubs as bps
+from bluesky import preprocessors as bpp
+from bluesky.protocols import Flyable, Movable, NamedMovable, Readable
+from bluesky.utils import (
+    CustomPlanMetadata,
+    Msg,
+    MsgGenerator,
+    ScalarOrIterableFloat,
+    get_hinted_fields,
+)
 
 # Newer scans
 
@@ -101,7 +124,8 @@ def _continuous_dark_fields(dets,
     
     if len(xrd_dets) > 0:
         d_status = shut_d.read()['shut_d_request_open']['value'] == 1 # is open
-        yield from check_shutters(shutter, 'Close')
+        if shutter: # Avoid printing banner
+            yield from check_shutters(shutter, 'Close')
         print('Acquiring dark-field...')
         
         staging_list = [det._staged == Staged.yes for det in xrd_dets]
@@ -110,12 +134,13 @@ def _continuous_dark_fields(dets,
             det._mode = SRXMode.fly # Not yield from???
             if staged:
                 yield from bps.unstage(det)
+            
             yield from bps.stage(det)
             # Change hard-coded stage values
             # Hacky implementation!
-            yield from abs_set(det.cam.num_images, N_dark) 
-            yield from abs_set(det.hdf5.num_capture, det.total_points.get())
-            yield from abs_set(det.cam.trigger_mode, 'Int. Fixed Rate')
+            yield from abs_set(det.cam.num_images, N_dark) # Swapped back
+            # yield from abs_set(det.hdf5.num_capture, det.total_points.get())
+            yield from abs_set(det.cam.trigger_mode, 'Int. Fixed Rate') # Swapped back from forced fly mode
         
         # Take images
         yield from bps.trigger_and_read(xrd_dets, name='dark')
@@ -130,7 +155,11 @@ def _continuous_dark_fields(dets,
             if staged:
                 yield from bps.stage(det)
 
-        if d_status:
+        # Clear descripter cache
+        for det in xrd_dets:
+            yield Msg("clear_describe_cache", det)
+
+        if d_status and shutter: # Avoid printing banner
             yield from check_shutters(shutter, 'Open')
 
 
@@ -140,6 +169,7 @@ def energy_rocking_curve(e_low,
                          e_num,
                          dwell,
                          xrd_dets,
+                         N_dark=0,
                          shutter=True,
                          peakup_flag=True,
                          plotme=False,
@@ -160,6 +190,12 @@ def energy_rocking_curve(e_low,
     # Define detectors
     dets = [xs, sclr1] + xrd_dets
     setup_xrd_dets(dets, dwell, e_num)
+    # TODO: Move to stage_sigs
+    yield from abs_set(xs.external_trig, False)
+    yield from abs_set(get_me_the_cam(xs).acquire_time, dwell)
+    yield from abs_set(xs.total_points, e_num)
+    sclr1.stage_sigs.pop('preset_time', None)
+    yield from abs_set(sclr1.preset_time, dwell)
 
     # Defining scan metadata
     scan_md = {}
@@ -182,12 +218,23 @@ def energy_rocking_curve(e_low,
         print('Performing center energy peakup.')
         yield from mov(energy, e_cen)
         yield from peakup(shutter=shutter)
+
+    @run_decorator(md=scan_md)
+    def plan():
+        yield from _continuous_dark_fields(dets, N_dark=N_dark, shutter=shutter)
+        # Always check shutters to print banner
+        yield from check_shutters(shutter, 'Open')
+        yield from mod_list_scan(dets, energy, e_range, run_agnostic=True)
     
-    # yield from list_scan(dets, energy, e_range, md=scan_md)
-    yield from check_shutters(shutter, 'Open')
-    yield from subs_wrapper(list_scan(dets, energy, e_range, md=scan_md),
-                            {'all' : livecallbacks})
-    yield from check_shutters(shutter, 'Close')
+    # Plan with failed dark_field and default behavior
+    # def plan():
+    #     yield from check_shutter(shutter, 'Open')
+    #     yield from list_scan(dets, energy, e_range, md=scan_md)
+
+    yield from subs_wrapper(plan(), {'all' : livecallbacks})
+    if shutter: # Conditional check ot avoid banner
+        yield from check_shutters(shutter, 'Close')
+    
 
     if return_to_start:
         yield from mov(energy, start_energy)
@@ -243,10 +290,7 @@ def extended_energy_rocking_curve(e_low,
 
     # Loose chunking at about 1000 eV
     e_range = e_high - e_low
-
-    e_step = e_range / e_num
     e_chunks = int(np.round(e_num / e_range))
-
     e_vals = np.linspace(e_low, e_high, e_num)
 
     e_rcs = [list(e_vals[i:i + e_chunks]) for i in range(0, len(e_vals), e_chunks)]
@@ -270,9 +314,11 @@ def angle_rocking_curve(th_low,
                         th_num,
                         dwell,
                         xrd_dets,
+                        N_dark=0,
                         shutter=True,
                         plotme=False,
                         return_to_start=True):
+    
     # th in mdeg!!!
 
     start_th = nano_stage.th.user_readback.get()
@@ -299,12 +345,28 @@ def angle_rocking_curve(th_low,
     # Define detectors
     dets = [xs, sclr1] + xrd_dets
     setup_xrd_dets(dets, dwell, th_num)
+    # TODO: Move to stage_sigs
+    yield from abs_set(xs.external_trig, False)
+    yield from abs_set(get_me_the_cam(xs).acquire_time, dwell)
+    yield from abs_set(xs.total_points, th_num)
+    sclr1.stage_sigs.pop('preset_time', None)
+    yield from abs_set(sclr1.preset_time, dwell)
+
+    @run_decorator(md=scan_md)
+    def plan():
+        yield from _continuous_dark_fields(dets, N_dark=N_dark, shutter=shutter)
+        # Always check shutters to print banner
+        yield from check_shutters(shutter, 'Open')
+        yield from mod_list_scan(dets, nano_stage.th, th_range, run_agnostic=True)
     
-    # yield from list_scan(dets, energy, e_range, md=scan_md)
-    yield from check_shutters(shutter, 'Open')
-    yield from subs_wrapper(list_scan(dets, nano_stage.th, th_range, md=scan_md),
-                            {'all' : livecallbacks})
-    yield from check_shutters(shutter, 'Close')
+    # Plan with failed dark_field and default behavior
+    # def plan():
+    #     yield from check_shutter(shutter, 'Open')
+    #     yield from list_scan(dets, nano_stage.th, th_range, md=scan_md)
+
+    yield from subs_wrapper(plan(), {'all' : livecallbacks})
+    if shutter: # Conditional check ot avoid banner
+        yield from check_shutters(shutter, 'Close')
 
     if return_to_start:
         yield from mov(nano_stage.th, start_th)
@@ -386,9 +448,10 @@ def relative_flying_angle_rocking_curve(th_range,
 
 
 # A static xrd measurement without changing energy or moving stages
-def static_xrd(xrd_dets,
-               num,
+def static_xrd(num,
                dwell,
+               xrd_dets,
+               N_dark=0,
                shutter=True,
                plotme=False):
 
@@ -403,18 +466,311 @@ def static_xrd(xrd_dets,
     scan_md['scan']['start_time'] = ttime.ctime(ttime.time())
 
     # Live Callbacks
-    # What does energy_energy read??
-    livecallbacks = [LiveTable(['energy_energy', 'dexela_stats2_total'])]
+    livecallbacks = [LiveTable(['dexela_stats2_total'])]
     
     if plotme:
-        livecallbacks.append(LivePlot('dexela_stats2_total', x='energy_energy'))
+        livecallbacks.append(LivePlot('dexela_stats2_total'))
 
     # Define detectors
     dets = [xs, sclr1] + xrd_dets
     setup_xrd_dets(dets, dwell, num)
+    # TODO: Move to stage_sigs
+    yield from abs_set(xs.external_trig, False)
+    yield from abs_set(get_me_the_cam(xs).acquire_time, dwell)
+    yield from abs_set(xs.total_points, num)
+    sclr1.stage_sigs.pop('preset_time', None)
+    yield from abs_set(sclr1.preset_time, dwell)
 
-    yield from check_shutters(shutter, 'Open')
-    yield from subs_wrapper(count(dets, num, md=scan_md), # I guess dwell info is carried by the detector
-                            {'all' : livecallbacks})
-    yield from check_shutters(shutter, 'Close')
+    @run_decorator(md=scan_md)
+    def plan():
+        yield from _continuous_dark_fields(dets, N_dark=N_dark, shutter=shutter)
+        # Always check shutters to print banner
+        yield from check_shutters(shutter, 'Open')
+        yield from mod_count(dets, num, run_agnostic=True)
+    
+    # Plan with failed dark_field and default behavior
+    # def plan():
+    #     yield from check_shutter(shutter, 'Open')
+    #     yield from count(dets, num, md=scan_md)
 
+    yield from subs_wrapper(plan(), {'all' : livecallbacks})
+    if shutter: # Conditional check to avoid banner
+        yield from check_shutters(shutter, 'Close')
+
+
+# Run-agnostic standard scans
+
+def agnostic_run_decorator(run_agnostic):
+    def decorator(func):
+        if run_agnostic:
+            return func
+        else:
+            return run_decorator(func)
+    return decorator
+
+
+# Re-write of bluesky count plan without run decorator
+def mod_count(
+            detectors: Sequence[Readable],
+            num: Optional[int] = 1,
+            delay: ScalarOrIterableFloat = 0.0,
+            *,
+            per_shot: Optional[PerShot] = None,
+            md: Optional[CustomPlanMetadata] = None,
+            run_agnostic=False,
+            ) -> MsgGenerator[str]:
+    """
+    Take one or more readings from detectors.
+
+    Parameters
+    ----------
+    detectors : list or tuple
+        list of 'readable' objects
+    num : integer, optional
+        number of readings to take; default is 1
+
+        If None, capture data until canceled
+    delay : iterable or scalar, optional
+        Time delay in seconds between successive readings; default is 0.
+    per_shot : callable, optional
+        hook for customizing action of inner loop (messages per step)
+        Expected signature ::
+
+           def f(detectors: Iterable[OphydObj]) -> Generator[Msg]:
+               ...
+
+    md : dict, optional
+        metadata
+    run_agnostic : bool, optional
+        If True, a new run will not be created.
+
+    Notes
+    -----
+    If ``delay`` is an iterable, it must have at least ``num - 1`` entries or
+    the plan will raise a ``ValueError`` during iteration.
+    """
+    _check_detectors_type_input(detectors)
+    _md = {}
+    if md is None:
+        md = get_stock_md({})
+    _md.update(md or {})
+
+    # per_shot might define a different stream, so do not predeclare primary
+    predeclare = per_shot is None and os.environ.get("BLUESKY_PREDECLARE", False)
+    msg_per_step: PerShot = per_shot if per_shot else bps.one_shot
+
+    @stage_decorator(detectors)
+    @agnostic_run_decorator(run_agnostic)
+    def inner_count() -> MsgGenerator[str]:
+        if predeclare:
+            yield from bps.declare_stream(*detectors, name="primary")
+        return (yield from bps.repeat(partial(msg_per_step, detectors), num=num, delay=delay))
+
+    return (yield from inner_count())
+
+
+
+def mod_list_scan(
+                detectors: Sequence[Readable],
+                *args: tuple[Union[Movable, Any], list[Any]],
+                per_step: Optional[PerStep] = None,
+                md: Optional[CustomPlanMetadata] = None,
+                run_agnostic=False
+                ) -> MsgGenerator[str]:
+    """
+    Scan over one or more variables in steps simultaneously (inner product).
+
+    Parameters
+    ----------
+    detectors : list or tuple
+        list of 'readable' objects
+    *args :
+        For one dimension, ``motor, [point1, point2, ....]``.
+        In general:
+
+        .. code-block:: python
+
+            motor1, [point1, point2, ...],
+            motor2, [point1, point2, ...],
+            ...,
+            motorN, [point1, point2, ...]
+
+        Motors can be any 'settable' object (motor, temp controller, etc.)
+
+    per_step : callable, optional
+        hook for customizing action of inner loop (messages per step)
+        Expected signature:
+        ``f(detectors, motor, step) -> plan (a generator)``
+    md : dict, optional
+        metadata
+    run_agnostic : bool, optional
+        If True, a new run will not be created.
+
+    See Also
+    --------
+    :func:`bluesky.plans.rel_list_scan`
+    :func:`bluesky.plans.list_grid_scan`
+    :func:`bluesky.plans.rel_list_grid_scan`
+    """
+    _check_detectors_type_input(detectors)
+    if len(args) % 2 != 0:
+        raise ValueError("The list of arguments must contain a list of points for each defined motor")
+
+    _md = {}
+    if md is None:
+        md = get_stock_md({})
+    _md.update(md or {})
+
+    # set some variables and check that all lists are the same length
+    lengths = {}
+    motors: list[Any] = []
+    pos_lists = []
+    length = None
+    for motor, pos_list in partition(2, args):
+        pos_list = list(pos_list)  # Ensure list (accepts any finite iterable).
+        lengths[motor.name] = len(pos_list)
+        if not length:
+            length = len(pos_list)
+        motors.append(motor)
+        pos_lists.append(pos_list)
+    length_check = all(elem == list(lengths.values())[0] for elem in list(lengths.values()))
+
+    if not length_check:
+        raise ValueError(
+            f"The lengths of all lists in *args must be the same. However the lengths in args are : {lengths}"
+        )
+
+    full_cycler = plan_patterns.inner_list_product(args)
+
+    return (yield from mod_scan_nd(detectors,
+                                   full_cycler,
+                                   per_step=per_step,
+                                   md=_md,
+                                   run_agnostic=run_agnostic))
+
+
+
+def mod_scan_nd(
+                detectors: Sequence[Readable],
+                cycler: Cycler,
+                *,
+                per_step: Optional[PerStep] = None,
+                md: Optional[CustomPlanMetadata] = None,
+                run_agnostic=False,
+                ) -> MsgGenerator[str]:
+    """
+    Scan over an arbitrary N-dimensional trajectory.
+
+    Parameters
+    ----------
+    detectors : list or tuple
+    cycler : Cycler
+        cycler.Cycler object mapping movable interfaces to positions
+    per_step : callable, optional
+        hook for customizing action of inner loop (messages per step).
+        See docstring of :func:`bluesky.plan_stubs.one_nd_step` (the default)
+        for details.
+    md : dict, optional
+        metadata
+    run_agnostic : bool, optional
+        If True, a new run will not be created.
+
+    See Also
+    --------
+    :func:`bluesky.plans.inner_product_scan`
+    :func:`bluesky.plans.grid_scan`
+
+    Examples
+    --------
+    >>> from cycler import cycler
+    >>> cy = cycler(motor1, [1, 2, 3]) * cycler(motor2, [4, 5, 6])
+    >>> scan_nd([sensor], cy)
+    """
+    _check_detectors_type_input(detectors)
+    _md = {}
+    if md is None:
+        md = get_stock_md({})
+    _md.update(md or {})
+
+    predeclare = per_step is None and os.environ.get("BLUESKY_PREDECLARE", False)
+    if per_step is None:
+        per_step = bps.one_nd_step
+    else:
+        # Ensure that the user-defined per-step has the expected signature.
+        sig = inspect.signature(per_step)
+
+        def _verify_1d_step(sig):
+            if len(sig.parameters) < 3:
+                return False
+            for name, (p_name, p) in zip_longest(["detectors", "motor", "step"], sig.parameters.items()):
+                # this is one of the first 3 positional arguements, check that the name matches
+                if name is not None:
+                    if name != p_name:
+                        return False
+                # if there are any extra arguments, check that they have a default
+                else:
+                    if p.kind is p.VAR_KEYWORD or p.kind is p.VAR_POSITIONAL:
+                        continue
+                    if p.default is p.empty:
+                        return False
+
+            return True
+
+        def _verify_nd_step(sig):
+            if len(sig.parameters) < 3:
+                return False
+            for name, (p_name, p) in zip_longest(["detectors", "step", "pos_cache"], sig.parameters.items()):
+                # this is one of the first 3 positional arguements, check that the name matches
+                if name is not None:
+                    if name != p_name:
+                        return False
+                # if there are any extra arguments, check that they have a default
+                else:
+                    if p.kind is p.VAR_KEYWORD or p.kind is p.VAR_POSITIONAL:
+                        continue
+                    if p.default is p.empty:
+                        return False
+
+            return True
+
+        if sig == inspect.signature(bps.one_nd_step):
+            pass
+        elif _verify_nd_step(sig):
+            # check other signature for back-compatibility
+            pass
+        elif _verify_1d_step(sig):
+            # Accept this signature for back-compat reasons (because
+            # inner_product_scan was renamed scan).
+            dims = len(list(cycler.keys))
+            if dims != 1:
+                raise TypeError(f"Signature of per_step assumes 1D trajectory but {dims} motors are specified.")
+            (motor,) = cycler.keys
+            user_per_step = per_step
+
+            def adapter(detectors, step, pos_cache):
+                # one_nd_step 'step' parameter is a dict; one_id_step 'step'
+                # parameter is a value
+                (step,) = step.values()
+                return (yield from user_per_step(detectors, motor, step))
+
+            per_step = adapter  # type: ignore
+        else:
+            raise TypeError(
+                "per_step must be a callable with the signature \n "
+                "<Signature (detectors, step, pos_cache)> or "
+                "<Signature (detectors, motor, step)>. \n"
+                f"per_step signature received: {sig}"
+            )
+    pos_cache: dict = defaultdict(lambda: None)  # where last position is stashed
+    cycler = utils.merge_cycler(cycler)
+    motors = list(cycler.keys)
+
+    @stage_decorator(list(detectors) + motors)
+    @agnostic_run_decorator(run_agnostic)
+    def inner_scan_nd():
+        if predeclare:
+            yield from bps.declare_stream(*motors, *detectors, name="primary")
+        for step in list(cycler):
+            yield from per_step(detectors, step, pos_cache)
+
+    return (yield from inner_scan_nd())
