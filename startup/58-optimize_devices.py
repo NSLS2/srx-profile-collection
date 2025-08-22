@@ -4,12 +4,6 @@ from itertools import product
 import bluesky.plan_stubs as bps
 
 
-def blank_decorator(func):
-    def wrapper(*args, **kwargs):
-        return func(*args, **kwargs)
-    return wrapper
-
-
 def optimize_scalers(dwell=0.5,
                      scalers=['im', 'i0'],
                      upper_target=2E6,
@@ -112,17 +106,17 @@ def optimize_scalers(dwell=0.5,
     _md.update(md or {})
 
     # Setup dwell stage_sigs
-    sclr1.stage_sigs['preset_time'] = dwell
+    orig_dwell = sclr1.preset_time.get()
 
     # Visualization
     livecb = []
     livecb.append(LiveTable(channel_names))
 
     # Need to add LivePlot, or LiveTable
-    # @bpp.stage_decorator([sclr1])
-    # @bpp.run_decorator(md = _md)
-    # @bpp.subs_decorator(livecb)
     def optimize_all_preamps():
+
+        # Hard-coded dwell change
+        yield from abs_set(sclr1, dwell)
 
         # Optimize sensitivity
         # Turn off offset correction
@@ -161,9 +155,6 @@ def optimize_scalers(dwell=0.5,
                 # Check if values have surpassed target value
                 val = ch_vals[channel_names[idx]]['value']
                 if val / dwell > upper_targets[idx]:
-                    # print(f'{val} is greater than upper target for {channel_names[idx]}')
-                    # print(f'{channel_names[idx]} parameters for exceeded values are {combo}')
-                    # print(f'New parameters will be {preamp_combo_nums[combo_ind - 1]}')
                     # If true, dial back parameters and mark as optimized
                     yield from bps.mv(
                         preamps[idx].sens_num,
@@ -184,7 +175,6 @@ def optimize_scalers(dwell=0.5,
         yield Msg('checkpoint')
         yield Msg('create', None, name=stream_name)
         yield Msg('trigger', sclr1, group='B')
-        # yield Msg('trigger', motor, group='B') # What does this one do???
         yield Msg('wait', None, 'B')
 
         direction_signs = []
@@ -229,7 +219,6 @@ def optimize_scalers(dwell=0.5,
             yield from bps.sleep(settle_time)
             yield Msg('create', None, name=stream_name)
             yield Msg('trigger', sclr1, group='B')
-            # yield Msg('trigger', motor, group='B') # What does this one do???
             yield Msg('wait', None, 'B')
 
             # Read and iterate though all channels of interest
@@ -284,16 +273,18 @@ def optimize_scalers(dwell=0.5,
         @bpp.subs_decorator(livecb)
         def plan():
             yield from optimize_all_preamps()
+            yield from abs_set(sclr1, orig_dwell)
     else:
         @bpp.stage_decorator([sclr1])
         @bpp.subs_decorator(livecb)
         def plan():
             yield from optimize_all_preamps()
+            yield from abs_set(sclr1, orig_dwell)
+        
+            # Clear descripter cache
+            yield Msg("clear_describe_cache", sclr1)
     
-    # return (yield from optimize_all_preamps())
-    # return (yield from plan())
     uid = (yield from plan())
-    sclr1.stage_sigs.pop('preset_time', None)
     return uid
 
 
@@ -326,6 +317,9 @@ def align_diamond_aperture(dwell=0.1,
 """
 
 
+
+
+# Run-agnostic peakup. For peakups in the middle of connected scans
 @parameter_annotation_decorator({
     "parameters": {
         "motor": {"default": "dcm.c2_fine"},
@@ -462,10 +456,6 @@ def ra_smart_peakup(start=None,
     if verbose is False:
         livecb.append(LiveTable([motor.readback.name] + target_fields))
 
-    # Need to add LivePlot, or LiveTable
-    # @bpp.stage_decorator(list(detectors) + [motor])
-    # @bpp.run_decorator(md=_md)
-    # @bpp.subs_decorator(livecb)
     def smart_max_core(x0):
         # Optimize on a given detector
         def optimize_on_det(target_field, x0):
@@ -542,4 +532,256 @@ def ra_smart_peakup(start=None,
         def plan(start):
             yield from smart_max_core(start)
 
+            # Clear descripter cache
+            for det in detectors:
+                yield Msg("clear_describe_cache", det)
+
     return (yield from plan(start))
+
+
+
+
+# REMOVE ME!
+from event_model import RunRouter
+
+def test_optimizer():
+
+    scan_md = {}
+    get_stock_md(scan_md)
+    scan_md['scan']['type'] = 'TEST_OPTIMIZER'
+    scan_md['scan']['energy'] = f'{energy.energy.position:.5f}'                                 
+    scan_md['scan']['start_time'] = ttime.ctime(ttime.time())
+
+    @bpp.run_decorator(md = scan_md)
+    def plan():
+        
+        yield from mov(energy, 12000)
+        yield from ra_smart_peakup(stream_name='peakup_000')
+        yield from optimize_scalers(scalers=['i0','im','it'], stream_name='scaler_000')
+        yield from check_shutters(True, 'Open')
+
+        # yield from count([sclr1], 10, md=scan_md)
+        yield from bps.declare_stream(*[energy, sclr1], name='primary')
+        yield from bps.trigger_and_read([energy, sclr1])
+
+        yield from mov(energy, 12100)
+        yield from ra_smart_peakup(stream_name='peakup_001')
+        yield from optimize_scalers(scalers=['i0','im','it'], stream_name='scaler_001')
+        yield from check_shutters(True, 'Open')
+
+        # yield from count([sclr1], 10, md=scan_md)
+        yield from bps.declare_stream(*[energy, sclr1], name='primary')
+        yield from bps.trigger_and_read([energy, sclr1])
+
+        yield from mov(energy, 12000)
+    
+    yield from plan()
+
+
+def test_optimizer2():
+
+    scan_md = {}
+    get_stock_md(scan_md)
+    scan_md['scan']['type'] = 'TEST_OPTIMIZER'
+    scan_md['scan']['energy'] = f'{energy.energy.position:.5f}'                                 
+    scan_md['scan']['start_time'] = ttime.ctime(ttime.time())
+
+    # Visualization
+    livecb = []
+    livecb.append(LiveTable([energy.energy, sclr1]))    
+
+    @bpp.set_run_key_decorator('peakup')
+    def internal_peakup():
+        yield from ra_smart_peakup()
+
+    @bpp.set_run_key_decorator('optimize_scalers')
+    def internal_optimize_scalers():
+        yield from optimize_scalers(scalers=['i0', 'im', 'it'])
+
+    @bpp.stage_decorator([energy, sclr1])
+    @bpp.subs_decorator(livecb)
+    def internal_plan():
+        yield from bps.declare_stream(*[energy, sclr1], name='primary')
+        yield from bps.trigger_and_read([energy, sclr1])
+
+    @bpp.set_run_key_decorator('optmizer_test')
+    @bpp.run_decorator(md = scan_md)
+    def plan():
+
+        for en in [12000, 21000]:
+            yield from mov(energy, en)
+            yield from internal_peakup()
+            yield from internal_optimize_scalers()
+            yield from check_shutters(True, 'Open')
+
+            # Actual measurement
+            yield from internal_plan()
+
+        yield from mov(energy, 12000)
+    
+    yield from plan()
+
+
+# def overnight_full_energy_scan():
+
+#     def check_and_swap_foils():
+#         E = energy.energy.readback.get()  # keV
+#         y = bpm4_pos.y.user_readback.get()  # Cu: y=0, Ti: y=25
+#         if np.abs(y-25) < 5:
+#             foil = 'Ti'
+#         elif np.abs(y) < 5:
+#             foil = 'Cu'
+#         else:
+#             foil = ''
+#             raise ValueError('Unknown foil and unsafe to proceed!')
+        
+#         # Swap to copper foil
+#         if E >= 9 and foil == 'Ti':
+#             # Close a-shutter
+#             st = yield from abs_set(shut_a.request_open, 0, timeout=3)
+
+#             # Swap foil to Cu
+#             yield from mov(bpm4_pos.y, 0, wait=True)
+
+#             # Open a-shutter
+#             st = yield from abs_set(shut_a.request_open, 1, timeout=3)
+#             yield from mov(bpm4_pos.y, 25, wait=True)
+
+#         # Swap to titanium foil
+#         elif E < 9 and foil == 'Cu':
+#             # Close a-shutter
+#             st = yield from abs_set(shut_a.request_open, 0, timeout=3)
+
+#             # Swap foil to Ti
+#             yield from mov(bpm4_pos.y, 25, wait=True)
+
+#             # Open a-shutter
+#             st = yield from abs_set(shut_a.request_open, 1, timeout=3)
+
+#     scan_md = {}
+#     get_stock_md(scan_md)
+#     scan_md['scan']['type'] = 'FULL_ENERGY_SCAN'                                
+#     scan_md['scan']['start_time'] = ttime.ctime(ttime.time())
+
+#     energies = np.linspace(4.5, 25, 206)
+
+#     @bpp.run_decorator(md = scan_md)
+#     def plan():
+
+#         for en in energies:
+#             yield from mov(energy, en)
+#             yield from check_and_swap_foils()
+#             yield from ra_smart_peakup(stream_name='peakup_000')
+#             yield from optimize_scalers(scalers=['i0','im','it'], stream_name='scaler_000')
+#             yield from check_shutters(True, 'Open')
+            
+#             # Take 10 measurements
+#             for iteration in range(10):
+#                 yield from bps.declare_stream(*[energy, sclr1], name='primary')
+#                 yield from bps.trigger_and_read([energy, sclr1])
+            
+#             yield from check_shutters(True, 'Close')
+    
+#     yield from plan()
+
+
+
+def full_energy_scan():
+
+    def check_and_swap_foils():
+        E = energy.energy.readback.get()  # keV
+        y = bpm4_pos.y.user_readback.get()  # Cu: y=0, Ti: y=25
+        if np.abs(y-25) < 5:
+            foil = 'Ti'
+        elif np.abs(y) < 5:
+            foil = 'Cu'
+        else:
+            foil = ''
+            raise ValueError('Unknown foil and unsafe to proceed!')
+        
+        # Swap to copper foil
+        threshold = 8.979
+        if E > threshold and foil == 'Ti':
+            # Close a-shutter
+            st = yield from abs_set(shut_a.request_open, 0, timeout=3)
+
+            # Swap foil to Cu
+            yield from mov(bpm4_pos.y, 0, wait=True)
+
+            # Open a-shutter
+            st = yield from abs_set(shut_a.request_open, 1, timeout=3)
+
+        # Swap to titanium foil
+        elif E < threshold and foil == 'Cu':
+            # Close a-shutter
+            st = yield from abs_set(shut_a.request_open, 0, timeout=3)
+
+            # Swap foil to Ti
+            yield from mov(bpm4_pos.y, 25, wait=True)
+
+            # Open a-shutter
+            st = yield from abs_set(shut_a.request_open, 1, timeout=3)
+
+    scan_md = {}
+    get_stock_md(scan_md)
+    scan_md['scan']['type'] = 'FULL_ENERGY_SCAN'                                
+    scan_md['scan']['start_time'] = ttime.ctime(ttime.time())
+
+    # energies = np.linspace(4.5, 9, 46) # Ti foil
+    energies = np.linspace(9, 25, 161) # Cu foil
+    # energies = np.linspace(4.5, 25, 206) # All energy
+
+    # Visualization
+    livecb = []
+    livecb.append(LiveTable([energy.energy, sclr1]))    
+
+    @bpp.set_run_key_decorator('peakup')
+    def internal_peakup():
+        yield from ra_smart_peakup()
+
+    @bpp.set_run_key_decorator('optimize_scalers')
+    def internal_optimize_scalers():
+        yield from optimize_scalers(scalers=['i0', 'im', 'it'])
+
+    @bpp.stage_decorator([energy, sclr1])
+    @bpp.subs_decorator(livecb)
+    def internal_plan():
+        # Count 10 times
+        for idx in range(10):
+            yield from bps.declare_stream(*[energy, sclr1], name='primary')
+            yield from bps.trigger_and_read([energy, sclr1])
+
+    @bpp.set_run_key_decorator('optmizer_test')
+    @bpp.run_decorator(md = scan_md)
+    def plan():
+
+        for en in energies:
+            print(f'Moving to {en} keV.')
+            yield from mov(energy, en)
+            # yield from check_and_swap_foils()
+            yield from internal_peakup()
+            yield from internal_optimize_scalers()
+            yield from check_shutters(True, 'Open')
+
+            # Actual measurement
+            yield from internal_plan()
+
+            # Close shutters
+            yield from check_shutters(True, 'Close')
+    
+    yield from plan()
+
+
+def test_a_close():
+    if shut_a.status.get() == 'Open':
+        # st = yield from mov(shut_a, "Close")
+        yield from abs_set(shut_a, "Close", wait=True)
+        print('Sleeping!')
+        yield from bps.sleep(5)
+
+def test_a_open():
+    if shut_a.status.get() == 'Not Open':
+        # st = yield from mov(shut_a, "Open")
+        yield from abs_set(shut_a, "Open", wait=True)
+        print('Sleeping!')
+        yield from bps.sleep(5)
