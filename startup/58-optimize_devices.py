@@ -91,19 +91,17 @@ def optimize_scalers(dwell=0.5,
     preamp_combo_nums = list(product(range(3), range(9)))[::-1]
 
     # Add metadata
-    _md = {'detectors' : [sclr1.name],
-           'motors': [preamp.name for preamp in preamps],
-           'plan_args' : {
+    _md = {'plan_name' : 'optimize_scalers'}
+    _md = get_stock_md(_md)
+    _md['scan']['type'] = 'OPTIMIZE_SCALERS'
+    _md['scan']['motors'] = [preamp.name for preamp in preamps]
+    _md['scan']['plan_args'] = {
                'dwell' : dwell,
                'upper_target' : upper_targets,
                'lower_target' : lower_targets
-           },
-           'plan_name' : 'optimize_scalers'
            }
-    _md = get_stock_md(_md)
-    _md['scan']['type'] = 'OPTIMIZE_SCALERS'
-    _md['scan']['detectors'] = [sclr1.name]
     _md.update(md or {})
+    get_det_md(_md, [sclr1])
 
     # Setup dwell stage_sigs
     orig_dwell = sclr1.preset_time.get()
@@ -192,13 +190,12 @@ def optimize_scalers(dwell=0.5,
                 direction_signs.append(-1)
                 yield from bps.mv(preamps[idx].offset_sign, 1)
                 yield from bps.sleep(settle_time)
-
         yield Msg('save')
 
         # Turn offsets back on
         for idx in range(len(preamps)):
             yield from bps.mv(preamps[idx].offset_on, 1)
-            yield from bps.sleep(settle_time)
+            yield from bps.sleep(settle_time) # Give time to settle
 
         # Iterate through combinations
         opt_off = [False,] * len(preamps)
@@ -269,7 +266,7 @@ def optimize_scalers(dwell=0.5,
     # Open and close run, or append to other run
     if RUN_WRAPPER:
         @bpp.stage_decorator([sclr1])
-        @bpp.run_decorator(md = _md)
+        @bpp.run_decorator(md=_md)
         @bpp.subs_decorator(livecb)
         def plan():
             yield from optimize_all_preamps()
@@ -428,21 +425,20 @@ def ra_smart_peakup(start=None,
                 raise ex
 
     # Add metadata
-    _md = {'detectors': [det.name for det in detectors],
-           'motors': [motor.name],
-           'plan_args': {'detectors': list(map(repr, detectors)),
-                         'motor': repr(motor),
-                         'start': start,
-                         'min_step': min_step,
-                         'max_step': max_step,
-                         },
-           'plan_name': 'smart_peakup',
+    _md = {'plan_name': 'smart_peakup',
            'hints': {},
            }
     _md = get_stock_md(_md)
     _md['scan']['type'] = 'PEAKUP'
     _md['scan']['detectors'] = [det.name for det in detectors]
+    _md['scan']['motors'] = [motor.name]
+    _md['sca']['plan_args'] = {
+                         'start': start,
+                         'min_step': min_step,
+                         'max_step': max_step,
+                         }
     _md.update(md or {})
+    get_det_md(_md, [detectors])
 
     try:
         dimensions = [(motor.hints['fields'], stream_name)]
