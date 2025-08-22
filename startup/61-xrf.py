@@ -440,7 +440,8 @@ def export_merlin2tiff(scanid=-1, wd=None):
 def nano_xrf(xstart, xstop, xstep,
              ystart, ystop, ystep, dwell,
              shutter=True, extra_dets=None,
-             xmotor=nano_stage.sx, ymotor=nano_stage.sy, flag_snake=True):
+             xmotor=nano_stage.sx, ymotor=nano_stage.sy, flag_snake=True,
+             vlm_snapshot=False, snapshot_after=False, N_dark=0):
 
     # calculate number of points
     xnum = int(np.abs(np.round((xstop - xstart)/xstep)) + 1)
@@ -454,22 +455,23 @@ def nano_xrf(xstart, xstop, xstep,
     # Record relevant metadata in the Start document, defined in 90-usersetup.py
     scan_md = {}
     get_stock_md(scan_md)
-    # scan_md['scan_input'] = str([xstart, xstop, xstep, ystart, ystop, ystep, dwell])
-    # scan_md['scaninfo']  = {'type': 'XRF',
-    #                         'raster' : True}
     scan_md['scan']['type'] = 'XRF_STEP'
     scan_md['scan']['scan_input'] = [xstart, xstop, xstep, ystart, ystop, ystep, dwell]
-    scan_md['scan']['detectors'] = [d.name for d in dets]
+    # scan_md['scan']['detectors'] = [d.name for d in dets]
     scan_md['scan']['fast_axis'] = {'motor_name' : xmotor.name,
                                     'units' : xmotor.motor_egu.get()}
     scan_md['scan']['slow_axis'] = {'motor_name' : ymotor.name,
                                     'units' : ymotor.motor_egu.get()}
-    scan_md['scan']['theta'] = {'val' : nano_stage.th.user_readback.get(),
+    scan_md['scan']['theta'] = {'val' : np.round(nano_stage.th.user_readback.get(), decimals=3),
                                 'units' : nano_stage.th.motor_egu.get()}
     scan_md['scan']['delta'] = {'val' : 0,
                                 'units' : xmotor.motor_egu.get()}
     scan_md['scan']['snake'] = 1 if flag_snake else 0
     scan_md['scan']['shape'] = (xnum, ynum)
+    md_dets = list(dets)
+    if vlm_snapshot:
+        md_dets = md_dets + [nano_vlm]
+    get_det_md(scan_md, md_dets)
 
     # Set xs mode to step.
     xs.mode = SRXMode.step
@@ -499,11 +501,22 @@ def nano_xrf(xstart, xstop, xstep,
                                   xlabel='x [um]', ylabel='y [um]',
                                   extent=[xstart, xstop, ystart, ystop],
                                   x_positive='right', y_positive='down'))
+    
+    @run_decorator(md=scan_md)
+    @vlm_decorator(vlm_snapshot, after=snapshot_after)
+    @dark_decorator(dets, N_dark=N_dark, shutter=shutter)
+    def plan():
+        yield from mod_grid_scan(dets,
+                                 ymotor, ystart, ystop, ynum,
+                                 xmotor, xstart, xstop, xnum, flag_snake,
+                                 run_agnostic=True)
+    myplan = plan() # This line feels silly
 
-    myplan = grid_scan(dets,
-                       ymotor, ystart, ystop, ynum,
-                       xmotor, xstart, xstop, xnum, flag_snake,
-                       md=scan_md)
+    # myplan = grid_scan(dets,
+    #                    ymotor, ystart, ystop, ynum,
+    #                    xmotor, xstart, xstop, xnum, flag_snake,
+    #                    md=scan_md)
+
     myplan = subs_wrapper(myplan,
                           {'all': livecallbacks})
 
