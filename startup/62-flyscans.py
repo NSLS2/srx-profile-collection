@@ -203,18 +203,22 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
     md['scan']['type'] = 'XRF_FLY'
     md['scan']['scan_input'] = [xstart, xstop, xnum, ystart, ystop, ynum, dwell]
     md['scan']['sample_name'] = ''
-    md['scan']['detectors'] = [d.name for d in detectors]
+    # md['scan']['detectors'] = [d.name for d in detectors]
     md['scan']['dwell'] = dwell
     md['scan']['fast_axis'] = {'motor_name' : xmotor.name,
                                'units' : xmotor.motor_egu.get()}
     md['scan']['slow_axis'] = {'motor_name' : ymotor.name,
                                'units' : ymotor.motor_egu.get()}
-    md['scan']['theta'] = {'val' : nano_stage.th.user_readback.get(),
+    md['scan']['theta'] = {'val' : np.round(nano_stage.th.user_readback.get(), decimals=3),
                            'units' : nano_stage.th.motor_egu.get()}
     md['scan']['delta'] = {'val' : delta,
                            'units' : xmotor.motor_egu.get()}
     md['scan']['snake'] = snake
     md['scan']['shape'] = (xnum, ynum)
+    md_dets = list(detectors)
+    if vlm_snapshot:
+        md_dets = md_dets + [nano_vlm]
+    get_det_md(md, md_dets)
 
     # Setup LivePlot
     # Set the ROI pv
