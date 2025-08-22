@@ -98,7 +98,7 @@ def get_stock_md(scan_md):
         scan_md['scan'] = {}
     scan_md['scan']['energy'] = np.round(energy.energy.readback.get(), decimals=4)
     scan_md["beamline_id"] = "SRX"
-    scan_md["md_version"] = "1.2"
+    scan_md["md_version"] = "1.3"
 
     return scan_md
 
@@ -118,36 +118,34 @@ def get_det_md(scan_md, dets):
     
     # Add appropriate metadata for each detector
     for name, det in {d.name : d for d in dets}.items():
+        det_dict = {}
         if name == 'xs':
             det_dict = {}
             # Add the first four rois, regardless if they are used
             for ind in range(xs.channel01.get_mcaroi_count()):
-                det_dict[f'roi{ind}'] = xs.channel01.get_mcaroi(mcaroi_number=ind + 1).roi_name.get()
+                det_dict[f'roi{ind + 1}'] = xs.channel01.get_mcaroi(mcaroi_number=ind + 1).roi_name.get()
         elif name == 'sclr1':
-            det_dict = {}
+            pass # Nothing to add
         elif name == 'merlin':
             # Merlin attr is protected as operating_energy is non-standard
-            det_dict = {}
             for obj, attr in [(det.cam, 'operating_energy')]:
                 if hasattr(obj, attr):
                     det_dict[attr] = getattr(obj, attr).get()
         elif name == 'dexela':
-            det_dict = {
-                'binning_mode' : det.cam.binning_mode.get(as_string=True), # Detector binning
-                'full_well_mode' : det.cam.full_well_mode.get(as_string=True), # Full well mode
-            }
+            det_dict['binning_mode'] = det.cam.binning_mode.get(as_string=True) # Detector binning
+            det_dict['full_well_mode'] = det.cam.full_well_mode.get(as_string=True) # Full well mode
         elif name == 'nano_vlm':
-            det_dict = {
-                'cross_position_x' : det.over.overlay_1.position_x.get(), # Crosshair position x
-                'cross_position_y' : det.over.overlay_1.position_y.get(), # Crosshair position y
-            }
+            det_dict['cross_position_x'] = det.over.overlay_1.position_x.get() # Crosshair position x
+            det_dict['cross_position_y'] = det.over.overlay_1.position_y.get() # Crosshair position x
         elif name == 'xbpm2':
-            det_dict = {}
+            pass # Nothing to add
+        elif name == 'nanoZebra':
+            # Is there a better way to get this information??
+            det_dict['mode'] = det.pc.gate_source.get(as_string=True) # Position or time?
         else:
             note_str = ('NOTE: Standard detector metadata has not yet be '
                         + f'implemented for {name}.')
             print(note_str)
-            det_dict = {}
         
         # Add to scan_md
         scan_md['scan']['detectors'][name] = det_dict
