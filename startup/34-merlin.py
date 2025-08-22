@@ -12,7 +12,8 @@ from ophyd import Component as Cpt
 from ophyd.areadetector import (AreaDetector, PixiradDetectorCam, ImagePlugin,
                                 TIFFPlugin, StatsPlugin, HDF5Plugin,
                                 ProcessPlugin, ROIPlugin, TransformPlugin,
-                                OverlayPlugin)
+                                OverlayPlugin, CamBase)
+from ophyd.areadetector.base import ADComponent
 from ophyd.areadetector.plugins import PluginBase
 from ophyd.areadetector.cam import AreaDetectorCam
 from ophyd.device import BlueskyInterface
@@ -144,9 +145,26 @@ class HDF5PluginWithFileStoreMerlin(HDF5Plugin, MerlinFileStoreHDF5):
                             "method on the hdf5 plugin.")
 
         return super().stage()
+    
+
+# Adding operating energy to Merlin
+class SRXMerlinDetectorCam(CamBase):
+    acquire = ADComponent(EpicsSignal,'Acquire')
+    quad_merlin_mode = ADComponent(EpicsSignalWithRBV,'QuadMerlinMode')
+    operating_energy = ADComponent(EpicsSignal, 'OperatingEnergy')
+    pass
 
 
-class SRXMerlin(SingleTrigger, MerlinDetector):
+class SRXMerlinDetector(AreaDetector):
+    cam = Cpt(SRXMerlinDetectorCam, 'cam1:',
+              read_attrs=[],
+              configuration_attrs=['image_mode', 'trigger_mode',
+                                   'acquire_time', 'acquire_period'],
+              )
+    
+
+# class SRXMerlin(SingleTrigger, MerlinDetector):
+class SRXMerlin(SingleTrigger, SRXMerlinDetector):
     total_points = Cpt(Signal,
                        value=1,
                        doc="The total number of points to be taken")
