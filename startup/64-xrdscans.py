@@ -225,7 +225,11 @@ def energy_rocking_curve(e_low,
     md['scan']['type'] = 'ENERGY_RC'
     md['scan']['scan_input'] = [e_low, e_high, e_num, dwell]
     md['scan']['dwell'] = dwell
-    md['scan']['detectors'] = [d.name for d in dets]
+    # md['scan']['detectors'] = [d.name for d in dets]
+    md_dets = dets
+    if vlm_snapshot:
+        md_dets = md_dets + [nano_vlm]
+    get_det_md(md, md_dets)
 
     # Live Callbacks
     livecallbacks = [LiveTable(['energy_energy', 'dexela_stats2_total'])]
@@ -381,7 +385,11 @@ def angle_rocking_curve(th_low,
     md['scan']['type'] = 'ANGLE_RC'
     md['scan']['scan_input'] = [th_low, th_high, th_num, dwell]
     md['scan']['dwell'] = dwell
-    md['scan']['detectors'] = [d.name for d in dets]
+    # md['scan']['detectors'] = [d.name for d in dets]
+    md_dets = dets
+    if vlm_snapshot:
+        md_dets = md_dets + [nano_vlm]
+    get_det_md(md, md_dets)
 
     # Live Callbacks
     livecallbacks = [LiveTable(['nano_stage_th_user_setpoint', 'dexela_stats2_total'])]
@@ -520,10 +528,13 @@ def static_xrd(num,
     get_stock_md(md)
     md['scan']['type'] = 'STATIC_XRD'
     md['scan']['scan_input'] = [num, dwell]
-    md['scan']['dwell'] = dwell
-    md['scan']['detectors'] = [sclr1.name] + [d.name for d in xrd_dets]
-    md['scan']['energy'] = f'{energy.energy.position:.5f}'                                 
+    md['scan']['dwell'] = dwell                               
     md['scan']['start_time'] = ttime.ctime(ttime.time())
+    # md['scan']['detectors'] = [d.name for d in dets]
+    md_dets = dets
+    if vlm_snapshot:
+        md_dets = md_dets + [nano_vlm]
+    get_det_md(md, md_dets)
 
     # Live Callbacks
     livecallbacks = [LiveTable(['dexela_stats2_total'])]
