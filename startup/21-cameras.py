@@ -3,6 +3,7 @@ print(f'Loading {__file__}...')
 
 import sys
 import functools
+from ophyd import EpicsSignal
 from ophyd.areadetector import (AreaDetector, ImagePlugin,
                                 TIFFPlugin, StatsPlugin,
                                 ROIPlugin, TransformPlugin,
@@ -109,3 +110,20 @@ def _camera_snapshot(cameras=[nano_vlm]):
         # Clear descripter cache
         for cam in cameras:
             yield Msg("clear_describe_cache", cam)
+
+
+# Decorator version of vlm snapshot. Must happen within open runs.
+def vlm_decorator(vlm_snapshot=True, after=True):
+    def inner_decorator(func):
+        @functools.wraps(func)
+        def func_with_snapshot(*args, **kwargs):
+            if vlm_snapshot:
+                yield from _camera_snapshot([nano_vlm])
+                yield from func(*args, **kwargs)
+                if after:
+                    yield from _camera_snapshot([nano_vlm])
+            else:
+                yield from func(*args, **kwargs)
+        
+        return func_with_snapshot
+    return inner_decorator
