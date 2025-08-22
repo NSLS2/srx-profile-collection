@@ -33,7 +33,8 @@ from ophyd.sim import NullStatus
 })
 def xanes_plan(erange=[], estep=[], acqtime=1., samplename='', filename='',
                det_xs=xs, harmonic=1, detune=0, align=False, align_at=None,
-               roinum=1, shutter=True, per_step=None, reverse=False):
+               roinum=1, shutter=True, per_step=None, reverse=False,
+               vlm_snapshot=False, snapshot_after=False):
     '''
     erange (list of floats): energy ranges for XANES in eV, e.g. erange = [7112-50, 7112-20, 7112+50, 7112+120]
     estep  (list of floats): energy step size for each energy range in eV, e.g. estep = [2, 1, 5]
@@ -223,7 +224,14 @@ def xanes_plan(erange=[], estep=[], acqtime=1., samplename='', filename='',
 
 
     energy.move(ept[0])
-    myscan = mod_list_scan(det, energy, list(ept), per_step=per_step, md=scan_md)
+
+    # Adding vlm options to modified list scan
+    @run_decorator(md=scan_md)
+    @vlm_decorator(vlm_snapshot, after=snapshot_after)
+    def myscan():
+        yield from mod_list_scan(det, energy, list(ept), per_step=per_step, run_agnostic=True)
+
+    # myscan = mod_list_scan(det, energy, list(ept), per_step=per_step, md=scan_md)
     myscan = finalize_wrapper(myscan, finalize_scan)
 
     # Open B shutter
