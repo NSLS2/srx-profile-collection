@@ -78,21 +78,6 @@ def xanes_plan(erange=[], estep=[], acqtime=1., samplename='', filename='',
     if reverse:
         ept = ept[::-1]
 
-    # Record relevant meta data in the Start document, defined in 90-usersetup.py
-    # Add user meta data
-    scan_md = {}
-    get_stock_md(scan_md)
-    scan_md['scan']['sample_name'] = samplename
-    scan_md['scan']['type'] = 'XAS_STEP'
-    scan_md['scan']['ROI'] = roinum
-    scan_md['scan']['dwell'] = acqtime
-    # scan_md['scaninfo'] = {'type' : 'XANES',
-    #                        'ROI' : roinum,
-    #                        'raster' : False,
-    #                        'dwell' : acqtime}
-    scan_md['scan']['scan_input'] = str(np.around(erange, 2)) + ', ' + str(np.around(estep, 2))
-    scan_md['scan']['energy'] = ept
-
     # Debugging, is this needed? is this recorded in scanoutput?
     # Convert energy to bragg angle
     egap = np.array(())
@@ -112,6 +97,25 @@ def xanes_plan(erange=[], estep=[], acqtime=1., samplename='', filename='',
     yield from abs_set(det_xs.external_trig, False)
     yield from abs_set(get_me_the_cam(det_xs).acquire_time, acqtime)
     yield from abs_set(det_xs.total_points, len(ept))
+
+    # Record relevant meta data in the Start document, defined in 90-usersetup.py
+    # Add user meta data
+    scan_md = {}
+    get_stock_md(scan_md)
+    scan_md['scan']['sample_name'] = samplename
+    scan_md['scan']['type'] = 'XAS_STEP'
+    scan_md['scan']['ROI'] = roinum
+    scan_md['scan']['dwell'] = acqtime
+    # scan_md['scaninfo'] = {'type' : 'XANES',
+    #                        'ROI' : roinum,
+    #                        'raster' : False,
+    #                        'dwell' : acqtime}
+    scan_md['scan']['scan_input'] = str(np.around(erange, 2)) + ', ' + str(np.around(estep, 2))
+    # scan_md['scan']['energy'] = ept
+    md_dets = list(det)
+    if vlm_snapshot:
+        md_dets = md_dets + [nano_vlm]
+    get_det_md(scan_md, md_dets)
 
     # Setup the scaler
     # TODO: Is there a better way to consider this?
