@@ -101,7 +101,7 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
                       flying_zebra, xmotor, ymotor,
                       delta=None, shutter=True, plot=True,
                       md=None, snake=False,
-                      vlm_snapshot=False,
+                      vlm_snapshot=False, snapshot_after=False,
                       N_dark=0, verbose=False):
     """Read IO from SIS3820.
     Zebra buffers x(t) points as a flyer.
@@ -611,20 +611,13 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
     # @monitor_during_decorator([roi_pv])
     @stage_decorator([flying_zebra])  # Below, 'scan' stage ymotor.
     @run_decorator(md=md)
+    @vlm_decorator(vlm_snapshot, after=snapshot_after)
+    @dark_decorator(detectors, N_dark=N_dark, shutter=shutter)    
     def plan():
         if verbose:
             # open file
             # log_file = os.path.join(log_path, f"scan2D_{db[-1].start['scan_id']}.log")
             toc(t_setup, str='Setup time + into plan()', log_file=log_file)
-        
-        # # Acquire vlm snapshot
-        if vlm_snapshot:
-            yield from _camera_snapshot([nano_vlm])
-        
-        # Acquire dark field before shutters, but after setting up scan data
-        yield from _continuous_dark_fields(detectors,
-                                           N_dark=N_dark,
-                                           shutter=shutter)
 
         # TODO move this to stage sigs
         for d in flying_zebra.detectors:
