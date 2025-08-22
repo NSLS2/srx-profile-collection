@@ -103,6 +103,58 @@ def get_stock_md(scan_md):
     return scan_md
 
 
+def get_det_md(scan_md, dets):
+
+    # Starting from scratch
+    if scan_md is None:
+        scan_md = {}
+    # Filling incomplete dictionary
+    if (scan_md == {}
+        or 'scan' not in scan_md):
+        scan_md = get_stock_md(scan_md)
+    
+    # Create detectors dictionary. Overwrite existing.
+    scan_md['scan']['detectors'] = {}
+    
+    # Add appropriate metadata for each detector
+    for name, det in {d.name : d for d in dets}.items():
+        if name == 'xs':
+            det_dict = {}
+            # Add the first four rois, regardless if they are used
+            for ind in range(xs.channel01.get_mcaroi_count()):
+                det_dict[f'roi{ind}'] = xs.channel01.get_mcaroi(mcaroi_number=ind + 1).roi_name.get()
+        elif name == 'sclr1':
+            det_dict = {}
+        elif name == 'merlin':
+            # Merlin attr is protected as operating_energy is non-standard
+            det_dict = {}
+            for obj, attr in [(det.cam, 'operating_energy')]:
+                if hasattr(obj, attr):
+                    det_dict[attr] = getattr(obj, attr).get()
+        elif name == 'dexela':
+            det_dict = {
+                'binning_mode' : det.cam.binning_mode.get(as_string=True), # Detector binning
+                'full_well_mode' : det.cam.full_well_mode.get(as_string=True), # Full well mode
+            }
+        elif name == 'nano_vlm':
+            det_dict = {
+                'cross_position_x' : det.over.overlay_1.position_x.get(), # Crosshair position x
+                'cross_position_y' : det.over.overlay_1.position_y.get(), # Crosshair position y
+            }
+        elif name == 'xbpm2':
+            det_dict = {}
+        else:
+            note_str = ('NOTE: Standard detector metadata has not yet be '
+                        + f'implemented for {name}.')
+            print(note_str)
+            det_dict = {}
+        
+        # Add to scan_md
+        scan_md['scan']['detectors'][name] = det_dict
+    
+    return scan_md
+
+
 def logscan(scantype):
     h = db[-1]
     scan_id = h.start['scan_id']
