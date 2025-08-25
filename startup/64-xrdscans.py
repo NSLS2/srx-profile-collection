@@ -247,7 +247,6 @@ def energy_rocking_curve(e_low,
     @vlm_decorator(vlm_snapshot, after=snapshot_after)
     @dark_decorator(dets, N_dark=N_dark, shutter=shutter) 
     def plan():
-        yield from _continuous_dark_fields(dets, N_dark=N_dark, shutter=shutter)
         # Always check shutters to print banner
         yield from check_shutters(shutter, 'Open')
         yield from mod_list_scan(dets, energy, e_range, run_agnostic=True)
@@ -314,7 +313,7 @@ def extended_energy_rocking_curve(e_low,
     # Breaking an extended energy rocking curve up into smaller pieces
     # The goal is to allow for multiple intermittent peakups
 
-    # Convert to ev
+    # Convert to kev
     if e_low > 1000:
         e_low /= 1000
     if e_high > 1000:
@@ -340,6 +339,104 @@ def extended_energy_rocking_curve(e_low,
                                         peakup_flag=True,
                                         plotme=False,
                                         return_to_start=False)
+
+
+# Re-write to encompass a single scan ID with intelligent vlm and dark-field support
+# TODO: livecallbacks may fail switching back and forth...
+def continuous_energy_rocking_curve(e_low,
+                                    e_high,
+                                    e_num,
+                                    dwell,
+                                    xrd_dets,
+                                    N_dark=0,
+                                    vlm_snapshot=False,
+                                    snapshot_after=False,
+                                    shutter=True,
+                                    peakup_flag=True,
+                                    plotme=False,
+                                    return_to_start=True):
+    
+    start_energy = energy.energy.position
+
+    # Convert to kev
+    if e_low > 1000:
+        e_low /= 1000
+    if e_high > 1000:
+        e_high /= 1000
+
+    # Loose chunking at about 1000 eV
+    e_range = e_high - e_low
+    e_chunks = int(np.round(e_num / e_range))
+    e_vals = np.linspace(e_low, e_high, e_num)
+
+    e_rcs = [list(e_vals[i:i + e_chunks]) for i in range(0, len(e_vals), e_chunks)]
+    e_rcs[-2].extend(e_rcs[-1])
+    e_rcs.pop(-1)  
+
+    # Define detectors
+    dets = [xs, sclr1] + xrd_dets
+    setup_xrd_dets(dets, dwell, e_num)
+
+    # Set xs and sclr1 values
+    # Poorly implemented to protect other scans
+    sigs = [
+            (xs, 'external_trig', False),
+            (xs, 'total_points', e_num),
+            (get_me_the_cam(xs), 'acquire_time', dwell),
+            (sclr1, 'preset_time', dwell)
+            ]
+    original_sigs = []
+    xs.mode = SRXMode.step
+    for obj, key, value in sigs:
+        original_sigs.append((obj, key, getattr(obj, key).get()))
+        yield from abs_set(getattr(obj, key), value)
+
+    # Defining scan metadata
+    md = {}
+    get_stock_md(md)
+    md['scan']['type'] = 'ENERGY_RC'
+    md['scan']['scan_input'] = [e_low, e_high, e_num, dwell]
+    md['scan']['dwell'] = dwell
+    # md['scan']['detectors'] = [d.name for d in dets]
+    md_dets = dets
+    if vlm_snapshot:
+        md_dets = md_dets + [nano_vlm]
+    get_det_md(md, md_dets)
+
+    # Live Callbacks
+    livecallbacks = [LiveTable(['energy_energy', 'dexela_stats2_total'])]
+    
+    if plotme:
+        livecallbacks.append(LivePlot('dexela_stats2_total', x='energy_energy'))
+
+    @run_decorator(md=md)
+    @vlm_decorator(vlm_snapshot, after=snapshot_after)
+    @dark_decorator(dets, N_dark=N_dark, shutter=shutter)
+    def plan():
+        for iteration, e_rc in enumerate(e_rcs):
+            # Move to center energy and perform peakup
+            peakup_stream = f'00{iteration}_peakup'
+            if peakup_flag:  # Find optimal c2_fine position
+                print('Performing center energy peakup.')
+                yield from mov(energy, e_rc[len(e_rc) // 2])
+                yield from ra_smart_peakup(shutter=shutter,
+                                           stream_name=peakup_stream)
+            
+            # Always check shutters to print banner
+            if shutter or (not peakup_flag and i == 0): # Or first condition without peakup
+                yield from check_shutters(shutter, 'Open')
+            yield from mod_list_scan(dets, energy, e_rc, run_agnostic=True)
+            if shutter: # Conditional check ot avoid banner
+                yield from check_shutters(shutter, 'Close') 
+
+    yield from subs_wrapper(plan(), {'all' : livecallbacks})
+
+    # Reset xs and sclr1
+    for obj, key, value in original_sigs:
+        yield from abs_set(getattr(obj, key), value)
+    
+    if return_to_start:
+        yield from mov(energy, start_energy)
 
 
 def angle_rocking_curve(th_low,
