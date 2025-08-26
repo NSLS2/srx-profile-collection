@@ -719,7 +719,6 @@ class FlyerIDMono(Device):
     def complete(self):
         # Yield a (partial) Event document. The RunEngine will put this
         # into metadatastore, as it does all readings.
-        # TODO: Do we need to add a wait loop here?
 
         # Set mode and cleanup
         self._mode = "complete"
