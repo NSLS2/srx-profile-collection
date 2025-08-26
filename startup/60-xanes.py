@@ -734,9 +734,9 @@ class FlyerIDMono(Device):
         # self.__write_filepath = os.path.join(wp, self.__filename)
         # Set filename/path for scaler data
         f, rp, wp = self.make_filename()
-        self.__filename_sis = f
-        self.__read_filepath_sis = os.path.join(rp, self.__filename_sis)
-        # self.__write_filepath_sis = os.path.join(wp, self.__filename_sis)
+        self.__filename_scaler = f
+        self.__read_filepath_scaler = os.path.join(rp, self.__filename_scaler)
+        self.__write_filepath_scaler = os.path.join(wp, self.__filename_scaler)
 
         # Create resource factory and datum objects
         self.__filestore_resource, datum_factory = resource_factory(
@@ -746,20 +746,20 @@ class FlyerIDMono(Device):
             resource_kwargs={},
             path_semantics="posix",
         )
-        self.__filestore_resource, datum_factory_sis = resource_factory(
+        self.__filestore_resource, datum_factory_scaler = resource_factory(
             "SIS_HDF51",
             root="/",
-            resource_path=self.__read_filepath_sis,
+            resource_path=self.__read_filepath_scaler,
             resource_kwargs={},
             path_semantics="posix",
         )
         
         # Create datum objects for data references
         energy_datum = datum_factory({"column": "energy"})
-        time_datum = datum_factory_sis({"column": "i0_time"})
-        i0_datum = datum_factory_sis({"column": "i0"})
-        im_datum = datum_factory_sis({"column": "im"})
-        it_datum = datum_factory_sis({"column": "it"})
+        time_datum = datum_factory_scaler({"column": "i0_time"})
+        i0_datum = datum_factory_scaler({"column": "i0"})
+        im_datum = datum_factory_scaler({"column": "im"})
+        it_datum = datum_factory_scaler({"column": "it"})
         xs_channel01_datum = datum_factory({"column": "xs_id_mono_fly_channel01"})
         xs_channel02_datum = datum_factory({"column": "xs_id_mono_fly_channel02"})
         xs_channel03_datum = datum_factory({"column": "xs_id_mono_fly_channel03"})
@@ -794,13 +794,11 @@ class FlyerIDMono(Device):
             self._document_cache.extend(d.collect_asset_docs())
 
         export_sis_data(
-            self._sis, self.__write_filepath_sis, self._encoder
+            self.scaler, self.__write_filepath_scaler, self.zebra
         )
 
         self._last_bulk = {
-            'descriptor': 'b7c06b62-f413-45c3-bd90-8ffffeb3345f',
-            'uid': 'adcbc2c8-17d0-4688-b047-5d58eedd6f45',
-            'time': 1756223240.2355294,
+            'time': ttime.time(),
             'seq_num': 1,
             'data': {
                 'energy': energy_datum["datum_id"],
@@ -833,14 +831,14 @@ class FlyerIDMono(Device):
         }
         # TODO: do we need filled here?
 
-        for d in self.xs_detectors:
-            reading = d.read()
-            self._last_bulk["data"].update(
-                {k: v["value"] for k, v in reading.items()}
-                )
-            self._last_bulk["timestamps"].update(
-                {k: v["timestamp"] for k, v in reading.items()}
-            )
+        #for d in self.xs_detectors:
+        #    reading = d.read()
+        #    self._last_bulk["data"].update(
+        #        {k: v["value"] for k, v in reading.items()}
+        #        )
+        #    self._last_bulk["timestamps"].update(
+        #        {k: v["timestamp"] for k, v in reading.items()}
+        #    )
 
         return NullStatus()
 
@@ -965,7 +963,7 @@ class FlyerIDMono(Device):
                 "between complete and collect to correctly create and stash "
                 "the asset registry documents"
             )
-        print(f"{print_now()}: collect method yield last_bulk") 
+        print(f"{print_now()}: collect method yield last_bulk, {self._last_bulk=}") 
         yield self._last_bulk
         self._last_bulk = None
         self._mode = "idle"
