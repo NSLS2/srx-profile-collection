@@ -435,6 +435,9 @@ class FlyerIDMono(Device):
         self._array_size = {}
         self._datum_ids = []
 
+        self._document_cache = []
+        self._last_bulk = None
+
     def stage(self):
         # total_points = self.num_scans * self.num_triggers
         if self.num_triggers is None:
@@ -679,7 +682,70 @@ class FlyerIDMono(Device):
         status = SubscriptionStatus(self.status, callback)
         return status
 
-    def complete(self, *args, **kwargs):
+
+    def complete(self):
+        # Yield a (partial) Event document. The RunEngine will put this
+        # into metadatastore, as it does all readings.
+
+        self._last_bulk = {
+            'descriptor': 'b7c06b62-f413-45c3-bd90-8ffffeb3345f',
+            'uid': 'adcbc2c8-17d0-4688-b047-5d58eedd6f45',
+            'time': 1756223240.2355294,
+            'seq_num': 1,
+            'data': {
+                'energy': energy_datum["datum_id"],
+                'i0_time': i0_time,
+                'i0': 319,
+                'im': 2943,
+                'it': 11,
+                'xs_id_mono_fly_channel01': 'fd2890f8-e2cf-41fe-8923-add46909f726/0',
+                'xs_id_mono_fly_channel02': 'fd2890f8-e2cf-41fe-8923-add46909f726/1',
+                'xs_id_mono_fly_channel03': 'fd2890f8-e2cf-41fe-8923-add46909f726/2',
+                'xs_id_mono_fly_channel04': 'fd2890f8-e2cf-41fe-8923-add46909f726/3',
+                'xs_id_mono_fly_channel05': 'fd2890f8-e2cf-41fe-8923-add46909f726/4',
+                'xs_id_mono_fly_channel06': 'fd2890f8-e2cf-41fe-8923-add46909f726/5',
+                'xs_id_mono_fly_channel07': 'fd2890f8-e2cf-41fe-8923-add46909f726/6',
+                'xs_id_mono_fly_channel08': 'fd2890f8-e2cf-41fe-8923-add46909f726/7'},
+            'timestamps': {
+                'energy': 1756223240.23536,
+                'i0_time': 1756223240.23536,
+                'i0': 1756223240.23536,
+                'im': 1756223240.23536,
+                'it': 1756223240.23536,
+                'xs_id_mono_fly_channel01': 1756223240.23536,
+                'xs_id_mono_fly_channel02': 1756223240.23536,
+                'xs_id_mono_fly_channel03': 1756223240.23536,
+                'xs_id_mono_fly_channel04': 1756223240.23536,
+                'xs_id_mono_fly_channel05': 1756223240.23536,
+                'xs_id_mono_fly_channel06': 1756223240.23536,
+                'xs_id_mono_fly_channel07': 1756223240.23536,
+                'xs_id_mono_fly_channel08': 1756223240.23536},
+            'filled': {
+                'xs_id_mono_fly_channel01': False,
+                'xs_id_mono_fly_channel02': False,
+                'xs_id_mono_fly_channel03': False,
+                'xs_id_mono_fly_channel04': False,
+                'xs_id_mono_fly_channel05': False,
+                'xs_id_mono_fly_channel06': False,
+                'xs_id_mono_fly_channel07': False,
+                'xs_id_mono_fly_channel08': False}
+        }
+
+
+        for d in self._dets:
+            reading = d.read()
+            self._last_bulk["data"].update(
+                {k: v["value"] for k, v in reading.items()}
+                )
+            self._last_bulk["timestamps"].update(
+                {k: v["timestamp"] for k, v in reading.items()}
+            )
+
+        return NullStatus()
+
+
+    def _complete(self, *args, **kwargs):
+        print(f"{print_now()}: begining of complete method") 
         if self.xs_detectors[0]._staged.value == 'no':
 
             # Note: this is a way to stop the scan on the fly.
@@ -722,6 +788,7 @@ class FlyerIDMono(Device):
         current_scan = self.flying_dev.parameters.current_scan.get()
         num_scans = self.flying_dev.parameters.num_scans.get()
 
+        print(f"{print_now()}: end of complete method") 
         if  current_scan + 1 < num_scans:  # last scan
             status_paused = SubscriptionStatus(self.flying_dev.parameters.scan_paused, callback_paused, run=False)
             return status_paused
@@ -739,7 +806,7 @@ class FlyerIDMono(Device):
     #     return ret
 
     def describe_collect(self, *args, **kwargs):
-        # print(f"\n\n{print_now()}: describe_collect started")
+        print(f"\n\n{print_now()}: describe_collect started")
         return_dict = {}
         if True:
         # for scan_num in range(self.num_scans):
@@ -784,11 +851,27 @@ class FlyerIDMono(Device):
         import pprint
         # pprint.pprint(return_dict)
 
-        # print(f"\n\n{print_now()}: describe_collect ended")
+        print(f"\n\n{print_now()}: describe_collect ended")
 
         return return_dict
 
-    def collect(self, *args, **kwargs):
+    def collect(self):
+        print(f"{print_now()}: begining of collect method") 
+        if self._last_bulk is None:
+            raise Exception(
+                "the order of complete and collect is brittle and out "
+                "of sync. This device relies on in-order and 1:1 calls "
+                "between complete and collect to correctly create and stash "
+                "the asset registry documents"
+            )
+        print(f"{print_now()}: collect method yield last_bulk") 
+        yield self._last_bulk
+        self._last_bulk = None
+        self._mode = "idle"
+        print(f"{print_now()}: end of collect method") 
+
+    def _collect(self, *args, **kwargs):
+        print(f"{print_now()}: begining of collect method") 
 
         # TODO: test that feature.
         if not self._continue_after_pausing:
@@ -993,7 +1076,7 @@ class FlyerIDMono(Device):
 
         # Make new PV values
         uRBV = np.linspace(Umin, Umax, N, dtype=float)
-        eRBV = np.round(u2e(uRBV)).astype(float)
+        eRBV = u2e(uRBV).astype(float)
 
         # Output
         if self.lut_u.write_access:
