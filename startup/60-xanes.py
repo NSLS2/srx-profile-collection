@@ -3,6 +3,9 @@ print(f'Loading {__file__}...')
 import itertools
 import collections
 from collections import deque
+import os
+import uuid
+import datetime
 
 import numpy as np
 import time as ttime
@@ -22,6 +25,7 @@ from scipy.interpolate import make_interp_spline
 from numpy.lib.stride_tricks import as_strided
 from ophyd.status import SubscriptionStatus
 from ophyd.sim import NullStatus
+from ophyd.areadetector.filestore_mixins import resource_factory
 
 # Kafka can throw a warning if the document is too large
 # Adding this is an attempt to prevent the document (really long) being output to screen
@@ -435,6 +439,38 @@ class FlyerIDMono(Device):
         self._array_size = {}
         self._datum_ids = []
 
+        self._document_cache = []
+        self._last_bulk = None
+
+    def root_path_str(self):
+        data_session = RE.md["data_session"]
+        cycle = RE.md["cycle"]
+        if "Commissioning" in get_proposal_type():
+            root_path = f"/nsls2/data/srx/proposals/commissioning/{data_session}/assets/"
+        else:
+            root_path = f"/nsls2/data/srx/proposals/{cycle}/{data_session}/assets/"
+        return root_path
+
+    def make_filename(self):
+        """Make a filename.
+        Taken/Modified from ophyd.areadetector.filestore_mixins
+        This is a hook so that the read and write paths can either be modified
+        or created on disk prior to configuring the areaDetector plugin.
+        Returns
+        -------
+        filename : str
+            The start of the filename
+        read_path : str
+            Path that ophyd can read from
+        write_path : str
+            Path that the IOC can write to
+        """
+        filename = f'{_short_uid()}.h5'
+        formatter = datetime.datetime.now().strftime
+        write_path = formatter(f'{self.root_path_str()}xspress3/%Y/%m/%d/')
+        read_path = formatter(f'{self.root_path_str()}xspress3/%Y/%m/%d/')
+        return filename, read_path, write_path
+
     def stage(self):
         # total_points = self.num_scans * self.num_triggers
         if self.num_triggers is None:
@@ -679,7 +715,136 @@ class FlyerIDMono(Device):
         status = SubscriptionStatus(self.status, callback)
         return status
 
-    def complete(self, *args, **kwargs):
+
+    def complete(self):
+        # Yield a (partial) Event document. The RunEngine will put this
+        # into metadatastore, as it does all readings.
+
+        # Set mode and cleanup
+        self._mode = "complete"
+        
+        # Stop detectors
+        for d in self.xs_detectors:
+            d.stop(success=True)
+
+        # Set filename/path for flyeridmono data
+        f, rp, wp = self.make_filename()
+        self.__filename = f
+        self.__read_filepath = os.path.join(rp, self.__filename)
+        # self.__write_filepath = os.path.join(wp, self.__filename)
+        # Set filename/path for scaler data
+        f, rp, wp = self.make_filename()
+        self.__filename_scaler = f
+        self.__read_filepath_scaler = os.path.join(rp, self.__filename_scaler)
+        self.__write_filepath_scaler = os.path.join(wp, self.__filename_scaler)
+
+        # Create resource factory and datum objects
+        self.__filestore_resource, datum_factory = resource_factory(
+            "XSP3",
+            root="/",
+            resource_path=self.__read_filepath,
+            resource_kwargs={},
+            path_semantics="posix",
+        )
+        self.__filestore_resource, datum_factory_scaler = resource_factory(
+            "SIS_HDF51",
+            root="/",
+            resource_path=self.__read_filepath_scaler,
+            resource_kwargs={},
+            path_semantics="posix",
+        )
+        
+        # Create datum objects for data references
+        energy_datum = datum_factory({"column": "energy"})
+        time_datum = datum_factory_scaler({"column": "i0_time"})
+        i0_datum = datum_factory_scaler({"column": "i0"})
+        im_datum = datum_factory_scaler({"column": "im"})
+        it_datum = datum_factory_scaler({"column": "it"})
+        xs_channel01_datum = datum_factory({"column": "xs_id_mono_fly_channel01"})
+        xs_channel02_datum = datum_factory({"column": "xs_id_mono_fly_channel02"})
+        xs_channel03_datum = datum_factory({"column": "xs_id_mono_fly_channel03"})
+        xs_channel04_datum = datum_factory({"column": "xs_id_mono_fly_channel04"})
+        xs_channel05_datum = datum_factory({"column": "xs_id_mono_fly_channel05"})
+        xs_channel06_datum = datum_factory({"column": "xs_id_mono_fly_channel06"})
+        xs_channel07_datum = datum_factory({"column": "xs_id_mono_fly_channel07"})
+        xs_channel08_datum = datum_factory({"column": "xs_id_mono_fly_channel08"})
+
+        # Add resource and datums to document cache
+        self._document_cache.extend([("resource", self.__filestore_resource)])
+        self._document_cache.extend([
+            ("datum", d) for d in (
+                energy_datum,
+                time_datum,
+                i0_datum,
+                im_datum,
+                it_datum,
+                xs_channel01_datum,
+                xs_channel02_datum,
+                xs_channel03_datum,
+                xs_channel04_datum,
+                xs_channel05_datum,
+                xs_channel06_datum,
+                xs_channel07_datum,
+                xs_channel08_datum,
+            )
+        ])
+
+        # grab the asset documents from all of the child detectors
+        for d in self.xs_detectors:
+            self._document_cache.extend(d.collect_asset_docs())
+
+        export_sis_data(
+            self.scaler, self.__write_filepath_scaler, self.zebra
+        )
+
+        self._last_bulk = {
+            'time': ttime.time(),
+            'seq_num': 1,
+            'data': {
+                'energy': energy_datum["datum_id"],
+                'i0_time': time_datum["datum_id"],
+                'i0': i0_datum["datum_id"],
+                'im': im_datum["datum_id"],
+                'it': it_datum["datum_id"],
+                'xs_id_mono_fly_channel01': xs_channel01_datum["datum_id"],
+                'xs_id_mono_fly_channel02': xs_channel02_datum["datum_id"],
+                'xs_id_mono_fly_channel03': xs_channel03_datum["datum_id"],
+                'xs_id_mono_fly_channel04': xs_channel04_datum["datum_id"],
+                'xs_id_mono_fly_channel05': xs_channel05_datum["datum_id"],
+                'xs_id_mono_fly_channel06': xs_channel06_datum["datum_id"],
+                'xs_id_mono_fly_channel07': xs_channel07_datum["datum_id"],
+                'xs_id_mono_fly_channel08': xs_channel08_datum["datum_id"]},
+            'timestamps': {
+                'energy': time_datum["datum_id"],
+                'i0_time': time_datum["datum_id"],
+                'i0': time_datum["datum_id"],
+                'im': time_datum["datum_id"],
+                'it': time_datum["datum_id"],
+                'xs_id_mono_fly_channel01': time_datum["datum_id"],
+                'xs_id_mono_fly_channel02': time_datum["datum_id"],
+                'xs_id_mono_fly_channel03': time_datum["datum_id"],
+                'xs_id_mono_fly_channel04': time_datum["datum_id"],
+                'xs_id_mono_fly_channel05': time_datum["datum_id"],
+                'xs_id_mono_fly_channel06': time_datum["datum_id"],
+                'xs_id_mono_fly_channel07': time_datum["datum_id"],
+                'xs_id_mono_fly_channel08': time_datum["datum_id"]},
+        }
+        # TODO: do we need filled here?
+
+        #for d in self.xs_detectors:
+        #    reading = d.read()
+        #    self._last_bulk["data"].update(
+        #        {k: v["value"] for k, v in reading.items()}
+        #        )
+        #    self._last_bulk["timestamps"].update(
+        #        {k: v["timestamp"] for k, v in reading.items()}
+        #    )
+
+        return NullStatus()
+
+
+    def _complete(self, *args, **kwargs):
+        print(f"{print_now()}: begining of complete method") 
         if self.xs_detectors[0]._staged.value == 'no':
 
             # Note: this is a way to stop the scan on the fly.
@@ -722,6 +887,7 @@ class FlyerIDMono(Device):
         current_scan = self.flying_dev.parameters.current_scan.get()
         num_scans = self.flying_dev.parameters.num_scans.get()
 
+        print(f"{print_now()}: end of complete method") 
         if  current_scan + 1 < num_scans:  # last scan
             status_paused = SubscriptionStatus(self.flying_dev.parameters.scan_paused, callback_paused, run=False)
             return status_paused
@@ -739,7 +905,7 @@ class FlyerIDMono(Device):
     #     return ret
 
     def describe_collect(self, *args, **kwargs):
-        # print(f"\n\n{print_now()}: describe_collect started")
+        print(f"\n\n{print_now()}: describe_collect started")
         return_dict = {}
         if True:
         # for scan_num in range(self.num_scans):
@@ -784,11 +950,27 @@ class FlyerIDMono(Device):
         import pprint
         # pprint.pprint(return_dict)
 
-        # print(f"\n\n{print_now()}: describe_collect ended")
+        print(f"\n\n{print_now()}: describe_collect ended")
 
         return return_dict
 
-    def collect(self, *args, **kwargs):
+    def collect(self):
+        print(f"{print_now()}: begining of collect method") 
+        if self._last_bulk is None:
+            raise Exception(
+                "the order of complete and collect is brittle and out "
+                "of sync. This device relies on in-order and 1:1 calls "
+                "between complete and collect to correctly create and stash "
+                "the asset registry documents"
+            )
+        print(f"{print_now()}: collect method yield last_bulk, {self._last_bulk=}") 
+        yield self._last_bulk
+        self._last_bulk = None
+        self._mode = "idle"
+        print(f"{print_now()}: end of collect method") 
+
+    def _collect(self, *args, **kwargs):
+        print(f"{print_now()}: begining of collect method") 
 
         # TODO: test that feature.
         if not self._continue_after_pausing:
@@ -943,6 +1125,10 @@ class FlyerIDMono(Device):
 
 
     def collect_asset_docs(self):
+        yield from iter(list(self._document_cache))
+        self._document_cache.clear()
+    
+    def _collect_asset_docs(self):
         print(f"{print_now()}: before collecting asset docs from xs in collect_asset_docs")
         for xs_det in self.xs_detectors:
             yield from xs_det.collect_asset_docs()
@@ -993,7 +1179,7 @@ class FlyerIDMono(Device):
 
         # Make new PV values
         uRBV = np.linspace(Umin, Umax, N, dtype=float)
-        eRBV = np.round(u2e(uRBV)).astype(float)
+        eRBV = u2e(uRBV).astype(float)
 
         # Output
         if self.lut_u.write_access:
