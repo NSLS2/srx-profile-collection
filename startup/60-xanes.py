@@ -732,7 +732,7 @@ class FlyerIDMono(Device):
         f, rp, wp = self.make_filename()
         self.__filename = f
         self.__read_filepath = os.path.join(rp, self.__filename)
-        self.__write_filepath = os.path.join(wp, self.__filename)
+        # self.__write_filepath = os.path.join(wp, self.__filename)
 
         # Create resource factory and datum objects
         self.__filestore_resource, datum_factory = resource_factory(
