@@ -3,6 +3,9 @@ print(f'Loading {__file__}...')
 import itertools
 import collections
 from collections import deque
+import os
+import uuid
+import datetime
 
 import numpy as np
 import time as ttime
@@ -439,6 +442,35 @@ class FlyerIDMono(Device):
         self._document_cache = []
         self._last_bulk = None
 
+    def root_path_str(self):
+        data_session = RE.md["data_session"]
+        cycle = RE.md["cycle"]
+        if "Commissioning" in get_proposal_type():
+            root_path = f"/nsls2/data/srx/proposals/commissioning/{data_session}/assets/"
+        else:
+            root_path = f"/nsls2/data/srx/proposals/{cycle}/{data_session}/assets/"
+        return root_path
+
+    def make_filename(self):
+        """Make a filename.
+        Taken/Modified from ophyd.areadetector.filestore_mixins
+        This is a hook so that the read and write paths can either be modified
+        or created on disk prior to configuring the areaDetector plugin.
+        Returns
+        -------
+        filename : str
+            The start of the filename
+        read_path : str
+            Path that ophyd can read from
+        write_path : str
+            Path that the IOC can write to
+        """
+        filename = f'{_short_uid()}.h5'
+        formatter = datetime.datetime.now().strftime
+        write_path = formatter(f'{self.root_path_str()}xspress3/%Y/%m/%d/')
+        read_path = formatter(f'{self.root_path_str()}xspress3/%Y/%m/%d/')
+        return filename, read_path, write_path
+
     def stage(self):
         # total_points = self.num_scans * self.num_triggers
         if self.num_triggers is None:
@@ -687,12 +719,26 @@ class FlyerIDMono(Device):
     def complete(self):
         # Yield a (partial) Event document. The RunEngine will put this
         # into metadatastore, as it does all readings.
+        # TODO: Do we need to add a wait loop here?
+
+        # Set mode and cleanup
+        self._mode = "complete"
+        
+        # Stop detectors
+        for d in self.xs_detectors:
+            d.stop(success=True)
+
+        # Set filename/path for flyeridmono data
+        f, rp, wp = self.make_filename()
+        self.__filename = f
+        self.__read_filepath = os.path.join(rp, self.__filename)
+        self.__write_filepath = os.path.join(wp, self.__filename)
 
         # Create resource factory and datum objects
         self.__filestore_resource, datum_factory = resource_factory(
             "XSP3",
             root="/",
-            resource_path="flyeridmono_data.h5",  # placeholder path
+            resource_path=self.__read_filepath,
             resource_kwargs={},
             path_semantics="posix",
         )
@@ -703,14 +749,14 @@ class FlyerIDMono(Device):
         i0_datum = datum_factory({"column": "i0"})
         im_datum = datum_factory({"column": "im"})
         it_datum = datum_factory({"column": "it"})
-        xs_channel01_datum = datum_factory({"column": "xs_channel01"})
-        xs_channel02_datum = datum_factory({"column": "xs_channel02"})
-        xs_channel03_datum = datum_factory({"column": "xs_channel03"})
-        xs_channel04_datum = datum_factory({"column": "xs_channel04"})
-        xs_channel05_datum = datum_factory({"column": "xs_channel05"})
-        xs_channel06_datum = datum_factory({"column": "xs_channel06"})
-        xs_channel07_datum = datum_factory({"column": "xs_channel07"})
-        xs_channel08_datum = datum_factory({"column": "xs_channel08"})
+        xs_channel01_datum = datum_factory({"column": "xs_id_mono_fly_channel01"})
+        xs_channel02_datum = datum_factory({"column": "xs_id_mono_fly_channel02"})
+        xs_channel03_datum = datum_factory({"column": "xs_id_mono_fly_channel03"})
+        xs_channel04_datum = datum_factory({"column": "xs_id_mono_fly_channel04"})
+        xs_channel05_datum = datum_factory({"column": "xs_id_mono_fly_channel05"})
+        xs_channel06_datum = datum_factory({"column": "xs_id_mono_fly_channel06"})
+        xs_channel07_datum = datum_factory({"column": "xs_id_mono_fly_channel07"})
+        xs_channel08_datum = datum_factory({"column": "xs_id_mono_fly_channel08"})
 
         # Add resource and datums to document cache
         self._document_cache.extend([("resource", self.__filestore_resource)])
@@ -766,7 +812,7 @@ class FlyerIDMono(Device):
                 'xs_id_mono_fly_channel07': time_datum["datum_id"],
                 'xs_id_mono_fly_channel08': time_datum["datum_id"]},
         }
-        # TODO: do we need filled here.
+        # TODO: do we need filled here?
 
         for d in self._dets:
             reading = d.read()
