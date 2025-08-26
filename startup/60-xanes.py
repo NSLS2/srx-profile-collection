@@ -22,6 +22,7 @@ from scipy.interpolate import make_interp_spline
 from numpy.lib.stride_tricks import as_strided
 from ophyd.status import SubscriptionStatus
 from ophyd.sim import NullStatus
+from ophyd.areadetector.filestore_mixins import resource_factory
 
 # Kafka can throw a warning if the document is too large
 # Adding this is an attempt to prevent the document (really long) being output to screen
@@ -687,6 +688,50 @@ class FlyerIDMono(Device):
         # Yield a (partial) Event document. The RunEngine will put this
         # into metadatastore, as it does all readings.
 
+        # Create resource factory and datum objects
+        self.__filestore_resource, datum_factory = resource_factory(
+            "XSP3",
+            root="/",
+            resource_path="flyeridmono_data.h5",  # placeholder path
+            resource_kwargs={},
+            path_semantics="posix",
+        )
+        
+        # Create datum objects for data references
+        energy_datum = datum_factory({"column": "energy"})
+        time_datum = datum_factory({"column": "time"})
+        i0_datum = datum_factory({"column": "i0"})
+        im_datum = datum_factory({"column": "im"})
+        it_datum = datum_factory({"column": "it"})
+        xs_channel01_datum = datum_factory({"column": "xs_channel01"})
+        xs_channel02_datum = datum_factory({"column": "xs_channel02"})
+        xs_channel03_datum = datum_factory({"column": "xs_channel03"})
+        xs_channel04_datum = datum_factory({"column": "xs_channel04"})
+        xs_channel05_datum = datum_factory({"column": "xs_channel05"})
+        xs_channel06_datum = datum_factory({"column": "xs_channel06"})
+        xs_channel07_datum = datum_factory({"column": "xs_channel07"})
+        xs_channel08_datum = datum_factory({"column": "xs_channel08"})
+
+        # Add resource and datums to document cache
+        self._document_cache.extend([("resource", self.__filestore_resource)])
+        self._document_cache.extend([
+            ("datum", d) for d in (
+                energy_datum,
+                time_datum,
+                i0_datum,
+                im_datum,
+                it_datum,
+                xs_channel01_datum,
+                xs_channel02_datum,
+                xs_channel03_datum,
+                xs_channel04_datum,
+                xs_channel05_datum,
+                xs_channel06_datum,
+                xs_channel07_datum,
+                xs_channel08_datum,
+            )
+        ])
+
         self._last_bulk = {
             'descriptor': 'b7c06b62-f413-45c3-bd90-8ffffeb3345f',
             'uid': 'adcbc2c8-17d0-4688-b047-5d58eedd6f45',
@@ -694,43 +739,34 @@ class FlyerIDMono(Device):
             'seq_num': 1,
             'data': {
                 'energy': energy_datum["datum_id"],
-                'i0_time': i0_time,
-                'i0': 319,
-                'im': 2943,
-                'it': 11,
-                'xs_id_mono_fly_channel01': 'fd2890f8-e2cf-41fe-8923-add46909f726/0',
-                'xs_id_mono_fly_channel02': 'fd2890f8-e2cf-41fe-8923-add46909f726/1',
-                'xs_id_mono_fly_channel03': 'fd2890f8-e2cf-41fe-8923-add46909f726/2',
-                'xs_id_mono_fly_channel04': 'fd2890f8-e2cf-41fe-8923-add46909f726/3',
-                'xs_id_mono_fly_channel05': 'fd2890f8-e2cf-41fe-8923-add46909f726/4',
-                'xs_id_mono_fly_channel06': 'fd2890f8-e2cf-41fe-8923-add46909f726/5',
-                'xs_id_mono_fly_channel07': 'fd2890f8-e2cf-41fe-8923-add46909f726/6',
-                'xs_id_mono_fly_channel08': 'fd2890f8-e2cf-41fe-8923-add46909f726/7'},
+                'i0_time': time_datum["datum_id"],
+                'i0': i0_datum["datum_id"],
+                'im': im_datum["datum_id"],
+                'it': it_datum["datum_id"],
+                'xs_id_mono_fly_channel01': xs_channel01_datum["datum_id"],
+                'xs_id_mono_fly_channel02': xs_channel02_datum["datum_id"],
+                'xs_id_mono_fly_channel03': xs_channel03_datum["datum_id"],
+                'xs_id_mono_fly_channel04': xs_channel04_datum["datum_id"],
+                'xs_id_mono_fly_channel05': xs_channel05_datum["datum_id"],
+                'xs_id_mono_fly_channel06': xs_channel06_datum["datum_id"],
+                'xs_id_mono_fly_channel07': xs_channel07_datum["datum_id"],
+                'xs_id_mono_fly_channel08': xs_channel08_datum["datum_id"]},
             'timestamps': {
-                'energy': 1756223240.23536,
-                'i0_time': 1756223240.23536,
-                'i0': 1756223240.23536,
-                'im': 1756223240.23536,
-                'it': 1756223240.23536,
-                'xs_id_mono_fly_channel01': 1756223240.23536,
-                'xs_id_mono_fly_channel02': 1756223240.23536,
-                'xs_id_mono_fly_channel03': 1756223240.23536,
-                'xs_id_mono_fly_channel04': 1756223240.23536,
-                'xs_id_mono_fly_channel05': 1756223240.23536,
-                'xs_id_mono_fly_channel06': 1756223240.23536,
-                'xs_id_mono_fly_channel07': 1756223240.23536,
-                'xs_id_mono_fly_channel08': 1756223240.23536},
-            'filled': {
-                'xs_id_mono_fly_channel01': False,
-                'xs_id_mono_fly_channel02': False,
-                'xs_id_mono_fly_channel03': False,
-                'xs_id_mono_fly_channel04': False,
-                'xs_id_mono_fly_channel05': False,
-                'xs_id_mono_fly_channel06': False,
-                'xs_id_mono_fly_channel07': False,
-                'xs_id_mono_fly_channel08': False}
+                'energy': time_datum["datum_id"],
+                'i0_time': time_datum["datum_id"],
+                'i0': time_datum["datum_id"],
+                'im': time_datum["datum_id"],
+                'it': time_datum["datum_id"],
+                'xs_id_mono_fly_channel01': time_datum["datum_id"],
+                'xs_id_mono_fly_channel02': time_datum["datum_id"],
+                'xs_id_mono_fly_channel03': time_datum["datum_id"],
+                'xs_id_mono_fly_channel04': time_datum["datum_id"],
+                'xs_id_mono_fly_channel05': time_datum["datum_id"],
+                'xs_id_mono_fly_channel06': time_datum["datum_id"],
+                'xs_id_mono_fly_channel07': time_datum["datum_id"],
+                'xs_id_mono_fly_channel08': time_datum["datum_id"]},
         }
-
+        # TODO: do we need filled here.
 
         for d in self._dets:
             reading = d.read()
