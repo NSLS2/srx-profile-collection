@@ -746,7 +746,7 @@ class FlyerIDMono(Device):
             resource_kwargs={},
             path_semantics="posix",
         )
-        self.__filestore_resource, datum_factory_scaler = resource_factory(
+        self.__filestore_resource_scaler, datum_factory_scaler = resource_factory(
             "SIS_HDF51",
             root="/",
             resource_path=self.__read_filepath_scaler,
@@ -770,7 +770,10 @@ class FlyerIDMono(Device):
         xs_channel08_datum = datum_factory({"column": "xs_id_mono_fly_channel08"})
 
         # Add resource and datums to document cache
-        self._document_cache.extend([("resource", self.__filestore_resource)])
+        self._document_cache.extend(
+            ("resource", d)
+            for d in (self.__filestore_resource, self.__filestore_resource_scaler)
+        )
         self._document_cache.extend([
             ("datum", d) for d in (
                 energy_datum,
