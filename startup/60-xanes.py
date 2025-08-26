@@ -733,6 +733,11 @@ class FlyerIDMono(Device):
         self.__filename = f
         self.__read_filepath = os.path.join(rp, self.__filename)
         # self.__write_filepath = os.path.join(wp, self.__filename)
+        # Set filename/path for scaler data
+        f, rp, wp = self.make_filename()
+        self.__filename_sis = f
+        self.__read_filepath_sis = os.path.join(rp, self.__filename_sis)
+        # self.__write_filepath_sis = os.path.join(wp, self.__filename_sis)
 
         # Create resource factory and datum objects
         self.__filestore_resource, datum_factory = resource_factory(
@@ -742,13 +747,20 @@ class FlyerIDMono(Device):
             resource_kwargs={},
             path_semantics="posix",
         )
+        self.__filestore_resource, datum_factory_sis = resource_factory(
+            "SIS_HDF51",
+            root="/",
+            resource_path=self.__read_filepath_sis,
+            resource_kwargs={},
+            path_semantics="posix",
+        )
         
         # Create datum objects for data references
         energy_datum = datum_factory({"column": "energy"})
-        time_datum = datum_factory({"column": "time"})
-        i0_datum = datum_factory({"column": "i0"})
-        im_datum = datum_factory({"column": "im"})
-        it_datum = datum_factory({"column": "it"})
+        time_datum = datum_factory_sis({"column": "i0_time"})
+        i0_datum = datum_factory_sis({"column": "i0"})
+        im_datum = datum_factory_sis({"column": "im"})
+        it_datum = datum_factory_sis({"column": "it"})
         xs_channel01_datum = datum_factory({"column": "xs_id_mono_fly_channel01"})
         xs_channel02_datum = datum_factory({"column": "xs_id_mono_fly_channel02"})
         xs_channel03_datum = datum_factory({"column": "xs_id_mono_fly_channel03"})
