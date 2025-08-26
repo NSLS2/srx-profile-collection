@@ -31,7 +31,7 @@ from ophyd.sim import NullStatus
         "det_xs": {"default": "'xs'"},
     }
 })
-def xanes_plan(erange=[], estep=[], acqtime=1., samplename='', filename='',
+def xanes_plan(erange=[], estep=[], acqtime=1., samplename='',
                det_xs=xs, harmonic=1, detune=0, align=False, align_at=None,
                roinum=1, shutter=True, per_step=None, reverse=False,
                vlm_snapshot=False, snapshot_after=False):
@@ -40,7 +40,6 @@ def xanes_plan(erange=[], estep=[], acqtime=1., samplename='', filename='',
     estep  (list of floats): energy step size for each energy range in eV, e.g. estep = [2, 1, 5]
     acqtime (float): acqusition time to be set for both xspress3 and preamplifier
     samplename (string): sample name to be saved in the scan metadata
-    filename (string): filename to be added to the scan id as the text output filename
 
     det_xs (xs3 detector): the xs3 detector used for the measurement
     harmonic (odd integer): when set to 1, use the highest harmonic achievable automatically.
