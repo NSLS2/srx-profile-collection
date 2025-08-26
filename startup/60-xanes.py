@@ -790,6 +790,10 @@ class FlyerIDMono(Device):
             )
         ])
 
+        # grab the asset documents from all of the child detectors
+        for d in self.xs_detectors:
+            self._document_cache.extend(d.collect_asset_docs())
+
         self._last_bulk = {
             'descriptor': 'b7c06b62-f413-45c3-bd90-8ffffeb3345f',
             'uid': 'adcbc2c8-17d0-4688-b047-5d58eedd6f45',
@@ -1120,6 +1124,10 @@ class FlyerIDMono(Device):
 
 
     def collect_asset_docs(self):
+        yield from iter(list(self._document_cache))
+        self._document_cache.clear()
+    
+    def _collect_asset_docs(self):
         print(f"{print_now()}: before collecting asset docs from xs in collect_asset_docs")
         for xs_det in self.xs_detectors:
             yield from xs_det.collect_asset_docs()
