@@ -793,6 +793,10 @@ class FlyerIDMono(Device):
         for d in self.xs_detectors:
             self._document_cache.extend(d.collect_asset_docs())
 
+        export_sis_data(
+            self._sis, self.__write_filepath_sis, self._encoder
+        )
+
         self._last_bulk = {
             'descriptor': 'b7c06b62-f413-45c3-bd90-8ffffeb3345f',
             'uid': 'adcbc2c8-17d0-4688-b047-5d58eedd6f45',
@@ -829,7 +833,7 @@ class FlyerIDMono(Device):
         }
         # TODO: do we need filled here?
 
-        for d in self._dets:
+        for d in self.xs_detectors:
             reading = d.read()
             self._last_bulk["data"].update(
                 {k: v["value"] for k, v in reading.items()}
