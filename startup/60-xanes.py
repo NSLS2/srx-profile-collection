@@ -1182,7 +1182,7 @@ class FlyerIDMono(Device):
 
         # Make new PV values
         uRBV = np.linspace(Umin, Umax, N, dtype=float)
-        eRBV = u2e(uRBV).astype(float)
+        eRBV = np.round(u2e(uRBV)).astype(float)
 
         # Output
         if self.lut_u.write_access:
