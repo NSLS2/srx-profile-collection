@@ -11,13 +11,11 @@ from ophyd import (
     PseudoSingle,
 )
 from ophyd.utils import ReadOnlyError
-# from ophyd.utils.epics_pvs import set_and_wait  // deprecated
 from ophyd.pseudopos import pseudo_position_argument, real_position_argument
 from ophyd.positioner import PositionerBase
 from ophyd import Component as Cpt
 from ophyd.status import SubscriptionStatus
 
-# from scipy.interpolate import InterpolatedUnivariateSpline
 from scipy.interpolate import make_interp_spline
 import functools
 import math

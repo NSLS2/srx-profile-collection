@@ -14,11 +14,9 @@ import bluesky.plan_stubs as bps
 from bluesky.plan_stubs import mv
 from bluesky.preprocessors import (finalize_wrapper, subs_wrapper)
 from bluesky.utils import short_uid as _short_uid
-# from databroker import DataBroker as db
 from scipy.interpolate import make_interp_spline
 
 # From flying-undulator branch
-# from databroker import get_events
 from numpy.lib.stride_tricks import as_strided
 from ophyd.status import SubscriptionStatus
 from ophyd.sim import NullStatus
