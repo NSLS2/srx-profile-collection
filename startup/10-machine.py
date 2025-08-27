@@ -17,7 +17,8 @@ from ophyd.positioner import PositionerBase
 from ophyd import Component as Cpt
 from ophyd.status import SubscriptionStatus
 
-from scipy.interpolate import InterpolatedUnivariateSpline
+# from scipy.interpolate import InterpolatedUnivariateSpline
+from scipy.interpolate import make_interp_spline
 import functools
 import math
 from pathlib import Path
@@ -262,8 +263,8 @@ class Energy(PseudoPositioner):
                     uposlistIn.append(num[0])
                     elistIn.append(num[1])
 
-        self.etoulookup = InterpolatedUnivariateSpline(elistIn, uposlistIn)
-        self.utoelookup = InterpolatedUnivariateSpline(uposlistIn, elistIn)
+        self.etoulookup = make_interp_spline(elistIn, uposlistIn)
+        self.utoelookup = make_interp_spline(uposlistIn, elistIn)
 
         self.u_gap.gap.user_readback.name = self.u_gap.name
 

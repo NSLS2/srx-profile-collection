@@ -981,31 +981,28 @@ class FlyerIDMono(Device):
     def update_lut(self):
         # Make some assumptions:
         N = 20  # Number of points in LUT
-        # Let's assume that we calibrate from 6.5 mm gap to 12 mm gap
-        # These points would be true "calibration" points
-        Umin = 6.5 * 1000
-        Umax = 12 * 1000
-        ugap = np.linspace(Umin/1000, Umax/1000, num=12)
-        Ecal = energy.utoelookup(ugap)
+        # Define the "knot" values from the calibration
+        u_cal = energy.utoelookup.t
+        e_cal = energy.etoulookup.t
+        Umin = min(u_cal)
+        Umax = max(u_cal)
 
-        # Make a new spline fit, using the new way (not deprecated)
-        u2e = make_interp_spline(1000*ugap, 1000*Ecal)
+        # Define an easy variable to call
+        u2e = energy.utoelookup
 
         # Make new PV values
         uRBV = np.linspace(Umin, Umax, N, dtype=float)
-        eRBV = np.round(u2e(uRBV)).astype(float)
+        eRBV = u2e(uRBV).astype(float)
 
         # Output
         if self.lut_u.write_access:
-            self.lut_u.put(uRBV)
+            self.lut_u.put(uRBV*1000)
         else:
             print(f"No write access to LUT-Gap\n{uRBV=}")
         if self.lut_e.write_access:
-            self.lut_e.put(eRBV)
+            self.lut_e.put(eRBV*1000)
         else:
             print(f"No write access to LUT-Energy\n{eRBV=}")
-
-
 
 
 
