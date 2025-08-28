@@ -74,3 +74,6 @@ zz-dama.py
 
 # Queue Server temporary files
 startup/existing_plans_and_devices.yaml
+# pixi environments
+.pixi/*
+!.pixi/config.toml
