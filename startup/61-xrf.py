@@ -458,6 +458,7 @@ def nano_xrf(xstart, xstop, xstep,
     scan_md['scan']['type'] = 'XRF_STEP'
     scan_md['scan']['scan_input'] = [xstart, xstop, xstep, ystart, ystop, ystep, dwell]
     # scan_md['scan']['detectors'] = [d.name for d in dets]
+    scan_md['dwell'] = dwell
     scan_md['scan']['fast_axis'] = {'motor_name' : xmotor.name,
                                     'units' : xmotor.motor_egu.get()}
     scan_md['scan']['slow_axis'] = {'motor_name' : ymotor.name,
