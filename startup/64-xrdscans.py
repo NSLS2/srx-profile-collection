@@ -24,9 +24,9 @@ def setup_xrd_dets(dets,
             dwell = 0.007
         # According to Ken's comments in hxntools, this is a de-bounce time
         # when in external trigger mode
-        xrd.cam.stage_sigs['acquire_time'] = 0.75 * dwell  # - 0.0016392
-        xrd.cam.stage_sigs['acquire_period'] = 0.75 * dwell + 0.0016392
-        xrd.cam.stage_sigs['num_images'] = 1
+        xrd.cam.stage_sigs['acquire_time'] = 0.9*dwell - 0.002
+        xrd.cam.stage_sigs['acquire_period'] = 0.9*dwell
+        xrd.cam.stage_sigs['num_images'] = N_images
         xrd.stage_sigs['total_points'] = N_images
         xrd.hdf5.stage_sigs['num_capture'] = N_images
         del xrd
