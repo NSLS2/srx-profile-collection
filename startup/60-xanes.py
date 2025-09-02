@@ -243,6 +243,9 @@ def xanes_plan(erange=[], estep=[], acqtime=1., samplename='',
     return (yield from subs_wrapper(myscan, {'all' : livecallbacks,
                                              'start' : at_scan}))
 
+# Alias
+xas_step = xanes_plan
+
 
 def xanes_batch_plan(xypos=[], erange=[], estep=[], acqtime=1.0,
                      repeat_point=1, waittime=10, peakup_N=2, peakup_E=None):
