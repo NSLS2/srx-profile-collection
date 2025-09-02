@@ -56,7 +56,8 @@ class BulkMerlinDebug(BulkXspress):
 
 class MerlinFileStoreHDF5(FileStoreBase):
 
-    _spec = 'TPX_HDF5'
+    # _spec = 'TPX_HDF5'
+    _spec = 'AD_HDF5'
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
