@@ -3,6 +3,7 @@ print(f'Loading {__file__}...')
 
 import sys
 import functools
+import datetime
 from ophyd import EpicsSignal
 from ophyd.areadetector import (AreaDetector, ImagePlugin,
                                 TIFFPlugin, StatsPlugin,
@@ -30,13 +31,36 @@ class SRXAreaDetectorCam(AreaDetectorCam):
 
 
 class SRXCamera(SingleTrigger, AreaDetector):
-    def __init__(self, *args, root_path='/nsls2/data/srx/assets', **kwargs):
+
+
+    def __init__(self, *args, root_path=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.read_attrs = ['tiff', 'stats5']
         self.stats5.read_attrs = ['total']
-        self.tiff.write_path_template=f'{root_path}/{self.name}/%Y/%m/%d/'
-        self.tiff.read_path_template=f'{root_path}/{self.name}/%Y/%m/%d/'
-        self.tiff.reg_root=f'{root_path}/{self.name}'
+        
+        if root_path is None: # Post data security
+            self.tiff.write_path_template=self.path_start + self.path_template_str(self.root_path_str())
+            self.tiff.read_path_template=self.path_start + self.path_template_str(self.root_path_str())
+            self.tiff.reg_root=self.path_start + self.root_path_str()
+        else: # Pre data security
+            self.tiff.write_path_template=f'{root_path}/{self.name}/%Y/%m/%d/'
+            self.tiff.read_path_template=f'{root_path}/{self.name}/%Y/%m/%d/'
+            self.tiff.reg_root=f'{root_path}/{self.name}'
+
+    path_start = "/nsls2/data/srx/"
+
+    def root_path_str(self):
+        data_session = RE.md["data_session"]
+        cycle = RE.md["cycle"]
+        if "Commissioning" in get_proposal_type():
+            root_path = f"proposals/commissioning/{data_session}/assets/{self.name}/"
+        else:
+            root_path = f"proposals/{cycle}/{data_session}/assets/{self.name}/"
+        return root_path
+
+    def path_template_str(self, root_path):
+        path_template = "%Y/%m/%d/"
+        return root_path + path_template
 
     cam = Cpt(AreaDetectorCam, 'cam1:')
     image = Cpt(ImagePlugin, 'image1:')
@@ -74,7 +98,7 @@ def create_camera(pv, name, root_path='/nsls2/data/srx/assets'):
 hfm_cam = create_camera('XF:05IDA-BI:1{FS:1-Cam:1}', 'hfm_cam')
 bpmA_cam = create_camera('XF:05IDA-BI:1{BPM:1-Cam:1}', 'bpmA_cam')
 # nano_vlm = create_camera('XF:05ID1-ES{PG-Cam:1}', 'nano_vlm', root_path='/nsls2/data/srx/legacy')
-nano_vlm = create_camera('XF:05ID1-ES{PG-Cam:1}', 'nano_vlm', root_path='/nsls2/data/srx/proposals/commissioning/pass-318777')
+nano_vlm = create_camera('XF:05ID1-ES{PG-Cam:1}', 'nano_vlm', root_path=None)
 # hfvlm_AD = create_camera('XF:05IDD-BI:1{Mscp:1-Cam:1}', 'hfvlmAD', root_path='/nsls2/data/srx/legacy')
 camd01 = create_camera('XF:05IDD-BI:1{Mscp:1-Cam:1}', 'camd01', root_path='/nsls2/data/srx/legacy')
 if camd01 is not None:
