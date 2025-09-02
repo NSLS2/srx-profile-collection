@@ -221,7 +221,7 @@ class Energy(PseudoPositioner):
         harmonic : int, optional
             The harmonic to use, defaults to 3
         """
-        p = self.u_gap.get().readback
+        ugap = self.u_gap.gap.user_readback.get() / 1000
         utoelookup = self.utoelookup
 
         fundemental = float(utoelookup(ugap))
