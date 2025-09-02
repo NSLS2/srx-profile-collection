@@ -88,7 +88,8 @@ class MerlinFileStoreHDF5(FileStoreBase):
     def filestore_spec(self):
         if self.parent._mode is SRXMode.fly:
             return BulkMerlin.HANDLER_NAME
-        return 'TPX_HDF5'
+        # return 'TPX_HDF5'
+        return 'AD_HDF5'
 
     def generate_datum(self, key, timestamp, datum_kwargs):
         if self.parent._mode is SRXMode.fly:
