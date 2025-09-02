@@ -437,15 +437,15 @@ def export_merlin2tiff(scanid=-1, wd=None):
         "ymotor": {"default": "'hf_stage.sy'"},
     }
 })
-def nano_xrf(xstart, xstop, xstep,
-             ystart, ystop, ystep, dwell,
+def nano_xrf(xstart, xstop, xnum,
+             ystart, ystop, ynum, dwell,
              shutter=True, extra_dets=None,
              xmotor=nano_stage.sx, ymotor=nano_stage.sy, flag_snake=True,
              vlm_snapshot=False, snapshot_after=False, N_dark=0):
-
-    # calculate number of points
-    xnum = int(np.abs(np.round((xstop - xstart)/xstep)) + 1)
-    ynum = int(np.abs(np.round((ystop - ystart)/ystep)) + 1)
+    
+    # Check for negative number of points
+    if (xnum < 1 or ynum < 1):
+        raise ValueError('Number of points must be positive!')
 
     # Setup detectors
     if extra_dets is None:
@@ -456,7 +456,7 @@ def nano_xrf(xstart, xstop, xstep,
     scan_md = {}
     get_stock_md(scan_md)
     scan_md['scan']['type'] = 'XRF_STEP'
-    scan_md['scan']['scan_input'] = [xstart, xstop, xstep, ystart, ystop, ystep, dwell]
+    scan_md['scan']['scan_input'] = [xstart, xstop, xnum, ystart, ystop, ynum, dwell]
     # scan_md['scan']['detectors'] = [d.name for d in dets]
     scan_md['dwell'] = dwell
     scan_md['scan']['fast_axis'] = {'motor_name' : xmotor.name,
