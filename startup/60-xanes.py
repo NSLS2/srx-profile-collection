@@ -3,6 +3,9 @@ print(f'Loading {__file__}...')
 import itertools
 import collections
 from collections import deque
+import os
+import uuid
+import datetime
 
 import numpy as np
 import time as ttime
@@ -20,6 +23,7 @@ from scipy.interpolate import make_interp_spline
 from numpy.lib.stride_tricks import as_strided
 from ophyd.status import SubscriptionStatus
 from ophyd.sim import NullStatus
+from ophyd.areadetector.filestore_mixins import resource_factory
 
 # Kafka can throw a warning if the document is too large
 # Adding this is an attempt to prevent the document (really long) being output to screen
@@ -433,6 +437,38 @@ class FlyerIDMono(Device):
         self._array_size = {}
         self._datum_ids = []
 
+        self._document_cache = []
+        self._last_bulk = None
+
+    def root_path_str(self):
+        data_session = RE.md["data_session"]
+        cycle = RE.md["cycle"]
+        if "Commissioning" in get_proposal_type():
+            root_path = f"/nsls2/data/srx/proposals/commissioning/{data_session}/assets/"
+        else:
+            root_path = f"/nsls2/data/srx/proposals/{cycle}/{data_session}/assets/"
+        return root_path
+
+    def make_filename(self):
+        """Make a filename.
+        Taken/Modified from ophyd.areadetector.filestore_mixins
+        This is a hook so that the read and write paths can either be modified
+        or created on disk prior to configuring the areaDetector plugin.
+        Returns
+        -------
+        filename : str
+            The start of the filename
+        read_path : str
+            Path that ophyd can read from
+        write_path : str
+            Path that the IOC can write to
+        """
+        filename = f'{_short_uid()}.h5'
+        formatter = datetime.datetime.now().strftime
+        write_path = formatter(f'{self.root_path_str()}xspress3/%Y/%m/%d/')
+        read_path = formatter(f'{self.root_path_str()}xspress3/%Y/%m/%d/')
+        return filename, read_path, write_path
+
     def stage(self):
         # total_points = self.num_scans * self.num_triggers
         if self.num_triggers is None:
@@ -677,67 +713,138 @@ class FlyerIDMono(Device):
         status = SubscriptionStatus(self.status, callback)
         return status
 
-    def complete(self, *args, **kwargs):
-        if self.xs_detectors[0]._staged.value == 'no':
 
-            # Note: this is a way to stop the scan on the fly.
-            if self.flying_dev.parameters.num_scans.get() == 0:
-                self._continue_after_pausing = False
-                self.flying_dev.control.abort.put(1)
+    def complete(self):
+        # Yield a (partial) Event document. The RunEngine will put this
+        # into metadatastore, as it does all readings.
 
-            if self._continue_after_pausing:
-                self.stage()
-                self.flying_dev.parameters.scan_paused.put(0)
+        # Set mode and cleanup
+        self._mode = "complete"
+        
+        # Stop detectors
+        for d in self.xs_detectors:
+            d.stop(success=True)
 
-        def _complete_detectors():
-            # print(f"{print_now()} run 'complete' on detectors.")
-            # ttime.sleep(0.5)
-            for xs_det in self.xs_detectors:
-                # print(f"{print_now()} before erase in '_complete_detectors'.")
-                # xs_det.cam.erase.put(1)
-                # print(f"{print_now()} after erase in '_complete_detectors'.")
-                # print(f"{xs_det.name=}")
-                xs_det.complete()
-            # print(f"{print_now()} done with 'complete' on detectors.")
+        # Set filename/path for flyeridmono data
+        f, rp, wp = self.make_filename()
+        self.__filename = f
+        self.__read_filepath = os.path.join(rp, self.__filename)
+        # self.__write_filepath = os.path.join(wp, self.__filename)
+        # Set filename/path for scaler data
+        f, rp, wp = self.make_filename()
+        self.__filename_scaler = f
+        self.__read_filepath_scaler = os.path.join(rp, self.__filename_scaler)
+        self.__write_filepath_scaler = os.path.join(wp, self.__filename_scaler)
 
-        def callback_paused(value, old_value, **kwargs):
-            # print(f"{print_now()} 'callback_paused' in complete:  scan_paused: {old_value} ---> {value}")
-             # 1=Paused, 0=Not Paused
-            if int(round(old_value)) == 0 and int(round(value)) == 1:
-                _complete_detectors()
-                return True
-            return False
+        # Create resource factory and datum objects
+        self.__filestore_resource, datum_factory = resource_factory(
+            "XSP3",
+            root="/",
+            resource_path=self.__read_filepath,
+            resource_kwargs={},
+            path_semantics="posix",
+        )
+        self.__filestore_resource_scaler, datum_factory_scaler = resource_factory(
+            "SIS_HDF51",
+            root="/",
+            resource_path=self.__read_filepath_scaler,
+            resource_kwargs={},
+            path_semantics="posix",
+        )
+        
+        # Create datum objects for data references
+        energy_datum = datum_factory({"column": "energy"})
+        time_datum = datum_factory_scaler({"column": "i0_time"})
+        i0_datum = datum_factory_scaler({"column": "i0"})
+        im_datum = datum_factory_scaler({"column": "im"})
+        it_datum = datum_factory_scaler({"column": "it"})
+        xs_channel01_datum = datum_factory({"column": "xs_id_mono_fly_channel01"})
+        xs_channel02_datum = datum_factory({"column": "xs_id_mono_fly_channel02"})
+        xs_channel03_datum = datum_factory({"column": "xs_id_mono_fly_channel03"})
+        xs_channel04_datum = datum_factory({"column": "xs_id_mono_fly_channel04"})
+        xs_channel05_datum = datum_factory({"column": "xs_id_mono_fly_channel05"})
+        xs_channel06_datum = datum_factory({"column": "xs_id_mono_fly_channel06"})
+        xs_channel07_datum = datum_factory({"column": "xs_id_mono_fly_channel07"})
+        xs_channel08_datum = datum_factory({"column": "xs_id_mono_fly_channel08"})
 
-        def callback_all_scans_done(value, old_value, **kwargs):
-            # print(f"{print_now()} 'callback_all_scans_done' in complete:  current_scan: {old_value} ---> {value}")
-            if value == self.flying_dev.parameters.num_scans.get():  # last scan in the series, no pausing happens
-                # print("  Last scan in the series.")
-                _complete_detectors()
-                self.zebra.pc.disarm.put(1)
-                return True
-            return False
+        # Add resource and datums to document cache
+        self._document_cache.extend(
+            ("resource", d)
+            for d in (self.__filestore_resource, self.__filestore_resource_scaler)
+        )
+        self._document_cache.extend([
+            ("datum", d) for d in (
+                energy_datum,
+                time_datum,
+                i0_datum,
+                im_datum,
+                it_datum,
+                xs_channel01_datum,
+                xs_channel02_datum,
+                xs_channel03_datum,
+                xs_channel04_datum,
+                xs_channel05_datum,
+                xs_channel06_datum,
+                xs_channel07_datum,
+                xs_channel08_datum,
+            )
+        ])
 
-        current_scan = self.flying_dev.parameters.current_scan.get()
-        num_scans = self.flying_dev.parameters.num_scans.get()
+        # grab the asset documents from all of the child detectors
+        for d in self.xs_detectors:
+            self._document_cache.extend(d.collect_asset_docs())
 
-        if  current_scan + 1 < num_scans:  # last scan
-            status_paused = SubscriptionStatus(self.flying_dev.parameters.scan_paused, callback_paused, run=False)
-            return status_paused
-        elif current_scan + 1 == num_scans:
-            status_all_scans_done = SubscriptionStatus(self.flying_dev.parameters.current_scan, callback_all_scans_done, run=False)
-            return status_all_scans_done
-        else:
-            return NullStatus()
+        export_sis_data(
+            self.scaler, self.__write_filepath_scaler, self.zebra
+        )
 
-    # TODO: Fix the configuration (also for v2).
-    # def describe_configuration(self, *args, **kwargs):
-    #     ret = {}
-    #     for xs_det in self.xs_detectors:
-    #         ret[f'{xs_det}.name'] = xs_det.describe_configuration()
-    #     return ret
+        self._last_bulk = {
+            'time': ttime.time(),
+            'seq_num': 1,
+            'data': {
+                'energy': energy_datum["datum_id"],
+                'i0_time': time_datum["datum_id"],
+                'i0': i0_datum["datum_id"],
+                'im': im_datum["datum_id"],
+                'it': it_datum["datum_id"],
+                'xs_id_mono_fly_channel01': xs_channel01_datum["datum_id"],
+                'xs_id_mono_fly_channel02': xs_channel02_datum["datum_id"],
+                'xs_id_mono_fly_channel03': xs_channel03_datum["datum_id"],
+                'xs_id_mono_fly_channel04': xs_channel04_datum["datum_id"],
+                'xs_id_mono_fly_channel05': xs_channel05_datum["datum_id"],
+                'xs_id_mono_fly_channel06': xs_channel06_datum["datum_id"],
+                'xs_id_mono_fly_channel07': xs_channel07_datum["datum_id"],
+                'xs_id_mono_fly_channel08': xs_channel08_datum["datum_id"]},
+            'timestamps': {
+                'energy': time_datum["datum_id"],
+                'i0_time': time_datum["datum_id"],
+                'i0': time_datum["datum_id"],
+                'im': time_datum["datum_id"],
+                'it': time_datum["datum_id"],
+                'xs_id_mono_fly_channel01': time_datum["datum_id"],
+                'xs_id_mono_fly_channel02': time_datum["datum_id"],
+                'xs_id_mono_fly_channel03': time_datum["datum_id"],
+                'xs_id_mono_fly_channel04': time_datum["datum_id"],
+                'xs_id_mono_fly_channel05': time_datum["datum_id"],
+                'xs_id_mono_fly_channel06': time_datum["datum_id"],
+                'xs_id_mono_fly_channel07': time_datum["datum_id"],
+                'xs_id_mono_fly_channel08': time_datum["datum_id"]},
+        }
+        # TODO: do we need filled here?
+
+        #for d in self.xs_detectors:
+        #    reading = d.read()
+        #    self._last_bulk["data"].update(
+        #        {k: v["value"] for k, v in reading.items()}
+        #        )
+        #    self._last_bulk["timestamps"].update(
+        #        {k: v["timestamp"] for k, v in reading.items()}
+        #    )
+
+        return NullStatus()
 
     def describe_collect(self, *args, **kwargs):
-        # print(f"\n\n{print_now()}: describe_collect started")
+        print(f"\n\n{print_now()}: describe_collect started")
         return_dict = {}
         if True:
         # for scan_num in range(self.num_scans):
@@ -782,165 +889,30 @@ class FlyerIDMono(Device):
         import pprint
         # pprint.pprint(return_dict)
 
-        # print(f"\n\n{print_now()}: describe_collect ended")
+        print(f"\n\n{print_now()}: describe_collect ended")
 
         return return_dict
 
-    def collect(self, *args, **kwargs):
-
-        # TODO: test that feature.
-        if not self._continue_after_pausing:
-            return {}
-
-        energy_start = self._traj_info['energy_start']
-        energy_stop = self._traj_info['energy_stop']
-        num_triggers = self._traj_info['num_triggers']
-
-        # if len(self._datum_ids) != num_triggers:
-        #     raise RuntimeError(f"The number of collected datum ids ({self._datum_ids}) "
-        #                        f"does not match the number of triggers ({num_triggers})")
-
-        ttime.sleep(self.pulse_width + 0.1)
-
-        orig_read_attrs = self.scaler.read_attrs
-        self.scaler.read_attrs = ['mca1', 'mca2', 'mca3', 'mca4']
-        # print(orig_read_attrs)
-
-        total_points = self.num_scans * self.num_triggers
-
-        print(f"{print_now()}: before while loop in collect scaler data")
-        flag_collecting_data = 0
-        while (flag_collecting_data < 5):
-            scaler_mca_data = self.scaler.read()
-            i0_time = scaler_mca_data[f"{self.scaler.name}_mca1"]['value']
-            i0 = scaler_mca_data[f"{self.scaler.name}_mca2"]['value']
-            im = scaler_mca_data[f"{self.scaler.name}_mca3"]['value']
-            it = scaler_mca_data[f"{self.scaler.name}_mca4"]['value']
-
-            # print(f'{i0_time.shape[0]}\t?=\t{2*self.num_triggers}')
-            if i0_time.shape[0] == 2*self.num_triggers:
-                break
-            flag_collecting_data += 1
-            ttime.sleep(0.2)
-            # print(f'({flag_collecting_data+1}/5) Waiting to collect all scaler data...')
-        print(f"{print_now()}: after while loop in collect scaler data")
-
-        self.scaler.read_attrs = orig_read_attrs
-        # print(self.scaler.read_attrs)
-
-        # print(f"Length of 'i0_time': {len(i0_time)}")
-        # print(f"Length of 'i0'     : {len(i0)}")
-        # print(f"Length of 'im'     : {len(im)}")
-        # print(f"Length of 'it'     : {len(it)}")
-
-        i0_time = i0_time[1::2]
-        i0 = i0[1::2]
-        im = im[1::2]
-        it = it[1::2]
-
-        # print(f"Truncated length of 'i0_time': {len(i0_time)}")
-        # print(f"Truncated length of 'i0'     : {len(i0)}")
-        # print(f"Truncated length of 'im'     : {len(im)}")
-        # print(f"Truncated length of 'it'     : {len(it)}")
-
-        if len(i0_time) != len(i0) != len(im) != len(it):
-            # print(f'{len(i0_time)=}')
-            raise RuntimeError(f"Lengths of the collected arrays are not equal")
-        # print(f"{len(i0_time)=}")
-        # print(f"{num_triggers=}")
-        if len(i0_time) != num_triggers:
-            # I don't understand why I can't do this in a for-loop with a list
-            # for d in [i0_time, i0, im, it]:
-            #     d = np.concatenate((d, np.ones((num_triggers-len(d),))))
-            i0_time = np.concatenate((i0_time, np.ones((num_triggers-len(i0_time),))))
-            i0 = np.concatenate((i0, np.ones((num_triggers-len(i0),))))
-            im = np.concatenate((im, np.ones((num_triggers-len(im),))))
-            it = np.concatenate((it, np.ones((num_triggers-len(it),))))
-            # print(f'{len(i0_time)=}')
-
-        # print(f"{print_now()}: before unstage of xs in collect")
-
-        # Unstage xspress3 detector(s).
-        print(f"{print_now()}: before unstaging xs")
-        self.unstage()
-        print(f"{print_now()}: after unstaging xs")
-
-        # print(f"{print_now()}: after unstage of xs in collect")
-
-        # Deal with the direction of energies for bi-directional scan.
-        # BlueSky@SRX [27]: id_fly_device.control.scan_type.get(as_string=True)
-        # Out[27]: 'Bidirectional'
-
-        # BlueSky@SRX [28]: id_fly_device.control.scan_type.enum_strs
-        # Out[28]: ('Unidirectional', 'Bidirectional')
-
-        even_direction = np.linspace(energy_start, energy_stop, num_triggers)
-        odd_direction =  even_direction[::-1]
-
-        scan_type = self.flying_dev.control.scan_type.get(as_string=True)
-        current_scan = self.flying_dev.parameters.current_scan.get()
-        # print(f"{print_now()} the scan is {scan_type}; current scan: {current_scan}")
-
-        direction = even_direction
-        if scan_type == "Bidirectional":
-            if (current_scan + 1) % 2 == 1:  # at this point the current scan number is already incremented
-                direction = odd_direction
-                # print(f"{print_now()} reversing the energy axis: {direction[0]} --> {direction[-1]}")
-
-        # print(f"{print_now()}: In possible long loop...")
-        for ii, energy in enumerate(direction):
-            # print(f"  {print_now()}: {energy}")
-            for xs_det in self.xs_detectors:
-                # print(f"  {print_now()}: {xs_det.name}")
-                now = ttime.time()
-
-                data = {
-                    'energy': energy,
-                    'i0_time': i0_time[ii],
-                    'i0': i0[ii],
-                    'im': im[ii],
-                    'it': it[ii],
-                }
-                timestamps = {
-                    'energy': now,
-                    'i0_time': now,
-                    'i0': now,
-                    'im': now,
-                    'it': now,
-                }
-                filled = {}
-                for jj, channel in enumerate(xs_det.iterate_channels()):
-                    # print(f"  {print_now()}: {channel.name}")
-                    key = channel.name
-                    idx = jj + ii * len(xs_det.channel_numbers)
-                    timestamps[key] = now
-                    filled[key] = False
-                    try:
-                        # print(f"{xs_det._datum_ids=}")
-                        data[key] = xs_det._datum_ids[idx]
-                    except IndexError:
-                        print('Waiting 10 seconds for data from X3X...')
-                        ttime.sleep(10)
-                        try:
-                            data[key] = xs_det._datum_ids[idx]
-                        except IndexError:
-                            print('WARNING! X3X did not receive all the pulses!')
-                            print('         Continuing...')
-                            break  # It won't find anymore data so might as well break
-
-            yield {
-                'data': data,
-                'timestamps': timestamps,
-                'time': now,
-                'seq_num': ii,
-                'filled': filled,
-                'descriptor': 'scan_000',
-            }
-
-        print(f"{print_now()}: after docs emitted in collect")
-
+    def collect(self):
+        print(f"{print_now()}: begining of collect method") 
+        if self._last_bulk is None:
+            raise Exception(
+                "the order of complete and collect is brittle and out "
+                "of sync. This device relies on in-order and 1:1 calls "
+                "between complete and collect to correctly create and stash "
+                "the asset registry documents"
+            )
+        print(f"{print_now()}: collect method yield last_bulk, {self._last_bulk=}") 
+        yield self._last_bulk
+        self._last_bulk = None
+        self._mode = "idle"
+        print(f"{print_now()}: end of collect method") 
 
     def collect_asset_docs(self):
+        yield from iter(list(self._document_cache))
+        self._document_cache.clear()
+    
+    def _collect_asset_docs(self):
         print(f"{print_now()}: before collecting asset docs from xs in collect_asset_docs")
         for xs_det in self.xs_detectors:
             yield from xs_det.collect_asset_docs()
