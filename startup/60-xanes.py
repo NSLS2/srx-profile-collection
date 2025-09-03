@@ -763,15 +763,18 @@ class FlyerIDMono(Device):
                  #                     self._array_size['width']],
                  #           'external': 'FILESTORE:'}
                 }
+            
             for xs_det in self.xs_detectors:
                 # TODO
-                break
+                
                 # for channel in xs_det.channels.keys():
                 for channel in xs_det.iterate_channels():
                     return_dict[formatted_scan_num][f'{xs_det.name}_channel{channel.channel_number:02}'] = {'source': 'xspress3',
                                                                         'dtype': 'array',
                                                                         # The shape will correspond to a 1-D array of 4096 bins from xspress3.
                                                                         'shape': [
+                                                                                  # in multi-pass mode this is the number of pointsin one pass
+                                                                                  self.num_triggers,
                                                                                   # We don't need the total number of frames here.
                                                                                   # xs_det.settings.num_images.get(),
                                                                                   #
@@ -940,6 +943,7 @@ class FlyerIDMono(Device):
                 'i0': i0,
                 'im': im,
                 'it': it,
+                **{f'xs_id_mono_fly_channel{j+1:02d}': '' for j in range(8)}
             },
             'timestamps': {
                 'energy': now,
@@ -947,6 +951,7 @@ class FlyerIDMono(Device):
                 'i0': now,
                 'im': now,
                 'it': now,
+                **{f'xs_id_mono_fly_channel{j+1:02d}': now for j in range(8)}
             },
             'time': now,
             'seq_num': 1,
@@ -971,7 +976,6 @@ class FlyerIDMono(Device):
     def collect_asset_docs(self):
         print(f"{print_now()}: before collecting asset docs from xs in collect_asset_docs")
         for xs_det in self.xs_detectors:
-            break
             yield from xs_det.collect_asset_docs()
         print(f"{print_now()}: after collecting asset docs from xs in collect_asset_docs")
 
@@ -1326,6 +1330,7 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
     for fly in flyers:
         for flying_xs in fly.xs_detectors:
             d.append(flying_xs.name)
+            yield from bps.mv(flying_xs.fly_next, True)
     md['scan']['detectors'] = d
 
     livepopup = []
