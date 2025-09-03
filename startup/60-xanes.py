@@ -931,28 +931,28 @@ class FlyerIDMono(Device):
         #                     break  # It won't find anymore data so might as well break
 
 
-            now = ttime.time()
-            current_scan = self.flying_dev.parameters.current_scan.get()
-            yield {
-                'data': {
-                    'energy': direction,
-                    'i0_time': i0_time,
-                    'i0': i0,
-                    'im': im,
-                    'it': it,
-                },
-                'timestamps': {
-                    'energy': now,
-                    'i0_time': now,
-                    'i0': now,
-                    'im': now,
-                    'it': now,
-                },
-                'time': now,
-                'seq_num': 0,
-                'filled': {},
-                'descriptor': f"scan_{current_scan:03d}",
-            }
+        now = ttime.time()
+        current_scan = self.flying_dev.parameters.current_scan.get()
+        yield {
+            'data': {
+                'energy': direction,
+                'i0_time': i0_time,
+                'i0': i0,
+                'im': im,
+                'it': it,
+            },
+            'timestamps': {
+                'energy': now,
+                'i0_time': now,
+                'i0': now,
+                'im': now,
+                'it': now,
+            },
+            'time': now,
+            'seq_num': 1,
+            'filled': {},
+            'descriptor': f"scan_{current_scan:03d}",
+        }
 
             # print(f"{print_now()}: current_scan: {current_scan}")
 
@@ -971,6 +971,7 @@ class FlyerIDMono(Device):
     def collect_asset_docs(self):
         print(f"{print_now()}: before collecting asset docs from xs in collect_asset_docs")
         for xs_det in self.xs_detectors:
+            break
             yield from xs_det.collect_asset_docs()
         print(f"{print_now()}: after collecting asset docs from xs in collect_asset_docs")
 
