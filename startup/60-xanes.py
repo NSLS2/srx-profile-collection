@@ -447,6 +447,7 @@ class FlyerIDMono(Device):
             xs_det.spectra_per_point.put(1)
             xs_det.stage()
             xs_det.cam.acquire.put(1)
+            xs_det.mode = SRXMode.fly
 
         # Scaler config
         # self.scaler.count_mode.put(0)  # put SIS3820 into single count (not autocount) mode
