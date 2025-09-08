@@ -115,6 +115,8 @@ def xanes_plan(erange=[], estep=[], acqtime=1., samplename='',
     if vlm_snapshot:
         md_dets = md_dets + [nano_vlm]
     get_det_md(scan_md, md_dets)
+    # Fix for the exporter
+    scan_md['detectors'] = [det.name for det in md_dets]
 
     # Setup the scaler
     # TODO: Is there a better way to consider this?
@@ -235,13 +237,14 @@ def xanes_plan(erange=[], estep=[], acqtime=1., samplename='',
         yield from mod_list_scan(det, energy, list(ept), per_step=per_step, run_agnostic=True)
 
     # myscan = mod_list_scan(det, energy, list(ept), per_step=per_step, md=scan_md)
-    myscan = finalize_wrapper(myscan, finalize_scan)
+    # myscan must be called to return the generators
+    myscan = finalize_wrapper(myscan(), finalize_scan)
 
     # Open B shutter
     yield from check_shutters(shutter, 'Open')
 
     return (yield from subs_wrapper(myscan, {'all' : livecallbacks,
-                                             'start' : at_scan}))
+                                               'start' : at_scan}))
 
 # Alias
 xas_step = xanes_plan
