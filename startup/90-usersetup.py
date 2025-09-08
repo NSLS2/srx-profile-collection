@@ -137,11 +137,11 @@ def get_det_md(scan_md, dets):
         elif name == 'nano_vlm':
             det_dict['cross_position_x'] = det.over.overlay_1.position_x.get() # Crosshair position x
             det_dict['cross_position_y'] = det.over.overlay_1.position_y.get() # Crosshair position x
-        elif name == 'xbpm2':
-            pass # Nothing to add
         elif name == 'nanoZebra':
             # Is there a better way to get this information??
             det_dict['mode'] = det.pc.gate_source.get(as_string=True) # Position or time?
+        elif name in ['ring_current', 'xbpm2', 'dcm_c2_pitch', 'bpm4']:
+            pass # Nothing to add
         else:
             note_str = ('NOTE: Standard detector metadata has not yet be '
                         + f'implemented for {name}.')
