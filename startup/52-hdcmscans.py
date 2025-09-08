@@ -449,15 +449,15 @@ def smart_peakup(start=None,
            }
     _md = get_stock_md(_md)
     _md['scan']['type'] = 'PEAKUP'
-    _md['scan']['detectors'] = [det.name for det in detectors]
+    # _md['scan']['detectors'] = [det.name for det in detectors]
     _md['scan']['motors'] = [motor.name]
-    _md['sca']['plan_args'] = {
+    _md['scan']['plan_args'] = {
                          'start': start,
                          'min_step': min_step,
                          'max_step': max_step,
                          }
     _md.update(md or {})
-    get_det_md(_md, [detectors])
+    get_det_md(_md, list(detectors))
 
     try:
         dimensions = [(motor.hints['fields'], 'primary')]
