@@ -235,6 +235,7 @@ def energy_rocking_curve(e_low,
     #     if shutter: # Conditional check ot avoid banner
     #         yield from check_shutters(shutter, 'Close')
 
+    # Plan must be called to return the generators
     yield from subs_wrapper(plan(), {'all' : livecallbacks})
 
     # Reset xs and sclr1
@@ -486,6 +487,7 @@ def angle_rocking_curve(th_low,
     #     if shutter: # Conditional check ot avoid banner
     #         yield from check_shutters(shutter, 'Close')
 
+    # Plan must be called to return the generators
     yield from subs_wrapper(plan(), {'all' : livecallbacks})
 
     # Reset xs and sclr1
