@@ -324,17 +324,17 @@ def align_diamond_aperture(dwell=0.1,
     }
 })
 def ra_smart_peakup(start=None,
-                 min_step=0.005,
-                 max_step=0.50,
-                 *,
-                 shutter=True,
-                 motor=dcm.c2_fine,
-                 detectors=[dcm.c2_pitch, bpm4, xbpm2],
-                 target_fields=['bpm4_total_current', 'xbpm2_sumT'],
-                 MAX_ITERS=100,
-                 md=None,
-                 stream_name=None,
-                 verbose=False):
+                    min_step=0.005,
+                    max_step=0.50,
+                    *,
+                    shutter=True,
+                    motor=dcm.c2_fine,
+                    detectors=[dcm.c2_pitch, bpm4, xbpm2],
+                    target_fields=['bpm4_total_current', 'xbpm2_sumT'],
+                    MAX_ITERS=100,
+                    md=None,
+                    stream_name=None,
+                    verbose=False):
     """
     Quickly optimize X-ray flux into the SRX D-hutch based on
     measurements from two XBPMs.
@@ -430,15 +430,15 @@ def ra_smart_peakup(start=None,
            }
     _md = get_stock_md(_md)
     _md['scan']['type'] = 'PEAKUP'
-    _md['scan']['detectors'] = [det.name for det in detectors]
+    # _md['scan']['detectors'] = [det.name for det in detectors]
     _md['scan']['motors'] = [motor.name]
-    _md['sca']['plan_args'] = {
+    _md['scan']['plan_args'] = {
                          'start': start,
                          'min_step': min_step,
                          'max_step': max_step,
                          }
     _md.update(md or {})
-    get_det_md(_md, [detectors])
+    get_det_md(_md, list(detectors))
 
     try:
         dimensions = [(motor.hints['fields'], stream_name)]
@@ -452,6 +452,9 @@ def ra_smart_peakup(start=None,
     if verbose is False:
         livecb.append(LiveTable([motor.readback.name] + target_fields))
 
+    @bpp.stage_decorator(list(detectors) + [motor])
+    @agnostic_run_decorator(not RUN_WRAPPER, md=md)
+    @bpp.subs_decorator(livecb)
     def smart_max_core(x0):
         # Optimize on a given detector
         def optimize_on_det(target_field, x0):
@@ -514,25 +517,32 @@ def ra_smart_peakup(start=None,
             if verbose:
                 print(f'Optimizing on detector {target_field}')
             x0 = yield from optimize_on_det(target_field, x0)
+        
+        # if RUN_WRAPPER:
+        #     # Clear descripter cache
+        #     for det in detectors:
+        #         yield Msg("clear_describe_cache", det)
     
-    # Open and close run, or append to other run
-    if RUN_WRAPPER:
-        @bpp.stage_decorator(list(detectors) + [motor])
-        @bpp.run_decorator(md=_md)
-        @bpp.subs_decorator(livecb)
-        def plan(start):
-            yield from smart_max_core(start)
-    else:
-        @bpp.stage_decorator(list(detectors) + [motor])
-        @bpp.subs_decorator(livecb)
-        def plan(start):
-            yield from smart_max_core(start)
+    # # Open and close run, or append to other run
+    # if RUN_WRAPPER:
+    #     @bpp.stage_decorator(list(detectors) + [motor])
+    #     @bpp.run_decorator(md=_md)
+    #     @bpp.subs_decorator(livecb)
+    #     def plan(start):
+    #         yield from smart_max_core(start)
+    # else:
+    #     @bpp.stage_decorator(list(detectors) + [motor])
+    #     @bpp.subs_decorator(livecb)
+    #     def plan(start):
+    #         yield from smart_max_core(start)
 
-            # Clear descripter cache
-            for det in detectors:
-                yield Msg("clear_describe_cache", det)
+    #         # Clear descripter cache
+    #         for det in detectors:
+    #             yield Msg("clear_describe_cache", det)
 
-    return (yield from plan(start))
+
+    # return (yield from plan(start))
+    return (yield from smart_max_core(start))
 
 
 
