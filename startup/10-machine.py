@@ -370,16 +370,16 @@ class Energy(PseudoPositioner):
         self.move(self.energy.get()[0])
 
 
-cal_data_2025cycle2 = {
-    "d_111": 3.128772961356219,
-    "delta_bragg": 0.23503805521932658,
+cal_data_2025cycle3 = {
+    "d_111": 3.128815117594077,
+    "delta_bragg": 0.23243539967445323,
     "C2Xcal": 3.6,
     "T2cal": 15.0347755916,
     "xoffset": 24.65,
 }
 
 # print('Connecting to energy PVs...')
-energy = Energy(prefix="", name="energy", **cal_data_2025cycle2)
+energy = Energy(prefix="", name="energy", **cal_data_2025cycle3)
 energy.wait_for_connection()
 energy.synch_with_epics()
 energy.value = 1.0
