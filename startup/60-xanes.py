@@ -775,7 +775,7 @@ class FlyerIDMono(Device):
                                                                         # The shape will correspond to a 1-D array of 4096 bins from xspress3.
                                                                         'shape': [
                                                                                   # in multi-pass mode this is the number of pointsin one pass
-                                                                                  self.num_triggers,
+                                                                                  # self.num_triggers,
                                                                                   # We don't need the total number of frames here.
                                                                                   # xs_det.settings.num_images.get(),
                                                                                   #
@@ -944,7 +944,7 @@ class FlyerIDMono(Device):
                 'i0': i0,
                 'im': im,
                 'it': it,
-                **{f'xs_id_mono_fly_channel{j+1:02d}': '' for j in range(8)}
+                **{f'xs_id_mono_fly_channel{j+1:02d}': self.xs_detectors[0]._datum_ids[j] for j in range(8)}
             },
             'timestamps': {
                 'energy': now,
@@ -956,7 +956,7 @@ class FlyerIDMono(Device):
             },
             'time': now,
             'seq_num': 1,
-            'filled': {},
+            'filled': {f'xs_id_mono_fly_channel{j+1:02d}': False for j in range(8)},
             'descriptor': f"scan_{current_scan:03d}",
         }
 
