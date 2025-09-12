@@ -399,6 +399,11 @@ class FlyerIDMono(Device):
         self.flying_dev = flying_dev
         self.zebra = zebra
         self.xs_detectors = xs_detectors
+        
+        # TODO: Check this.
+        for det in self.xs_detectors:
+            det.mode = SRXMode.fly
+        
         self.scaler = scaler
         self._staging_delay = 0.010
 
@@ -447,7 +452,7 @@ class FlyerIDMono(Device):
             xs_det.spectra_per_point.put(1)
             xs_det.stage()
             xs_det.cam.acquire.put(1)
-            xs_det.mode = SRXMode.fly
+            #xs_det.mode = SRXMode.fly
 
         # Scaler config
         # self.scaler.count_mode.put(0)  # put SIS3820 into single count (not autocount) mode
