@@ -124,6 +124,7 @@ def scanderive(xaxis, yaxis, ax, xlabel='', ylabel='', title='', edge_ind=None):
 
 
 def find_edge(scanid, use_xrf=True, element='', norm_key="i0"):
+
     # Allow for step or fly scans
     h = c[scanid]
     if "XAS_STEP" in h.start["scan"]["type"]:
@@ -136,33 +137,65 @@ def find_edge(scanid, use_xrf=True, element='', norm_key="i0"):
             i0 = tbl["sclr_im"].read()
         else:
             raise KeyError(f"{norm_key} not recognized!")
-        if use_xrf is False:
-            it = tbl["sclr_it"].read()
-    else:
+        # XRF
+        if use_xrf:
+            xrf = np.sum([tbl[f"xs_channel0{ind}_fluor"] for ind in range(1, 8)], axis=0)
+        else:
+            it = tbl["sclr_it"].read().astype(float)
+    elif "XAS_FLY" in h.start["scan"]["type"]:
         tbl = h["scan_001"]["data"]
         energypoints = tbl["energy"].read()
+        if 'energy_bragg' in tbl:
+            braggpoints = tbl["energy_bragg"].read()
+        else:
+            warn_str = ('WARNING: Bragg was not found for XAS_FLY scanning. Back-calculating Bragg '
+                       + 'from recorded energy components using the current id_fly_device hdcm_parameters.')
+            print(warn_str)
+            d111 = id_fly_device.hdcm_parameters.d111.get()
+            delta_bragg = id_fly_device.hdcm_parameters.delta_bragg.get()
+            braggpoints = (np.arcsin((ANG_OVER_EV / (energypoints / 1e3)) / (2 * d111)) / np.pi * 180 - delta_bragg)
+
         if "i0" in norm_key.lower():
             i0 = tbl["i0"].read()
         elif "im" in norm_key.lower():
             i0 = tbl["im"].read()
         else:
             raise KeyError(f"{norm_key} not recognized!")
-        if use_xrf is False:
-            it = tbl["it"].read()
+        # XRF
+        if use_xrf:
+            xrf = np.sum([tbl[f"xs_id_mono_fly_channel0{ind}"] for ind in range(1, 8)], axis=0)
+        else:
+            it = tbl["it"].read().astype(float)
+    else:
+        raise TypeError(f'Scan of {h.start["scan"]["type"]} not supported for Bragg calibration.')
 
-    if use_xrf is False:
-        tau = it / i0
+    # Parse down to ROI
+    if use_xrf:
+        if element == '':
+            raise ValueError('Please send the element name')
+
+        el_line = getemissionE(element, 'ka1')
+        el_slice = slice(int(el_line * 1e2) - 10, int(el_line * 1e2) + 10)
+        mu = np.sum(xrf[:, el_slice], axis=1, dtype=float)
+        mu /= i0.astype(float)
+    else:
+        tau = it / i0.astype(float)
         norm_tau = (tau - tau[0]) / (tau[-1] - tau[0])
         mu = -1 * np.log(np.abs(norm_tau))
-    else:
-        if (element == ''):
-            raise ValueError('Please send the element name')
-        else:
-            mu = np.zeros((tbl["xs_channel01_mcaroi01_total_rbv"].shape))
-            for i in range(1, 8):
-                ch_name = f"xs_channel{i:02}_mcaroi01_total_rbv"
-                mu += tbl[ch_name].read()
-            mu /= i0
+
+    # if use_xrf is False:
+    #     tau = it / i0
+    #     norm_tau = (tau - tau[0]) / (tau[-1] - tau[0])
+    #     mu = -1 * np.log(np.abs(norm_tau))
+    # else:
+    #     if (element == ''):
+    #         raise ValueError('Please send the element name')
+    #     else:
+    #         mu = np.zeros((tbl["xs_channel01_mcaroi01_total_rbv"].shape))
+    #         for i in range(1, 8):
+    #             ch_name = f"xs_channel{i:02}_mcaroi01_total_rbv"
+    #             mu += tbl[ch_name].read()
+    #         mu /= i0
 
     fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2)
     fig.suptitle(element)
@@ -544,6 +577,10 @@ def plot_all_peakup(scanid=-1):
     if 'xbpm2_sumT' in ds_keys:
         ax.plot(x[arg_sort],
                 normalize_y(ds['xbpm2_sumT'][:], norm_min=0.024)[arg_sort],
+                label='XBPM-2')
+    if 'xbpm2_total_current' in ds_keys:
+        ax.plot(x[arg_sort],
+                normalize_y(ds['xbpm2_total_current'][:], norm_min=-0.01531)[arg_sort],
                 label='XBPM-2')
     if 'sclr_i0' in ds_keys:
         ax.plot(x[arg_sort], normalize_y(ds['sclr_i0'])[arg_sort], label='I0')

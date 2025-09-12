@@ -59,6 +59,7 @@ def undulator_calibration(
     bragg_scanpoint = (np.floor((2 * bragg_scanwidth) / (energy_res)) + 1).astype('int')
 
     energy.harmonic.put(harmonic)
+    energy._low = 4.2
 
     # Generate lookup table by scanning Bragg at each undulator gap set point
     for u_gap_setpoint in np.arange(u_gap_start,
@@ -113,6 +114,7 @@ def undulator_calibration(
     
     # Return moving u_gap
     yield from mov(energy.move_u_gap, True)
+    energy._low = 4.4
 
 def max_Ugap(set_offset=True, shutter=True):
     # Assuming current gap is the calculated gap

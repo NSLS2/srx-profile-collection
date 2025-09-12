@@ -14,9 +14,16 @@ def ssa_hcen_scan(start, stop, num,
         ax.cla()
         return fig, ax
 
+    if "xbpm2_sumX" in xbpm2.read_attrs:
+        key = "xbpm2_sumX"
+    elif "total_current" in xbpm2.read_attrs:
+        key = "xbpm2_total_current"
+    else:
+        raise KeyError
+
     liveplotx = 'slt_ssa_h_cen_readback'
-    liveploty = 'xbpm2_sumX'
-    livetableitem = [liveplotx, 'xbpm2_sumX']
+    liveploty = key  # 'xbpm2_sumX'
+    livetableitem = [liveplotx, liveploty]
     plotme = HackLivePlot(liveploty, x=liveplotx,
                           fig_factory=partial(my_factory, name='SSA Slit Scan'))
     livecallbacks = [LiveTable(livetableitem),
@@ -60,10 +67,16 @@ def ssa_hcen_scan_fit_data(scanuid,
     id_str = c[uid].start['scan_id']
     tbl = c[uid]["primary"]["data"]
 
+    if "xbpm2_sumX" in xbpm2.read_attrs:
+        key = "xbpm2_sumX"
+    elif "total_current" in xbpm2.read_attrs:
+        key = "xbpm2_total_current"
+    else:
+        raise KeyError
 
     # Get the data
     x_key = 'slt_ssa_h_cen_readback'
-    y_key = 'xbpm2_sumX'
+    y_key = key
     x = tbl[x_key].read()
     y = tbl[y_key].read()
     dydx = np.gradient(y, x)
@@ -111,12 +124,19 @@ def measure_SSA_FWHM():
     # TODO: Make the plots correctly
     # Currently, it will make the plot, but non-interactive
     # Also, try to fit intersection of 0.5 and normalized data, dd
+    if "xbpm2_sumX" in xbpm2.read_attrs:
+        key = "xbpm2_sumX"
+    elif "total_current" in xbpm2.read_attrs:
+        key = "xbpm2_total_current"
+    else:
+        raise KeyError
+
     uid = yield from subs_wrapper(scan([xbpm2], slt_ssa.h_gap, 0, 0.2, 41),
-                                  LivePlot('xbpm2_sumX', x='slt_ssa_h_gap_readback'))
+                                  LivePlot(key, x='slt_ssa_h_gap_readback'))
 
     tbl = c[uid]["primary"]["data"]
     x = tbl["slt_ssa_h_gap_readback"].read()
-    d = tbl["xbpm2_sumT"].read()
+    d = tbl[key].read()
     dd = (d - np.amin(d)) / (np.amax(d) - np.amin(d))
 
     fig, ax = plt.subplots()

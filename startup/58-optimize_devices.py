@@ -177,7 +177,8 @@ def optimize_scalers(dwell=0.5,
         # Optimize offsets
         # Close shutters
         yield from check_shutters(shutter, 'Close')
-        yield from bps.sleep(settle_time)
+        print('extra wait')
+        yield from bps.sleep(10 + settle_time)
 
         # Take baseline measurement without offsets
         yield Msg('checkpoint')
@@ -195,16 +196,19 @@ def optimize_scalers(dwell=0.5,
             if val > 1: # slightly more than zero
                 direction_signs.append(1)
                 yield from bps.mv(preamps[idx].offset_sign, 0)
+                yield from bps.sleep(settle_time)
                 # print(f'{channel_names[idx]} is positive')
             else:
                 direction_signs.append(-1)
                 yield from bps.mv(preamps[idx].offset_sign, 1)
+                yield from bps.sleep(settle_time)
 
         yield Msg('save')
 
         # Turn offsets back on
         for idx in range(len(preamps)):
             yield from bps.mv(preamps[idx].offset_on, 1)
+            yield from bps.sleep(settle_time)
 
         # Iterate through combinations
         opt_off = [False,] * len(preamps)
@@ -243,11 +247,13 @@ def optimize_scalers(dwell=0.5,
                     if (val > 1 and direction_signs[idx] == 1):
                         # Flip offset sign, while off for safety
                         yield from bps.mv(preamps[idx].offset_sign, 1)
+                        yield from bps.sleep(settle_time)
                         # print(f'Cond 1: Flipping offset sign for {preamps[idx].name}')
 
                     elif (val <= 1 and direction_signs[idx] == -1):
                         # Flip offset sign, while off for safety
                         yield from bps.mv(preamps[idx].offset_sign, 0)
+                        yield from bps.sleep(settle_time)
                         # print(f'Cond 2 : Flipping offset sign for {preamps[idx].name}')          
                     continue
                 
