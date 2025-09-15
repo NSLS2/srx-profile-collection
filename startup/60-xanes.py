@@ -1333,6 +1333,7 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
         # yield from check_shutters(shutter, 'Open')
         uid = yield from bps.open_run(md)
         yield from mv(sclr1.count_mode, 0)
+        yield from mv(energy, e_start)
         # Wait for scaler to be "done"
         yield from bps.sleep(2)  # TODO: THIS SHOULD BE SMARTER!
         yield from bps.mov(sclr1.erase_all, 1)
