@@ -122,9 +122,16 @@ def max_Ugap(set_offset=True, shutter=True):
 
     yield from check_shutters(shutter, 'Open')
 
-    ps = PeakStats("energy_u_gap", "xbpm2_sumX")
-    live_cb = [LiveTable(["energy_u_gap", "xbpm2_sumX"]),
-               LivePlot("xbpm2_sumX", x="energy_u_gap"),
+    if "xbpm2_sumX" in xbpm2.read_attrs:
+        key = "xbpm2_sumX"
+    elif "total_current" in xbpm2.read_attrs:
+        key = "xbpm2_total_current"
+    else:
+        raise KeyError
+
+    ps = PeakStats("energy_u_gap", key)
+    live_cb = [LiveTable(["energy_u_gap", key]),
+               LivePlot(key, x="energy_u_gap"),
                ps]
     @subs_decorator(live_cb)
     def plan():
