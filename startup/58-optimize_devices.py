@@ -193,7 +193,7 @@ def optimize_scalers(dwell=0.5,
         for idx in range(len(preamps)):
             val = ch_vals[channel_names[idx]]['value']
             # Find and set offset sign
-            if val > 1: # slightly more than zero
+            if val > 10: # slightly more than zero
                 direction_signs.append(1)
                 yield from bps.mv(preamps[idx].offset_sign, 0)
                 yield from bps.sleep(settle_time)
