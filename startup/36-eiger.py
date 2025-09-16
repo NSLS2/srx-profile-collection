@@ -244,8 +244,18 @@ class SRXEigerDetector(HxnModalTrigger, EigerDetector):
 #         cam.stage_sigs[cam.trigger_mode] = 3  # 'External Enable'
 
 
-eiger1 = SRXEigerDetector('XF:05IDD-ES{Det:Eig1M}', name='eiger1',
-                            image_name='eiger1',
-                            read_attrs=['hdf5', 'cam', 'stats1'])
-eiger1.hdf5.read_attrs = []
-eiger1.cam.auto_summation.set('Enable')
+
+try:
+    eiger1 = SRXEigerDetector('XF:05IDD-ES{Det:Eig1M}', name='eiger1',
+                              image_name='eiger1',
+                              read_attrs=['hdf5', 'cam', 'stats1'])
+    eiger1.hdf5.read_attrs = []
+    eiger1.cam.auto_summation.set('Enable')
+    if np.array(eiger1.cam.array_size.get()).sum() == 0:
+        print("  Warmup...", end="", flush=True)
+        eiger1.hdf5.warmup()
+        print("done")
+except TimeoutError:
+    print(f'\nCannot connect to eiger1. Continuing without device.\n')
+except Exception as ex:
+    print(ex, end='\n\n')
