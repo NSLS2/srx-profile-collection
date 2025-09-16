@@ -102,7 +102,9 @@ def scanderive(xaxis, yaxis, ax, xlabel='', ylabel='', title='', edge_ind=None):
     dyaxis = np.gradient(yaxis, xaxis)
 
     if edge_ind is None:
-        edge_ind = dyaxis.argmin()
+        # edge_ind = dyaxis.argmin()
+        # Hack to remove endpoints by EJM on 20250915
+        edge_ind = dyaxis[1:-1].argmin() + 1
 
     edge = xaxis[edge_ind]
     # if xaxis[-1] < 1000:
