@@ -156,14 +156,16 @@ def plot_knife_edge(scanid=-1, fluor_key='xs_fluor', use_trans=False, normalize=
     x = ds[pos].read().squeeze().astype(np.float64)
     dydx = np.gradient(y, x)
 
+    # EJM better guess
     p_guess = [0.5*np.amax(y),
-               0.500,
-               x[np.argmax(y)] - 1.0,
+               0.500 / 2.3548, # 500 nm fwhm to sigma
+               x[np.argmax(dydx)],
                np.amin(y),
                -0.5*np.amax(y),
-               0.500,
-               x[np.argmax(y)] + 1.0,
+               0.500 / 2.3548, # 500 nm fwhm to sigma
+               x[np.argmin(dydx)],
                np.amin(y)]
+
     try:
         # popt, _ = curve_fit(f_offset_erf, x, y, p0=p_guess)
         popt, _ = curve_fit(f_two_erfs, x, y, p0=p_guess)
