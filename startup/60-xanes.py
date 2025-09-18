@@ -399,6 +399,11 @@ class FlyerIDMono(Device):
         self.flying_dev = flying_dev
         self.zebra = zebra
         self.xs_detectors = xs_detectors
+        
+        # TODO: Check this.
+        for det in self.xs_detectors:
+            det.mode = SRXMode.fly
+        
         self.scaler = scaler
         self._staging_delay = 0.010
 
@@ -447,6 +452,7 @@ class FlyerIDMono(Device):
             xs_det.spectra_per_point.put(1)
             xs_det.stage()
             xs_det.cam.acquire.put(1)
+            #xs_det.mode = SRXMode.fly
 
         # Scaler config
         # self.scaler.count_mode.put(0)  # put SIS3820 into single count (not autocount) mode
@@ -748,29 +754,33 @@ class FlyerIDMono(Device):
             formatted_scan_num = f"scan_{current_scan:03d}"
             return_dict[formatted_scan_num] = \
                 {'energy': {'source': self.flying_dev.name,
-                            'dtype': 'number',
+                            'dtype': 'array',
                             # We need just 1 scalar value for the energy.
                             # 'shape': [self._traj_info['num_triggers']]},
                             # TODO: double-check the shape is right for databroker v2.
-                            'shape': []},
-                 'i0_time': {'source': 'scaler', 'dtype': 'array', 'shape': []},
-                 'i0': {'source': 'scaler', 'dtype': 'array', 'shape': []},
-                 'im': {'source': 'scaler', 'dtype': 'array', 'shape': []},
-                 'it': {'source': 'scaler', 'dtype': 'array', 'shape': []},
+                            'shape': [self.num_triggers]},
+                 'i0_time': {'source': 'scaler', 'dtype': 'array', 'shape': [self.num_triggers]},
+                 'i0': {'source': 'scaler', 'dtype': 'array', 'shape': [self.num_triggers]},
+                 'im': {'source': 'scaler', 'dtype': 'array', 'shape': [self.num_triggers]},
+                 'it': {'source': 'scaler', 'dtype': 'array', 'shape': [self.num_triggers]},
                  # f'{self.detector.name}_image': {'source': '...',
                  #           'dtype': 'array',
                  #           'shape': [self._array_size['height'],
                  #                     self._array_size['width']],
                  #           'external': 'FILESTORE:'}
                 }
-
+            
             for xs_det in self.xs_detectors:
+                # TODO
+                
                 # for channel in xs_det.channels.keys():
                 for channel in xs_det.iterate_channels():
                     return_dict[formatted_scan_num][f'{xs_det.name}_channel{channel.channel_number:02}'] = {'source': 'xspress3',
                                                                         'dtype': 'array',
                                                                         # The shape will correspond to a 1-D array of 4096 bins from xspress3.
                                                                         'shape': [
+                                                                                  # in multi-pass mode this is the number of pointsin one pass
+                                                                                  # self.num_triggers,
                                                                                   # We don't need the total number of frames here.
                                                                                   # xs_det.settings.num_images.get(),
                                                                                   #
@@ -887,55 +897,84 @@ class FlyerIDMono(Device):
                 direction = odd_direction
                 # print(f"{print_now()} reversing the energy axis: {direction[0]} --> {direction[-1]}")
 
+
         # print(f"{print_now()}: In possible long loop...")
-        for ii, energy in enumerate(direction):
-            # print(f"  {print_now()}: {energy}")
-            for xs_det in self.xs_detectors:
-                # print(f"  {print_now()}: {xs_det.name}")
-                now = ttime.time()
+        # for ii, energy in enumerate(direction):
+        #     # print(f"  {print_now()}: {energy}")
+        #     for xs_det in self.xs_detectors:
+        #         # print(f"  {print_now()}: {xs_det.name}")
+        #         now = ttime.time()
 
-                data = {
-                    'energy': energy,
-                    'i0_time': i0_time[ii],
-                    'i0': i0[ii],
-                    'im': im[ii],
-                    'it': it[ii],
-                }
-                timestamps = {
-                    'energy': now,
-                    'i0_time': now,
-                    'i0': now,
-                    'im': now,
-                    'it': now,
-                }
-                filled = {}
-                for jj, channel in enumerate(xs_det.iterate_channels()):
-                    # print(f"  {print_now()}: {channel.name}")
-                    key = channel.name
-                    idx = jj + ii * len(xs_det.channel_numbers)
-                    timestamps[key] = now
-                    filled[key] = False
-                    try:
-                        # print(f"{xs_det._datum_ids=}")
-                        data[key] = xs_det._datum_ids[idx]
-                    except IndexError:
-                        print('Waiting 10 seconds for data from X3X...')
-                        ttime.sleep(10)
-                        try:
-                            data[key] = xs_det._datum_ids[idx]
-                        except IndexError:
-                            print('WARNING! X3X did not receive all the pulses!')
-                            print('         Continuing...')
-                            break  # It won't find anymore data so might as well break
+        #         data = {
+        #             'energy': energy,
+        #             'i0_time': i0_time[ii],
+        #             'i0': i0[ii],
+        #             'im': im[ii],
+        #             'it': it[ii],
+        #         }
+        #         timestamps = {
+        #             'energy': now,
+        #             'i0_time': now,
+        #             'i0': now,
+        #             'im': now,
+        #             'it': now,
+        #         }
+        #         filled = {}
+        #         for jj, channel in enumerate(xs_det.iterate_channels()):
+        #             # print(f"  {print_now()}: {channel.name}")
+        #             key = channel.name
+        #             idx = jj + ii * len(xs_det.channel_numbers)
+        #             timestamps[key] = now
+        #             filled[key] = False
+        #             try:
+        #                 # print(f"{xs_det._datum_ids=}")
+        #                 data[key] = xs_det._datum_ids[idx]
+        #             except IndexError:
+        #                 print('Waiting 10 seconds for data from X3X...')
+        #                 ttime.sleep(10)
+        #                 try:
+        #                     data[key] = xs_det._datum_ids[idx]
+        #                 except IndexError:
+        #                     print('WARNING! X3X did not receive all the pulses!')
+        #                     print('         Continuing...')
+        #                     break  # It won't find anymore data so might as well break
 
-            yield {
-                'data': data,
-                'timestamps': timestamps,
-                'time': now,
-                'seq_num': ii,
-                'filled': filled,
-                'descriptor': 'scan_000',
-            }
+
+        now = ttime.time()
+        current_scan = self.flying_dev.parameters.current_scan.get()
+        yield {
+            'data': {
+                'energy': direction,
+                'i0_time': i0_time,
+                'i0': i0,
+                'im': im,
+                'it': it,
+                **{f'xs_id_mono_fly_channel{j+1:02d}': self.xs_detectors[0]._datum_ids[j] for j in range(8)}
+            },
+            'timestamps': {
+                'energy': now,
+                'i0_time': now,
+                'i0': now,
+                'im': now,
+                'it': now,
+                **{f'xs_id_mono_fly_channel{j+1:02d}': now for j in range(8)}
+            },
+            'time': now,
+            'seq_num': 1,
+            'filled': {f'xs_id_mono_fly_channel{j+1:02d}': False for j in range(8)},
+            'descriptor': f"scan_{current_scan:03d}",
+        }
+
+            # print(f"{print_now()}: current_scan: {current_scan}")
+
+            # yield {
+            #     'data': data,
+            #     'timestamps': timestamps,
+            #     'time': now,
+            #     'seq_num': ii,
+            #     'filled': filled,
+            #     'descriptor': 'scan_000',
+            # }
 
         print(f"{print_now()}: after docs emitted in collect")
 
@@ -1297,6 +1336,7 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
     for fly in flyers:
         for flying_xs in fly.xs_detectors:
             d.append(flying_xs.name)
+            yield from bps.mv(flying_xs.fly_next, True)
     md['scan']['detectors'] = d
 
     livepopup = []
