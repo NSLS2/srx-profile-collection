@@ -91,38 +91,48 @@ def optimize_scalers(dwell=0.5,
     preamp_combo_nums = list(product(range(3), range(9)))[::-1]
 
     # Add metadata
-    _md = {'plan_name' : 'optimize_scalers'}
-    _md = get_stock_md(_md)
-    _md['scan']['type'] = 'OPTIMIZE_SCALERS'
-    _md['scan']['motors'] = [preamp.name for preamp in preamps]
-    _md['scan']['plan_args'] = {
+    _md = {'detectors' : [sclr1.name],
+           'motors': [preamp.name for preamp in preamps],
+           'plan_args' : {
                'dwell' : dwell,
                'upper_target' : upper_targets,
                'lower_target' : lower_targets
+           },
+           'plan_name' : 'optimize_scalers'
            }
+    _md = get_stock_md(_md)
+    _md['scan']['type'] = 'OPTIMIZE_SCALERS'
+    _md['scan']['detectors'] = [sclr1.name]
     _md.update(md or {})
-    get_det_md(_md, [sclr1])
 
     # Setup dwell stage_sigs
-    orig_dwell = sclr1.preset_time.get()
+    sclr1.stage_sigs['preset_time'] = dwell
+
+    start_shut_d = shut_d.read()['shut_d_request_open']['value'] # 0 is closed, 1 is open
+    start_shut_b = shut_b.status.get() # 'Not Open' or 'Open'
 
     # Visualization
     livecb = []
     livecb.append(LiveTable(channel_names))
 
     # Need to add LivePlot, or LiveTable
+    # @bpp.stage_decorator([sclr1])
+    # @bpp.run_decorator(md = _md)
+    # @bpp.subs_decorator(livecb)
     def optimize_all_preamps():
 
-        # Hard-coded dwell change
-        yield from abs_set(sclr1, dwell)
-
-        # Optimize sensitivity
+        ### Optimize sensitivity ###
         # Turn off offset correction
         for idx in range(len(preamps)):
             yield from bps.mv(preamps[idx].offset_on, 0)
 
         # Open shutters
-        yield from check_shutters(shutter, 'Open')
+        if 'i0' in scalers or 'it' in scalers:
+            yield from check_shutters(shutter, 'Open')
+        else: # Only im
+            if shut_b.status.get() == 'Not Open':
+                print('Opening B-hutch shutter..')
+                yield from abs_set(shut_b, "Open", wait=True)
 
         opt_sens = [False,] * len(preamps)
         for combo_ind, combo in enumerate(preamp_combo_nums):
@@ -153,6 +163,9 @@ def optimize_scalers(dwell=0.5,
                 # Check if values have surpassed target value
                 val = ch_vals[channel_names[idx]]['value']
                 if val / dwell > upper_targets[idx]:
+                    # print(f'{val} is greater than upper target for {channel_names[idx]}')
+                    # print(f'{channel_names[idx]} parameters for exceeded values are {combo}')
+                    # print(f'New parameters will be {preamp_combo_nums[combo_ind - 1]}')
                     # If true, dial back parameters and mark as optimized
                     yield from bps.mv(
                         preamps[idx].sens_num,
@@ -163,11 +176,14 @@ def optimize_scalers(dwell=0.5,
                     opt_sens[idx] = True
             yield Msg('save')
 
-        # Optimize offsets
+        ### Optimize offsets ###
         # Close shutters
+        if 'im' in scalers:
+            print('Closing B-hutch shutter...')
+            yield from abs_set(shut_b, 'Close', wait=True)
+        # Should we bother with d if closing b?
         yield from check_shutters(shutter, 'Close')
-        print('extra wait')
-        yield from bps.sleep(10 + settle_time)
+        yield from bps.sleep(settle_time)
 
         # Take baseline measurement without offsets
         yield Msg('checkpoint')
@@ -178,24 +194,25 @@ def optimize_scalers(dwell=0.5,
         direction_signs = []
         # Read and iterate though all channels of interest
         ch_vals = yield Msg('read', sclr1)
+
         for idx in range(len(preamps)):
             val = ch_vals[channel_names[idx]]['value']
             # Find and set offset sign
             if val > 10: # slightly more than zero
                 direction_signs.append(1)
                 yield from bps.mv(preamps[idx].offset_sign, 0)
-                yield from bps.sleep(settle_time)
-                # print(f'{channel_names[idx]} is positive')
+                yield from bps.sleep(1 + settle_time)
             else:
                 direction_signs.append(-1)
                 yield from bps.mv(preamps[idx].offset_sign, 1)
-                yield from bps.sleep(settle_time)
+                yield from bps.sleep(1 + settle_time)
+
         yield Msg('save')
 
         # Turn offsets back on
         for idx in range(len(preamps)):
             yield from bps.mv(preamps[idx].offset_on, 1)
-            yield from bps.sleep(settle_time) # Give time to settle
+            yield from bps.sleep(settle_time)
 
         # Iterate through combinations
         opt_off = [False,] * len(preamps)
@@ -230,17 +247,16 @@ def optimize_scalers(dwell=0.5,
 
                 # Check if offset sign is correct from first reading
                 elif combo_ind == 0:
-                    if (val > 1 and direction_signs[idx] == 1):
+                    if (val > 10 and direction_signs[idx] == 1):
                         # Flip offset sign, while off for safety
                         yield from bps.mv(preamps[idx].offset_sign, 1)
-                        yield from bps.sleep(settle_time)
+                        yield from bps.sleep(1 + settle_time)
                         # print(f'Cond 1: Flipping offset sign for {preamps[idx].name}')
-
-                    elif (val <= 1 and direction_signs[idx] == -1):
+                    elif (val <= 10 and direction_signs[idx] == -1):
                         # Flip offset sign, while off for safety
                         yield from bps.mv(preamps[idx].offset_sign, 0)
-                        yield from bps.sleep(settle_time)
-                        # print(f'Cond 2 : Flipping offset sign for {preamps[idx].name}')          
+                        yield from bps.sleep(1 + settle_time)
+                        # print(f'Cond 2 : Flipping offset sign for {preamps[idx].name}')   
                     continue
                 
                 # Check if offset is correct
@@ -262,26 +278,37 @@ def optimize_scalers(dwell=0.5,
                     opt_off[idx] = True
 
             yield Msg('save')
-    
+
+            if not RUN_WRAPPER:
+                # Clear descripter cache
+                yield Msg("clear_describe_cache", sclr1)
+            
+        # Return shutters to original state
+        # Cannot handle open d and closed b yet
+        if start_shut_d == 1:
+            yield from check_shutters(shutter, 'Open')
+        elif start_shut_b == 'Open':
+            if shut_b.status.get() == 'Not Open':
+                print('Opening B-hutch shutter..')
+                yield from abs_set(shut_b, "Open", wait=True)
+
     # Open and close run, or append to other run
     if RUN_WRAPPER:
         @bpp.stage_decorator([sclr1])
-        @bpp.run_decorator(md=_md)
+        @bpp.run_decorator(md = _md)
         @bpp.subs_decorator(livecb)
         def plan():
             yield from optimize_all_preamps()
-            yield from abs_set(sclr1, orig_dwell)
     else:
         @bpp.stage_decorator([sclr1])
         @bpp.subs_decorator(livecb)
         def plan():
             yield from optimize_all_preamps()
-            yield from abs_set(sclr1, orig_dwell)
-        
-            # Clear descripter cache
-            yield Msg("clear_describe_cache", sclr1)
     
+    # return (yield from optimize_all_preamps())
+    # return (yield from plan())
     uid = (yield from plan())
+    sclr1.stage_sigs.pop('preset_time', None)
     return uid
 
 
