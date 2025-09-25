@@ -184,8 +184,8 @@ def export_merlin2tiff(scanid=-1, wd=None):
 def nano_xrf(xstart, xstop, xnum,
              ystart, ystop, ynum, dwell,
              shutter=True, extra_dets=None,
-             xmotor=nano_stage.sx, ymotor=nano_stage.sy, flag_snake=True,
-             vlm_snapshot=False, snapshot_after=False, N_dark=0):
+             xmotor=nano_stage.sx, ymotor=nano_stage.sy, snake=True,
+             vlm_snapshot=False, snapshot_after=False, N_dark=10):
     
     # Check for negative number of points
     if (xnum < 1 or ynum < 1):
@@ -211,7 +211,7 @@ def nano_xrf(xstart, xstop, xnum,
                                 'units' : nano_stage.th.motor_egu.get()}
     scan_md['scan']['delta'] = {'val' : 0,
                                 'units' : xmotor.motor_egu.get()}
-    scan_md['scan']['snake'] = 1 if flag_snake else 0
+    scan_md['scan']['snake'] = 1 if snake else 0
     scan_md['scan']['shape'] = (xnum, ynum)
     md_dets = list(dets)
     if vlm_snapshot:
@@ -253,13 +253,13 @@ def nano_xrf(xstart, xstop, xnum,
     def plan():
         yield from mod_grid_scan(dets,
                                  ymotor, ystart, ystop, ynum,
-                                 xmotor, xstart, xstop, xnum, flag_snake,
+                                 xmotor, xstart, xstop, xnum, snake,
                                  run_agnostic=True)
     myplan = plan() # This line feels silly
 
     # myplan = grid_scan(dets,
     #                    ymotor, ystart, ystop, ynum,
-    #                    xmotor, xstart, xstop, xnum, flag_snake,
+    #                    xmotor, xstart, xstop, xnum, snake,
     #                    md=scan_md)
 
     myplan = subs_wrapper(myplan,
