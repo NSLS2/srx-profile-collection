@@ -34,6 +34,7 @@ def setup_xrd_dets(dets,
     # Setup dexela
     if 'dexela' in dets_by_name:
         xrd = dets_by_name['dexela']
+        xrd.cam.acquire.set(0) # Halt any current acquisition
         xrd.stage_sigs['total_points'] = N_images
         xrd.cam.stage_sigs['acquire_time'] = dwell
         xrd.cam.stage_sigs['acquire_period'] = dwell
@@ -156,7 +157,7 @@ def energy_rocking_curve(e_low,
                          e_num,
                          dwell,
                          xrd_dets,
-                         N_dark=0,
+                         N_dark=10,
                          vlm_snapshot=False,
                          snapshot_after=False,
                          shutter=True,
@@ -283,7 +284,7 @@ def extended_energy_rocking_curve(e_low,
                                   e_num,
                                   dwell,
                                   xrd_dets,
-                                  N_dark=0,
+                                  N_dark=10,
                                   shutter=True):
 
     # Breaking an extended energy rocking curve up into smaller pieces
@@ -304,7 +305,9 @@ def extended_energy_rocking_curve(e_low,
     e_rcs[-2].extend(e_rcs[-1])
     e_rcs.pop(-1)
 
-    for e_rc in e_rcs:
+    for i, e_rc in enumerate(e_rcs):
+        if i != 0:
+            N_dark = 0
         yield from energy_rocking_curve(e_rc[0],
                                         e_rc[-1],
                                         len(e_rc),
@@ -420,7 +423,7 @@ def angle_rocking_curve(th_low,
                         th_num,
                         dwell,
                         xrd_dets,
-                        N_dark=0,
+                        N_dark=10,
                         vlm_snapshot=False,
                         snapshot_after=False,
                         shutter=True,
@@ -534,7 +537,7 @@ def flying_angle_rocking_curve(th_low,
     yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR')
     yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOVER')
 
-    dets = [xs, sclr1] + xrd_dets
+    dets = [xs] + xrd_dets
 
     yield from scan_and_fly_base(dets,
                                  th_low,
@@ -573,7 +576,7 @@ def relative_flying_angle_rocking_curve(th_range,
 def static_xrd(num,
                dwell,
                xrd_dets,
-               N_dark=0,
+               N_dark=10,
                vlm_snapshot=False,
                snapshot_after=False,
                shutter=True,
