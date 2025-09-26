@@ -506,41 +506,20 @@ class SrxXspress3DetectorIDMonoFly(CommunitySrxXspress3Detector):
         self._datum_counter = None
 
     def complete(self, *args, **kwargs):
-        # print(f'In {self.name}.complete()...')
         for resource in self.hdf5._asset_docs_cache:
-            # print(f'  resource in "complete": {resource}')
             self._asset_docs_cache.append(('resource', resource[1]))
-        # print(f'\ncomplete in {self.name}: {self._asset_docs_cache}')
 
         self._datum_ids = []
 
-        # ttime.sleep(1.0)
-        # num_frames = self.hdf5.num_captured.get()
         num_frames = self.cam.array_counter.get()
 
-        # print(f"{num_frames=}")
-        for frame_num in range(num_frames):
-            # print(f'  frame_num in "complete": {frame_num + 1} / {num_frames}')
-            # print(f"{self.name=}")
-            # for ch in xs_id_mono_fly.channel_numbers:
-                # print(ch)
-            # for ch in self.channel_numbers:
-                # print(ch)
-            # for channel in self.iterate_channels():
-                # print(channel)
-            for channel in self.iterate_channels():
-                # print(f"{self.hdf5._resource_uid=}\n{self._datum_counter=}")
-                # print(f"{self.hdf5._resource['uid']=}\n{self._datum_counter=}")
-                datum_id = '{}/{}'.format(self.hdf5._resource['uid'], next(self._datum_counter))
-                # print(f"{datum_id=}")
-                datum = {'resource': self.hdf5._resource['uid'],
-                         'datum_kwargs': {'frame': frame_num, 'channel': channel.channel_number},
-                         'datum_id': datum_id}
-                # print(f"{datum=}")
-                self._asset_docs_cache.append(('datum', datum))
-                self._datum_ids.append(datum_id)
-
-        # print(f'\nasset_docs_cache with datums:\n{self._asset_docs_cache}\n')
+        for channel in self.iterate_channels():
+            datum_id = '{}/{}'.format(self.hdf5._resource['uid'], next(self._datum_counter))
+            datum = {'resource': self.hdf5._resource['uid'],
+                     'datum_kwargs': {'frame': list(range(num_frames)), 'channel': channel.channel_number},
+                     'datum_id': datum_id}
+            self._asset_docs_cache.append(('datum', datum))
+            self._datum_ids.append(datum_id)
 
         return NullStatus()
 
