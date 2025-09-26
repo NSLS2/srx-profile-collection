@@ -122,8 +122,8 @@ def get_det_md(scan_md, dets):
         if name == 'xs':
             det_dict = {}
             # Add the first four rois, regardless if they are used
-            for ind in range(xs.channel01.get_mcaroi_count()):
-                det_dict[f'roi{ind + 1}'] = xs.channel01.get_mcaroi(mcaroi_number=ind + 1).roi_name.get()
+            for ind in range(det.channel01.get_mcaroi_count()):
+                det_dict[f'roi{ind + 1}'] = det.channel01.get_mcaroi(mcaroi_number=ind + 1).roi_name.get()
         elif name == 'sclr1':
             pass # Nothing to add
         elif name == 'merlin':
