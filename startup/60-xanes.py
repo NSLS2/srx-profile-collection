@@ -31,15 +31,15 @@ from ophyd.sim import NullStatus
         "det_xs": {"default": "'xs'"},
     }
 })
-def xanes_plan(erange=[], estep=[], acqtime=1., samplename='', filename='',
+def xanes_plan(erange=[], estep=[], acqtime=1., samplename='',
                det_xs=xs, harmonic=1, detune=0, align=False, align_at=None,
-               roinum=1, shutter=True, per_step=None, reverse=False):
+               roinum=1, shutter=True, per_step=None, reverse=False,
+               vlm_snapshot=False, snapshot_after=False):
     '''
     erange (list of floats): energy ranges for XANES in eV, e.g. erange = [7112-50, 7112-20, 7112+50, 7112+120]
     estep  (list of floats): energy step size for each energy range in eV, e.g. estep = [2, 1, 5]
     acqtime (float): acqusition time to be set for both xspress3 and preamplifier
     samplename (string): sample name to be saved in the scan metadata
-    filename (string): filename to be added to the scan id as the text output filename
 
     det_xs (xs3 detector): the xs3 detector used for the measurement
     harmonic (odd integer): when set to 1, use the highest harmonic achievable automatically.
@@ -77,21 +77,6 @@ def xanes_plan(erange=[], estep=[], acqtime=1., samplename='', filename='',
     if reverse:
         ept = ept[::-1]
 
-    # Record relevant meta data in the Start document, defined in 90-usersetup.py
-    # Add user meta data
-    scan_md = {}
-    get_stock_md(scan_md)
-    scan_md['scan']['sample_name'] = samplename
-    scan_md['scan']['type'] = 'XAS_STEP'
-    scan_md['scan']['ROI'] = roinum
-    scan_md['scan']['dwell'] = acqtime
-    # scan_md['scaninfo'] = {'type' : 'XANES',
-    #                        'ROI' : roinum,
-    #                        'raster' : False,
-    #                        'dwell' : acqtime}
-    scan_md['scan']['scan_input'] = str(np.around(erange, 2)) + ', ' + str(np.around(estep, 2))
-    scan_md['scan']['energy'] = ept
-
     # Debugging, is this needed? is this recorded in scanoutput?
     # Convert energy to bragg angle
     egap = np.array(())
@@ -111,6 +96,27 @@ def xanes_plan(erange=[], estep=[], acqtime=1., samplename='', filename='',
     yield from abs_set(det_xs.external_trig, False)
     yield from abs_set(get_me_the_cam(det_xs).acquire_time, acqtime)
     yield from abs_set(det_xs.total_points, len(ept))
+
+    # Record relevant meta data in the Start document, defined in 90-usersetup.py
+    # Add user meta data
+    scan_md = {}
+    get_stock_md(scan_md)
+    scan_md['scan']['sample_name'] = samplename
+    scan_md['scan']['type'] = 'XAS_STEP'
+    scan_md['scan']['ROI'] = roinum
+    scan_md['scan']['dwell'] = acqtime
+    # scan_md['scaninfo'] = {'type' : 'XANES',
+    #                        'ROI' : roinum,
+    #                        'raster' : False,
+    #                        'dwell' : acqtime}
+    scan_md['scan']['scan_input'] = str(np.around(erange, 2)) + ', ' + str(np.around(estep, 2))
+    # scan_md['scan']['energy'] = ept
+    md_dets = list(det)
+    if vlm_snapshot:
+        md_dets = md_dets + [nano_vlm]
+    get_det_md(scan_md, md_dets)
+    # Fix for the exporter
+    scan_md['detectors'] = [det.name for det in md_dets]
 
     # Setup the scaler
     # TODO: Is there a better way to consider this?
@@ -223,14 +229,25 @@ def xanes_plan(erange=[], estep=[], acqtime=1., samplename='', filename='',
 
 
     energy.move(ept[0])
-    myscan = list_scan(det, energy, list(ept), per_step=per_step, md=scan_md)
-    myscan = finalize_wrapper(myscan, finalize_scan)
+
+    # Adding vlm options to modified list scan
+    @run_decorator(md=scan_md)
+    @vlm_decorator(vlm_snapshot, after=snapshot_after)
+    def myscan():
+        yield from mod_list_scan(det, energy, list(ept), per_step=per_step, run_agnostic=True)
+
+    # myscan = mod_list_scan(det, energy, list(ept), per_step=per_step, md=scan_md)
+    # myscan must be called to return the generators
+    myscan = finalize_wrapper(myscan(), finalize_scan)
 
     # Open B shutter
     yield from check_shutters(shutter, 'Open')
 
     return (yield from subs_wrapper(myscan, {'all' : livecallbacks,
-                                             'start' : at_scan}))
+                                               'start' : at_scan}))
+
+# Alias
+xas_step = xanes_plan
 
 
 def xanes_batch_plan(xypos=[], erange=[], estep=[], acqtime=1.0,

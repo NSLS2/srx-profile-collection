@@ -4,8 +4,6 @@ import skimage.io as io
 import numpy as np
 import time as ttime
 
-from bluesky.plans import count, list_scan
-
 # Newer scans
 
 
@@ -26,9 +24,9 @@ def setup_xrd_dets(dets,
             dwell = 0.007
         # According to Ken's comments in hxntools, this is a de-bounce time
         # when in external trigger mode
-        xrd.cam.stage_sigs['acquire_time'] = 0.75 * dwell  # - 0.0016392
-        xrd.cam.stage_sigs['acquire_period'] = 0.75 * dwell + 0.0016392
-        xrd.cam.stage_sigs['num_images'] = 1
+        xrd.cam.stage_sigs['acquire_time'] = 0.9*dwell - 0.002
+        xrd.cam.stage_sigs['acquire_period'] = 0.9*dwell
+        xrd.cam.stage_sigs['num_images'] = N_images
         xrd.stage_sigs['total_points'] = N_images
         xrd.hdf5.stage_sigs['num_capture'] = N_images
         del xrd
@@ -36,9 +34,122 @@ def setup_xrd_dets(dets,
     # Setup dexela
     if 'dexela' in dets_by_name:
         xrd = dets_by_name['dexela']
+        xrd.cam.acquire.set(0) # Halt any current acquisition
+        xrd.stage_sigs['total_points'] = N_images
         xrd.cam.stage_sigs['acquire_time'] = dwell
         xrd.cam.stage_sigs['acquire_period'] = dwell
+        xrd.cam.stage_sigs['num_images'] = N_images
+        xrd.hdf5.stage_sigs['num_capture'] = N_images
         del xrd
+
+
+# Assumes detector stage sigs are already set
+# Treat like a plan stub and use within a run decorator
+def _continuous_dark_fields(dets,
+                            N_dark=10,
+                            shutter=True):
+
+    # Disable if no dark frames are requested
+    if N_dark <= 0:
+        return             
+
+    dets_by_name = {d.name : d for d in dets}
+    xrd_dets = []
+    reset_sigs = []
+
+    # # Merlin may not be needed...
+    # if 'merlin' in dets_by_name:
+    #     xrd = dets_by_name['merlin']
+    #     sigs = OrderedDict(
+    #         [   
+    #         (xrd.cam, 'trigger_mode', 0),
+    #         (xrd, 'total_points', N_dark),
+    #         (xrd.cam, 'num_images', N_dark),
+    #         (xrd.hdf5, 'num_capture', N_dark)
+    #         ]
+    #     )
+
+    #     original_sigs = []
+    #     for obj, key, value in sigs:
+    #         if key in obj.stage_sigs:
+    #             original_sigs.append((obj, key, obj.stage_sigs[key]))
+    #         obj.stage_sigs[key] = value
+        
+    #     xrd_dets.append(xrd)
+    #     reset_sigs.extend(original_sigs)
+
+    if 'dexela' in dets_by_name:
+        xrd = dets_by_name['dexela']
+        sigs = [
+                (xrd, 'total_points', N_dark),
+                (xrd, 'cam.image_mode', 'Multiple'),
+                (xrd.cam, 'trigger_mode', 'Int. Fixed Rate'),
+                (xrd.cam, 'image_mode', 'Multiple'),
+                (xrd.cam, 'num_images', N_dark),
+                (xrd.hdf5, 'num_capture', N_dark),
+                ]
+
+        original_sigs = []
+        for obj, key, value in sigs:
+            if key in obj.stage_sigs:
+                original_sigs.append((obj, key, obj.stage_sigs[key]))
+            obj.stage_sigs[key] = value
+        
+        xrd_dets.append(xrd)
+        reset_sigs.extend(original_sigs)
+    
+    if len(xrd_dets) > 0:
+        d_status = shut_d.read()['shut_d_request_open']['value'] == 1 # is open
+        if shutter: # Avoid printing banner
+            yield from check_shutters(shutter, 'Close')
+        print('Acquiring dark-field...')
+        
+        staging_list = [det._staged == Staged.yes for det in xrd_dets]
+        mode_list = [det._mode for det in xrd_dets]
+        for staged, det in zip(staging_list, xrd_dets):
+            det._mode = SRXMode.fly # Not yield from???
+            if staged:
+                yield from bps.unstage(det)
+            
+            yield from bps.stage(det)
+            # Change hard-coded stage values
+            # Hacky implementation!
+            yield from abs_set(det.cam.num_images, N_dark) # Swapped back
+            # yield from abs_set(det.hdf5.num_capture, det.total_points.get())
+            yield from abs_set(det.cam.trigger_mode, 'Int. Fixed Rate') # Swapped back from forced fly mode
+        
+        # Take images
+        yield from bps.trigger_and_read(xrd_dets, name='dark')
+
+        # Reset to original stage_sigs    
+        for obj, key, value in reset_sigs:
+            obj.stage_sigs[key] = value   
+        
+        for staged, mode, det in zip(staging_list, mode_list, xrd_dets):
+            det._mode = mode # Not yield from???
+            yield from bps.unstage(det)
+            if staged:
+                yield from bps.stage(det)
+
+        # Clear descripter cache
+        for det in xrd_dets:
+            yield Msg("clear_describe_cache", det)
+
+        if d_status and shutter: # Avoid printing banner
+            yield from check_shutters(shutter, 'Open')
+
+
+# Decorator version of dark fields. Must happen within open run.
+def dark_decorator(dets, N_dark=10, shutter=True):
+    def inner_decorator(func):
+        @functools.wraps(func)
+        def func_with_dark(*args, **kwargs):
+            yield from _continuous_dark_fields(dets,
+                                               N_dark=N_dark,
+                                               shutter=shutter)
+            yield from func(*args, **kwargs)
+        return func_with_dark
+    return inner_decorator
 
 
 def energy_rocking_curve(e_low,
@@ -46,6 +157,9 @@ def energy_rocking_curve(e_low,
                          e_num,
                          dwell,
                          xrd_dets,
+                         N_dark=10,
+                         vlm_snapshot=False,
+                         snapshot_after=False,
                          shutter=True,
                          peakup_flag=True,
                          plotme=False,
@@ -67,15 +181,31 @@ def energy_rocking_curve(e_low,
     dets = [xs, sclr1] + xrd_dets
     setup_xrd_dets(dets, dwell, e_num)
 
+    # Set xs and sclr1 values
+    # Poorly implemented to protect other scans
+    sigs = [
+            (xs, 'external_trig', False),
+            (xs, 'total_points', e_num),
+            (get_me_the_cam(xs), 'acquire_time', dwell),
+            (sclr1, 'preset_time', dwell)
+            ]
+    original_sigs = []
+    xs.mode = SRXMode.step
+    for obj, key, value in sigs:
+        original_sigs.append((obj, key, getattr(obj, key).get()))
+        yield from abs_set(getattr(obj, key), value)
+
     # Defining scan metadata
-    scan_md = {}
-    get_stock_md(scan_md)
-    scan_md['scan']['type'] = 'ENERGY_RC'
-    scan_md['scan']['scan_input'] = [e_low, e_high, e_num, dwell]
-    scan_md['scan']['dwell'] = dwell
-    scan_md['scan']['detectors'] = [d.name for d in dets]
-    scan_md['scan']['energy'] = e_range                                   
-    scan_md['scan']['start_time'] = ttime.ctime(ttime.time())
+    md = {}
+    get_stock_md(md)
+    md['scan']['type'] = 'ENERGY_RC'
+    md['scan']['scan_input'] = [e_low, e_high, e_num, dwell]
+    md['scan']['dwell'] = dwell
+    # md['scan']['detectors'] = [d.name for d in dets]
+    md_dets = dets
+    if vlm_snapshot:
+        md_dets = md_dets + [nano_vlm]
+    get_det_md(md, md_dets)
 
     # Live Callbacks
     livecallbacks = [LiveTable(['energy_energy', 'dexela_stats2_total'])]
@@ -89,12 +219,30 @@ def energy_rocking_curve(e_low,
         yield from mov(energy, e_cen)
         yield from peakup(shutter=shutter)
     
-    # yield from list_scan(dets, energy, e_range, md=scan_md)
-    yield from check_shutters(shutter, 'Open')
-    yield from subs_wrapper(list_scan(dets, energy, e_range, md=scan_md),
-                            {'all' : livecallbacks})
-    yield from check_shutters(shutter, 'Close')
+    @run_decorator(md=md)
+    @vlm_decorator(vlm_snapshot, after=snapshot_after)
+    @dark_decorator(dets, N_dark=N_dark, shutter=shutter) 
+    def plan():
+        # Always check shutters to print banner
+        yield from check_shutters(shutter, 'Open')
+        yield from mod_list_scan(dets, energy, e_range, run_agnostic=True)
+        if shutter: # Conditional check ot avoid banner
+            yield from check_shutters(shutter, 'Close')
+    
+    # Plan with failed dark_field and default behavior
+    # def plan():
+    #     yield from check_shutter(shutter, 'Open')
+    #     yield from list_scan(dets, energy, e_range, md=md)
+    #     if shutter: # Conditional check ot avoid banner
+    #         yield from check_shutters(shutter, 'Close')
 
+    # Plan must be called to return the generators
+    yield from subs_wrapper(plan(), {'all' : livecallbacks})
+
+    # Reset xs and sclr1
+    for obj, key, value in original_sigs:
+        yield from abs_set(getattr(obj, key), value)
+    
     if return_to_start:
         yield from mov(energy, start_energy)
 
@@ -136,12 +284,13 @@ def extended_energy_rocking_curve(e_low,
                                   e_num,
                                   dwell,
                                   xrd_dets,
+                                  N_dark=10,
                                   shutter=True):
 
     # Breaking an extended energy rocking curve up into smaller pieces
     # The goal is to allow for multiple intermittent peakups
 
-    # Convert to ev
+    # Convert to kev
     if e_low > 1000:
         e_low /= 1000
     if e_high > 1000:
@@ -149,26 +298,124 @@ def extended_energy_rocking_curve(e_low,
 
     # Loose chunking at about 1000 eV
     e_range = e_high - e_low
-
-    e_step = e_range / e_num
     e_chunks = int(np.round(e_num / e_range))
-
     e_vals = np.linspace(e_low, e_high, e_num)
 
     e_rcs = [list(e_vals[i:i + e_chunks]) for i in range(0, len(e_vals), e_chunks)]
     e_rcs[-2].extend(e_rcs[-1])
     e_rcs.pop(-1)
 
-    for e_rc in e_rcs:
+    for i, e_rc in enumerate(e_rcs):
+        if i != 0:
+            N_dark = 0
         yield from energy_rocking_curve(e_rc[0],
                                         e_rc[-1],
                                         len(e_rc),
                                         dwell,
                                         xrd_dets,
+                                        N_dark=N_dark,
                                         shutter=shutter,
                                         peakup_flag=True,
                                         plotme=False,
                                         return_to_start=False)
+
+
+# Re-write to encompass a single scan ID with intelligent vlm and dark-field support
+# TODO: livecallbacks may fail switching back and forth...
+def continuous_energy_rocking_curve(e_low,
+                                    e_high,
+                                    e_num,
+                                    dwell,
+                                    xrd_dets,
+                                    N_dark=0,
+                                    vlm_snapshot=False,
+                                    snapshot_after=False,
+                                    shutter=True,
+                                    peakup_flag=True,
+                                    plotme=False,
+                                    return_to_start=True):
+    
+    start_energy = energy.energy.position
+
+    # Convert to kev
+    if e_low > 1000:
+        e_low /= 1000
+    if e_high > 1000:
+        e_high /= 1000
+
+    # Loose chunking at about 1000 eV
+    e_range = e_high - e_low
+    e_chunks = int(np.round(e_num / e_range))
+    e_vals = np.linspace(e_low, e_high, e_num)
+
+    e_rcs = [list(e_vals[i:i + e_chunks]) for i in range(0, len(e_vals), e_chunks)]
+    e_rcs[-2].extend(e_rcs[-1])
+    e_rcs.pop(-1)  
+
+    # Define detectors
+    dets = [xs, sclr1] + xrd_dets
+    setup_xrd_dets(dets, dwell, e_num)
+
+    # Set xs and sclr1 values
+    # Poorly implemented to protect other scans
+    sigs = [
+            (xs, 'external_trig', False),
+            (xs, 'total_points', e_num),
+            (get_me_the_cam(xs), 'acquire_time', dwell),
+            (sclr1, 'preset_time', dwell)
+            ]
+    original_sigs = []
+    xs.mode = SRXMode.step
+    for obj, key, value in sigs:
+        original_sigs.append((obj, key, getattr(obj, key).get()))
+        yield from abs_set(getattr(obj, key), value)
+
+    # Defining scan metadata
+    md = {}
+    get_stock_md(md)
+    md['scan']['type'] = 'ENERGY_RC'
+    md['scan']['scan_input'] = [e_low, e_high, e_num, dwell]
+    md['scan']['dwell'] = dwell
+    # md['scan']['detectors'] = [d.name for d in dets]
+    md_dets = dets
+    if vlm_snapshot:
+        md_dets = md_dets + [nano_vlm]
+    get_det_md(md, md_dets)
+
+    # Live Callbacks
+    livecallbacks = [LiveTable(['energy_energy', 'dexela_stats2_total'])]
+    
+    if plotme:
+        livecallbacks.append(LivePlot('dexela_stats2_total', x='energy_energy'))
+
+    @run_decorator(md=md)
+    @vlm_decorator(vlm_snapshot, after=snapshot_after)
+    @dark_decorator(dets, N_dark=N_dark, shutter=shutter)
+    def plan():
+        for iteration, e_rc in enumerate(e_rcs):
+            # Move to center energy and perform peakup
+            peakup_stream = f'00{iteration}_peakup'
+            if peakup_flag:  # Find optimal c2_fine position
+                print('Performing center energy peakup.')
+                yield from mov(energy, e_rc[len(e_rc) // 2])
+                yield from ra_smart_peakup(shutter=shutter,
+                                           stream_name=peakup_stream)
+            
+            # Always check shutters to print banner
+            if shutter or (not peakup_flag and i == 0): # Or first condition without peakup
+                yield from check_shutters(shutter, 'Open')
+            yield from mod_list_scan(dets, energy, e_rc, run_agnostic=True)
+            if shutter: # Conditional check ot avoid banner
+                yield from check_shutters(shutter, 'Close') 
+
+    yield from subs_wrapper(plan(), {'all' : livecallbacks})
+
+    # Reset xs and sclr1
+    for obj, key, value in original_sigs:
+        yield from abs_set(getattr(obj, key), value)
+    
+    if return_to_start:
+        yield from mov(energy, start_energy)
 
 
 def angle_rocking_curve(th_low,
@@ -176,9 +423,13 @@ def angle_rocking_curve(th_low,
                         th_num,
                         dwell,
                         xrd_dets,
+                        N_dark=10,
+                        vlm_snapshot=False,
+                        snapshot_after=False,
                         shutter=True,
                         plotme=False,
                         return_to_start=True):
+    
     # th in mdeg!!!
 
     start_th = nano_stage.th.user_readback.get()
@@ -186,15 +437,35 @@ def angle_rocking_curve(th_low,
     # Define some useful variables
     th_range = np.linspace(th_low, th_high, th_num)
 
+    # Define detectors
+    dets = [xs, sclr1] + xrd_dets
+    setup_xrd_dets(dets, dwell, th_num)
+
+    # Set xs and sclr1 values
+    # Poorly implemented to protect other scans
+    sigs = [
+            (xs, 'external_trig', False),
+            (xs, 'total_points', th_num),
+            (get_me_the_cam(xs), 'acquire_time', dwell),
+            (sclr1, 'preset_time', dwell)
+            ]
+    original_sigs = []
+    xs.mode = SRXMode.step
+    for obj, key, value in sigs:
+        original_sigs.append((obj, key, getattr(obj, key).get()))
+        yield from abs_set(getattr(obj, key), value)
+
     # Defining scan metadata
-    scan_md = {}
-    get_stock_md(scan_md)
-    scan_md['scan']['type'] = 'ANGLE_RC'
-    scan_md['scan']['scan_input'] = [th_low, th_high, th_num, dwell]
-    scan_md['scan']['dwell'] = dwell
-    scan_md['scan']['detectors'] = [sclr1.name] + [d.name for d in xrd_dets]
-    scan_md['scan']['angles'] = th_range                                   
-    scan_md['scan']['start_time'] = ttime.ctime(ttime.time())
+    md = {}
+    get_stock_md(md)
+    md['scan']['type'] = 'ANGLE_RC'
+    md['scan']['scan_input'] = [th_low, th_high, th_num, dwell]
+    md['scan']['dwell'] = dwell
+    # md['scan']['detectors'] = [d.name for d in dets]
+    md_dets = dets
+    if vlm_snapshot:
+        md_dets = md_dets + [nano_vlm]
+    get_det_md(md, md_dets)
 
     # Live Callbacks
     livecallbacks = [LiveTable(['nano_stage_th_user_setpoint', 'dexela_stats2_total'])]
@@ -202,15 +473,29 @@ def angle_rocking_curve(th_low,
     if plotme:
         livecallbacks.append(LivePlot('dexela_stats2_total', x='nano_stage_th_user_setpoint'))
 
-    # Define detectors
-    dets = [xs, sclr1] + xrd_dets
-    setup_xrd_dets(dets, dwell, th_num)
+    @run_decorator(md=md)
+    @vlm_decorator(vlm_snapshot, after=snapshot_after)
+    @dark_decorator(dets, N_dark=N_dark, shutter=shutter) 
+    def plan():
+        # Always check shutters to print banner
+        yield from check_shutters(shutter, 'Open')
+        yield from mod_list_scan(dets, nano_stage.th, th_range, run_agnostic=True)
+        if shutter: # Conditional check ot avoid banner
+            yield from check_shutters(shutter, 'Close')
     
-    # yield from list_scan(dets, energy, e_range, md=scan_md)
-    yield from check_shutters(shutter, 'Open')
-    yield from subs_wrapper(list_scan(dets, nano_stage.th, th_range, md=scan_md),
-                            {'all' : livecallbacks})
-    yield from check_shutters(shutter, 'Close')
+    # Plan with failed dark_field and default behavior
+    # def plan():
+    #     yield from check_shutter(shutter, 'Open')
+    #     yield from list_scan(dets, nano_stage.th, th_range, md=md)
+    #     if shutter: # Conditional check ot avoid banner
+    #         yield from check_shutters(shutter, 'Close')
+
+    # Plan must be called to return the generators
+    yield from subs_wrapper(plan(), {'all' : livecallbacks})
+
+    # Reset xs and sclr1
+    for obj, key, value in original_sigs:
+        yield from abs_set(getattr(obj, key), value)
 
     if return_to_start:
         yield from mov(nano_stage.th, start_th)
@@ -252,11 +537,7 @@ def flying_angle_rocking_curve(th_low,
     yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR')
     yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOVER')
 
-    _xs = kwargs.pop('xs', xs)
-    if xrd_dets is None:
-        xrd_dets = []
-    #dets = [_xs] + extra_dets
-    dets = [_xs] + xrd_dets
+    dets = [xs] + xrd_dets
 
     yield from scan_and_fly_base(dets,
                                  th_low,
@@ -292,277 +573,71 @@ def relative_flying_angle_rocking_curve(th_range,
 
 
 # A static xrd measurement without changing energy or moving stages
-def static_xrd(xrd_dets,
-               num,
+def static_xrd(num,
                dwell,
+               xrd_dets,
+               N_dark=10,
+               vlm_snapshot=False,
+               snapshot_after=False,
                shutter=True,
                plotme=False):
-
-    # Defining scan metadata
-    scan_md = {}
-    get_stock_md(scan_md)
-    scan_md['scan']['type'] = 'STATIC_XRD'
-    scan_md['scan']['scan_input'] = [num, dwell]
-    scan_md['scan']['dwell'] = dwell
-    scan_md['scan']['detectors'] = [sclr1.name] + [d.name for d in xrd_dets]
-    scan_md['scan']['energy'] = f'{energy.energy.position:.5f}'                                 
-    scan_md['scan']['start_time'] = ttime.ctime(ttime.time())
-
-    # Live Callbacks
-    # What does energy_energy read??
-    livecallbacks = [LiveTable(['energy_energy', 'dexela_stats2_total'])]
-    
-    if plotme:
-        livecallbacks.append(LivePlot('dexela_stats2_total', x='energy_energy'))
 
     # Define detectors
     dets = [xs, sclr1] + xrd_dets
     setup_xrd_dets(dets, dwell, num)
 
-    yield from check_shutters(shutter, 'Open')
-    yield from subs_wrapper(count(dets, num, md=scan_md), # I guess dwell info is carried by the detector
-                            {'all' : livecallbacks})
-    yield from check_shutters(shutter, 'Close')
+    # Set xs and sclr1 values
+    # Poorly implemented to protect other scans
+    sigs = [
+            (xs, 'external_trig', False),
+            (xs, 'total_points', num),
+            (get_me_the_cam(xs), 'acquire_time', dwell),
+            (sclr1, 'preset_time', dwell)
+            ]
+    original_sigs = []
+    xs.mode = SRXMode.step
+    for obj, key, value in sigs:
+        original_sigs.append((obj, key, getattr(obj, key).get()))
+        yield from abs_set(getattr(obj, key), value)
 
-# Previous Scans
+    # Defining scan metadata
+    md = {}
+    get_stock_md(md)
+    md['scan']['type'] = 'STATIC_XRD'
+    md['scan']['scan_input'] = [num, dwell]
+    md['scan']['dwell'] = dwell                               
+    md['scan']['start_time'] = ttime.ctime(ttime.time())
+    # md['scan']['detectors'] = [d.name for d in dets]
+    md_dets = dets
+    if vlm_snapshot:
+        md_dets = md_dets + [nano_vlm]
+    get_det_md(md, md_dets)
 
-def update_scan_id():
-    scanrecord.current_scan.put(db[-1].start['uid'][:6])
-    scanrecord.current_scan_id.put(str(RE.md['scan_id']))
+    # Live Callbacks
+    livecallbacks = [LiveTable(['dexela_stats2_total'])]
+    
+    if plotme:
+        livecallbacks.append(LivePlot('dexela_stats2_total'))
 
+    @run_decorator(md=md)
+    @vlm_decorator(vlm_snapshot, after=snapshot_after)
+    @dark_decorator(dets, N_dark=N_dark, shutter=shutter)  
+    def plan():
+        # Always check shutters to print banner
+        yield from check_shutters(shutter, 'Open')
+        yield from mod_count(dets, num, run_agnostic=True)
+        if shutter: # Conditional check to avoid banner
+            yield from check_shutters(shutter, 'Close')
+    
+    # Plan with failed dark_field and default behavior
+    # def plan():
+    #     yield from check_shutter(shutter, 'Open')
+    #     yield from count(dets, num, md=md)
+    #     if shutter: # Conditional check to avoid banner
+    #         yield from check_shutters(shutter, 'Close')
 
-def collect_xrd(pos=[], empty_pos=[], acqtime=1, N=1,
-                dark_frame=False, shutter=True):
-    # Scan parameters
-    if (acqtime < 0.0066392):
-        print('The detector should not operate faster than 7 ms.')
-        print('Changing the scan dwell time to 7 ms.')
-        acqtime = 0.007
+    yield from subs_wrapper(plan(), {'all' : livecallbacks})
 
-    N_pts = len(pos)
-    if (pos == []):
-        pos = [[hf_stage.x.position, hf_stage.y.position, hf_stage.z.position]]
-        # pos = [[hf_stage.topx.position, hf_stage.y.position]]
-    if (empty_pos != []):
-        N_pts = N_pts + 1
-    if (dark_frame):
-        N_pts = N_pts + 1
-
-    N_tot = N_pts * N
-
-    # Setup detector
-    xrd_det = [dexela]
-    for d in xrd_det:
-        # d.cam.stage_sigs['acquire_time'] = acqtime
-        # d.cam.stage_sigs['acquire_period'] = acqtime + 0.100
-        # d.cam.stage_sigs['num_images'] = 1
-        # d.stage_sigs['total_points'] = N_tot
-        # d.hdf5.stage_sigs['num_capture'] = N_tot
-        d.stage_sigs['cam.acquire_time'] = acqtime
-        d.stage_sigs['cam.acquire_period'] = acqtime + 0.100
-        d.stage_sigs['cam.image_mode'] = 1
-        d.stage_sigs['cam.num_images'] = N
-        d.stage_sigs['total_points'] = N_tot
-        d.stage_sigs['hdf5.num_capture'] = N_tot
-
-
-    # Collect dark frame
-    if (dark_frame):
-        # Check shutter
-        if (shutter):
-           yield from bps.mov(shut_b, 'Close')
-
-        # Trigger detector
-        yield from count(xrd_det, num=N)
-        # yield from count(xrd_det)
-        update_scan_id()
-
-        # Write to logfile
-        # logscan('xrd_count')
-
-    if (empty_pos != []):
-        # Move into position
-        yield from bps.mov(hf_stage.x, empty_pos[0])
-        # yield from bps.mov(hf_stage.topx, empty_pos[0])
-        yield from bps.mov(hf_stage.y, empty_pos[1])
-        if (len(empty_pos) == 3):
-            yield from bps.mov(hf_stage.z, empty_pos[2])
-
-        # Check shutter
-        if (shutter):
-            yield from bps.mov(shut_b, 'Open')
-
-        # Trigger the detector
-        yield from count(xrd_det, num=N)
-        # yield from count(xrd_det)
-        # yield from bps.trigger_and_read(xrd_det)
-        update_scan_id()
-
-        # Close shutter
-        if (shutter):
-            yield from bps.mov(shut_b, 'Close')
-
-        # Write to logfile
-        # logscan('xrd_count')
-
-    # Loop through positions
-    if (pos == []):
-        pos = [[hf_stage.x.position, hf_stage.y.position]]
-    for i in range(len(pos)):
-        i = int(i)
-        # Move into position
-        yield from bps.mov(hf_stage.x, pos[i][0])
-        # yield from bps.mov(hf_stage.topx, pos[i][0])
-        yield from bps.mov(hf_stage.y, pos[i][1])
-        if (len(pos[i]) == 3):
-            yield from bps.mov(hf_stage.z, pos[i][2])
-
-        # Check shutter
-        if (shutter):
-            yield from bps.mov(shut_b, 'Open')
-
-        # Trigger the detector
-        # Keep getting TimeoutErrors setting capture complete to False
-        # This is a lot of duct tape, but hopefully this will let the scans
-        # work instead of timing out
-        need_data = True
-        num_tries = 0
-        while (need_data):
-            try:
-                num_tries = num_tries + 1
-                yield from count(xrd_det, num=N)
-                # yield from count(xrd_det)
-                # yield from bps.trigger_and_read(xrd_det)
-                need_data = False
-                update_scan_id()
-            except TimeoutError:
-                dexela.unstage()
-                if (num_tries >= 5):
-                    print('Timeout has occured 5 times.')
-                    raise
-                print('TimeoutError: Trying again...')
-                yield from bps.sleep(5)
-            except:
-                raise
-
-
-        # Close shutter
-        if (shutter):
-            yield from bps.mov(shut_b, 'Close')
-
-        # Write to logfile
-        # logscan('xrd_count')
-
-
-def collect_xrd_map(xstart, xstop, xnum,
-                    ystart, ystop, ynum, acqtime=1,
-                    dark_frame=False, shutter=True):
-
-    # Scan parameters
-    if (acqtime < 0.0066392):
-        print('The detector should not operate faster than 7 ms.')
-        print('Changing the scan dwell time to 7 ms.')
-        acqtime = 0.007
-
-    N = xnum * ynum
-
-    # Setup detector
-    xrd_det = [dexela]
-    for d in xrd_det:
-        d.stage_sigs['cam.acquire_time'] = acqtime
-        d.stage_sigs['cam.acquire_period'] = acqtime + 0.100
-        d.stage_sigs['cam.image_mode'] = 1
-        d.stage_sigs['cam.num_images'] = 1
-        d.stage_sigs['total_points'] = N
-        d.stage_sigs['hdf5.num_capture'] = N
-
-    # Collect dark frame
-    if (dark_frame):
-        # Check shutter
-        if (shutter):
-           yield from bps.mov(shut_b, 'Close')
-
-        # Trigger detector
-        yield from count(xrd_det, num=N)
-        update_scan_id()
-
-        # Write to logfile
-        # logscan('xrd_count')
-
-    if shutter:
-        yield from mv(shut_b, 'Open')
-
-    #scan_dets = xrd_det.append(sclr1)
-    #print(xrd_det)
-    # yield from outer_product_scan(scan_dets,
-    #                               hf_stage.x, xstart, xstop, xnum,
-    #                               hf_stage.y, ystart, ystop, ynum, False)
-    yield from grid_scan(xrd_det,
-                         hf_stage.x, xstart, xstop, xnum,
-                         hf_stage.y, ystart, ystop, ynum, False)
-
-    if shutter:
-        yield from mv(shut_b, 'Close')
-
-    # Write to logfile
-    # logscan('xrd_count')
-    update_scan_id()
-
-
-@parameter_annotation_decorator({
-    "parameters": {
-        "extra_dets": {"default": "['dexela']"},
-    }
-})
-def xrd_fly(*args, extra_dets=[dexela], **kwargs):
-    kwargs.setdefault('xmotor', nano_stage.sx)
-    kwargs.setdefault('ymotor', nano_stage.sy)
-    kwargs.setdefault('flying_zebra', nano_flying_zebra)
-
-    yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR', wait=True)
-    yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOVER')
-
-    _xs = kwargs.pop('xs', xs)
-    if extra_dets is None:
-        extra_dets = []
-    dets = [_xs] + extra_dets
-    # To fly both xs and merlin
-    # yield from scan_and_fly_base([_xs, merlin], *args, **kwargs)
-    # To fly only xs
-    yield from scan_and_fly_base(dets, *args, **kwargs)
-
-
-def make_tiff(scanid, *, scantype='', fn=''):
-    h = db[int(scanid)]
-    if scanid == -1:
-        scanid = int(h.start['scan_id'])
-
-    if scantype == '':
-        scantype = h.start['scan']['type']
-
-    if ('FLY' in scantype):
-        d = list(h.data('dexela_image', stream_name='stream0', fill=True))
-        d = np.array(d)
-
-        (row, col, imgY, imgX) = d.shape
-        if (d.size == 0):
-            print('Error collecting dexela data...')
-            return
-        d = np.reshape(d, (row*col, imgY, imgX))
-    elif ('STEP' in scantype):
-        d = list(h.data('dexela_image', fill=True))
-        d = np.array(d)
-        d = np.squeeze(d)
-    # elif (scantype == 'count'):
-    #     d = list(h.data('dexela_image', fill=True))
-    #     d = np.array(d)
-    else:
-        print('I don\'t know what to do.')
-        return
-
-    if fn == '':
-        fn = f"scan{scanid}_xrd.tiff"
-    try:
-        io.imsave(fn, d.astype('uint16'))
-    except:
-        print(f'Error writing file!')
+    # Reset xs and sclr1
+    for obj, key, value in original_sigs:
+        yield from abs_set(getattr(obj, key), value)

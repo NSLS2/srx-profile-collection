@@ -49,7 +49,8 @@ class DexelaFileStoreHDF5(FileStoreBase):
     def filestore_spec(self):
         if self.parent._mode is SRXMode.fly:
             return BulkDexela.HANDLER_NAME
-        return 'TPX_HDF5'
+        # return 'TPX_HDF5'
+        return 'AD_HDF5'
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -187,8 +188,6 @@ class SRXDexelaDetector(SingleTrigger, DexelaDetector):
     path_read_start = "/nsls2/data/srx/"
 
     def root_path_str():
-        # data_session = self._redis_dict["data_session"]
-        # cycle = self._redis_dict["cycle"]
         data_session = RE.md["data_session"]
         cycle = RE.md["cycle"]
         if "Commissioning" in get_proposal_type():
@@ -204,9 +203,6 @@ class SRXDexelaDetector(SingleTrigger, DexelaDetector):
     hdf5 = Cpt(DexelaHDFWithFileStore, 'HDF1:',
                read_attrs=[],
                configuration_attrs=[],
-            #    write_path_template='W:\\assets\\dexela\\%Y\\%m\\%d\\',
-            #    read_path_template='/nsls2/data/srx/assets/dexela/%Y/%m/%d/',
-            #    root='/nsls2/data/srx/assets/dexela/',
                write_path_template=path_write_start + path_template_str(root_path_str()).replace("/", "\\"),
                read_path_template=path_read_start + path_template_str(root_path_str()),
                root=path_read_start+root_path_str())

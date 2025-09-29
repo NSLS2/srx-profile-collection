@@ -12,7 +12,8 @@ from ophyd import Component as Cpt
 from ophyd.areadetector import (AreaDetector, PixiradDetectorCam, ImagePlugin,
                                 TIFFPlugin, StatsPlugin, HDF5Plugin,
                                 ProcessPlugin, ROIPlugin, TransformPlugin,
-                                OverlayPlugin)
+                                OverlayPlugin, CamBase)
+from ophyd.areadetector.base import ADComponent
 from ophyd.areadetector.plugins import PluginBase
 from ophyd.areadetector.cam import AreaDetectorCam
 from ophyd.device import BlueskyInterface
@@ -55,7 +56,8 @@ class BulkMerlinDebug(BulkXspress):
 
 class MerlinFileStoreHDF5(FileStoreBase):
 
-    _spec = 'TPX_HDF5'
+    # _spec = 'TPX_HDF5'
+    _spec = 'AD_HDF5'
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -87,7 +89,8 @@ class MerlinFileStoreHDF5(FileStoreBase):
     def filestore_spec(self):
         if self.parent._mode is SRXMode.fly:
             return BulkMerlin.HANDLER_NAME
-        return 'TPX_HDF5'
+        # return 'TPX_HDF5'
+        return 'AD_HDF5'
 
     def generate_datum(self, key, timestamp, datum_kwargs):
         if self.parent._mode is SRXMode.fly:
@@ -144,9 +147,26 @@ class HDF5PluginWithFileStoreMerlin(HDF5Plugin, MerlinFileStoreHDF5):
                             "method on the hdf5 plugin.")
 
         return super().stage()
+    
+
+# Adding operating energy to Merlin
+class SRXMerlinDetectorCam(CamBase):
+    acquire = ADComponent(EpicsSignal,'Acquire')
+    quad_merlin_mode = ADComponent(EpicsSignalWithRBV,'QuadMerlinMode')
+    operating_energy = ADComponent(EpicsSignal, 'OperatingEnergy')
+    pass
 
 
-class SRXMerlin(SingleTrigger, MerlinDetector):
+class SRXMerlinDetector(AreaDetector):
+    cam = Cpt(SRXMerlinDetectorCam, 'cam1:',
+              read_attrs=[],
+              configuration_attrs=['image_mode', 'trigger_mode',
+                                   'acquire_time', 'acquire_period'],
+              )
+    
+
+# class SRXMerlin(SingleTrigger, MerlinDetector):
+class SRXMerlin(SingleTrigger, SRXMerlinDetector):
     total_points = Cpt(Signal,
                        value=1,
                        doc="The total number of points to be taken")
@@ -154,25 +174,29 @@ class SRXMerlin(SingleTrigger, MerlinDetector):
                    value=False,
                    doc="latch to put the detector in 'fly' mode")
 
+    path_start = "/nsls2/data/srx/"
+
+    def root_path_str():
+        # data_session = self._redis_dict["data_session"]
+        # cycle = self._redis_dict["cycle"]
+        data_session = RE.md["data_session"]
+        cycle = RE.md["cycle"]
+        if "Commissioning" in get_proposal_type():
+            root_path = f"proposals/commissioning/{data_session}/assets/merlin/"
+        else:
+            root_path = f"proposals/{cycle}/{data_session}/assets/merlin/"
+        return root_path
+
+    def path_template_str(root_path):
+        path_template = "%Y/%m/%d/"
+        return root_path + path_template
+
     hdf5 = Cpt(HDF5PluginWithFileStoreMerlin, 'HDF1:',
-               read_attrs=[],
-               # read_path_template='/nsls2/xf05id1/XF05ID1/MERLIN/%Y/%m/%d/',
-               # read_path_template='/nsls2/xf05id1/XF05ID1/MERLIN/2021/02/11/',
-               ## TODO: Andy doesn't like this
-               # This needs to look at the currently posted proposal and use that to set the path
-               # See the dexela for one way - not the best - to do this
-               # read_path_template='/nsls2/data3/srx/proposals/2025-1/pass-317247/assets/merlin/%Y/%m/%d/',
-            #    read_path_template="/this/does/not/exist/",
-               read_path_template='/nsls2/data3/srx/proposals/2025-2/pass-317935/assets/merlin/%Y/%m/%d/',
-               configuration_attrs=[],
-               # write_path_template='/epicsdata/merlin/%Y/%m/%d/',
-               # write_path_template='/epicsdata/merlin/2021/02/11/',
-               # write_path_template='/nsls2/data/srx/assets/merlin/%Y/%m/%d/',
-               # write_path_template='/nsls2/data3/srx/proposals/2025-1/pass-317247/assets/merlin/%Y/%m/%d/',
-            #    write_path_template="/this/does/not/exist/",
-               write_path_template='/nsls2/data3/srx/proposals/2025-2/pass-317935/assets/merlin/%Y/%m/%d/',
-            #    root='/nsls2/data3/srx/proposals/2025-1/pass-317247/assets/merlin')
-               root='/nsls2/data3/srx/proposals/2025-2/pass-317935/assets/merlin')
+                read_attrs=[],
+                configuration_attrs=[],
+                write_path_template=path_start + path_template_str(root_path_str()),
+                read_path_template=path_start + path_template_str(root_path_str()),
+                root=path_start+root_path_str())
 
     stats1 = Cpt(StatsPlugin, 'Stats1:')
     stats2 = Cpt(StatsPlugin, 'Stats2:')

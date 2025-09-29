@@ -4,12 +4,6 @@ from itertools import product
 import bluesky.plan_stubs as bps
 
 
-def blank_decorator(func):
-    def wrapper(*args, **kwargs):
-        return func(*args, **kwargs)
-    return wrapper
-
-
 def optimize_scalers(dwell=0.5,
                      scalers=['im', 'i0'],
                      upper_target=2E6,
@@ -114,6 +108,9 @@ def optimize_scalers(dwell=0.5,
     # Setup dwell stage_sigs
     sclr1.stage_sigs['preset_time'] = dwell
 
+    start_shut_d = shut_d.read()['shut_d_request_open']['value'] # 0 is closed, 1 is open
+    start_shut_b = shut_b.status.get() # 'Not Open' or 'Open'
+
     # Visualization
     livecb = []
     livecb.append(LiveTable(channel_names))
@@ -124,13 +121,18 @@ def optimize_scalers(dwell=0.5,
     # @bpp.subs_decorator(livecb)
     def optimize_all_preamps():
 
-        # Optimize sensitivity
+        ### Optimize sensitivity ###
         # Turn off offset correction
         for idx in range(len(preamps)):
             yield from bps.mv(preamps[idx].offset_on, 0)
 
         # Open shutters
-        yield from check_shutters(shutter, 'Open')
+        if 'i0' in scalers or 'it' in scalers:
+            yield from check_shutters(shutter, 'Open')
+        else: # Only im
+            if shut_b.status.get() == 'Not Open':
+                print('Opening B-hutch shutter..')
+                yield from abs_set(shut_b, "Open", wait=True)
 
         opt_sens = [False,] * len(preamps)
         for combo_ind, combo in enumerate(preamp_combo_nums):
@@ -174,34 +176,36 @@ def optimize_scalers(dwell=0.5,
                     opt_sens[idx] = True
             yield Msg('save')
 
-        # Optimize offsets
+        ### Optimize offsets ###
         # Close shutters
+        if 'im' in scalers:
+            print('Closing B-hutch shutter...')
+            yield from abs_set(shut_b, 'Close', wait=True)
+        # Should we bother with d if closing b?
         yield from check_shutters(shutter, 'Close')
-        print('extra wait')
-        yield from bps.sleep(10 + settle_time)
+        yield from bps.sleep(settle_time)
 
         # Take baseline measurement without offsets
         yield Msg('checkpoint')
         yield Msg('create', None, name=stream_name)
         yield Msg('trigger', sclr1, group='B')
-        # yield Msg('trigger', motor, group='B') # What does this one do???
         yield Msg('wait', None, 'B')
 
         direction_signs = []
         # Read and iterate though all channels of interest
         ch_vals = yield Msg('read', sclr1)
+
         for idx in range(len(preamps)):
             val = ch_vals[channel_names[idx]]['value']
             # Find and set offset sign
             if val > 10: # slightly more than zero
                 direction_signs.append(1)
                 yield from bps.mv(preamps[idx].offset_sign, 0)
-                yield from bps.sleep(settle_time)
-                # print(f'{channel_names[idx]} is positive')
+                yield from bps.sleep(1 + settle_time)
             else:
                 direction_signs.append(-1)
                 yield from bps.mv(preamps[idx].offset_sign, 1)
-                yield from bps.sleep(settle_time)
+                yield from bps.sleep(1 + settle_time)
 
         yield Msg('save')
 
@@ -229,7 +233,6 @@ def optimize_scalers(dwell=0.5,
             yield from bps.sleep(settle_time)
             yield Msg('create', None, name=stream_name)
             yield Msg('trigger', sclr1, group='B')
-            # yield Msg('trigger', motor, group='B') # What does this one do???
             yield Msg('wait', None, 'B')
 
             # Read and iterate though all channels of interest
@@ -244,17 +247,16 @@ def optimize_scalers(dwell=0.5,
 
                 # Check if offset sign is correct from first reading
                 elif combo_ind == 0:
-                    if (val > 1 and direction_signs[idx] == 1):
+                    if (val > 10 and direction_signs[idx] == 1):
                         # Flip offset sign, while off for safety
                         yield from bps.mv(preamps[idx].offset_sign, 1)
-                        yield from bps.sleep(settle_time)
+                        yield from bps.sleep(1 + settle_time)
                         # print(f'Cond 1: Flipping offset sign for {preamps[idx].name}')
-
-                    elif (val <= 1 and direction_signs[idx] == -1):
+                    elif (val <= 10 and direction_signs[idx] == -1):
                         # Flip offset sign, while off for safety
                         yield from bps.mv(preamps[idx].offset_sign, 0)
-                        yield from bps.sleep(settle_time)
-                        # print(f'Cond 2 : Flipping offset sign for {preamps[idx].name}')          
+                        yield from bps.sleep(1 + settle_time)
+                        # print(f'Cond 2 : Flipping offset sign for {preamps[idx].name}')   
                     continue
                 
                 # Check if offset is correct
@@ -276,7 +278,20 @@ def optimize_scalers(dwell=0.5,
                     opt_off[idx] = True
 
             yield Msg('save')
-    
+
+            if not RUN_WRAPPER:
+                # Clear descripter cache
+                yield Msg("clear_describe_cache", sclr1)
+            
+        # Return shutters to original state
+        # Cannot handle open d and closed b yet
+        if start_shut_d == 1:
+            yield from check_shutters(shutter, 'Open')
+        elif start_shut_b == 'Open':
+            if shut_b.status.get() == 'Not Open':
+                print('Opening B-hutch shutter..')
+                yield from abs_set(shut_b, "Open", wait=True)
+
     # Open and close run, or append to other run
     if RUN_WRAPPER:
         @bpp.stage_decorator([sclr1])
@@ -326,6 +341,9 @@ def align_diamond_aperture(dwell=0.1,
 """
 
 
+
+
+# Run-agnostic peakup. For peakups in the middle of connected scans
 @parameter_annotation_decorator({
     "parameters": {
         "motor": {"default": "dcm.c2_fine"},
@@ -333,17 +351,17 @@ def align_diamond_aperture(dwell=0.1,
     }
 })
 def ra_smart_peakup(start=None,
-                 min_step=0.005,
-                 max_step=0.50,
-                 *,
-                 shutter=True,
-                 motor=dcm.c2_fine,
-                 detectors=[dcm.c2_pitch, bpm4, xbpm2],
-                 target_fields=['bpm4_total_current', 'xbpm2_sumT'],
-                 MAX_ITERS=100,
-                 md=None,
-                 stream_name=None,
-                 verbose=False):
+                    min_step=0.005,
+                    max_step=0.50,
+                    *,
+                    shutter=True,
+                    motor=dcm.c2_fine,
+                    detectors=[dcm.c2_pitch, bpm4, xbpm2],
+                    target_fields=['bpm4_total_current', 'xbpm2_sumT'],
+                    MAX_ITERS=100,
+                    md=None,
+                    stream_name=None,
+                    verbose=False):
     """
     Quickly optimize X-ray flux into the SRX D-hutch based on
     measurements from two XBPMs.
@@ -434,21 +452,20 @@ def ra_smart_peakup(start=None,
                 raise ex
 
     # Add metadata
-    _md = {'detectors': [det.name for det in detectors],
-           'motors': [motor.name],
-           'plan_args': {'detectors': list(map(repr, detectors)),
-                         'motor': repr(motor),
-                         'start': start,
-                         'min_step': min_step,
-                         'max_step': max_step,
-                         },
-           'plan_name': 'smart_peakup',
+    _md = {'plan_name': 'smart_peakup',
            'hints': {},
            }
     _md = get_stock_md(_md)
     _md['scan']['type'] = 'PEAKUP'
-    _md['scan']['detectors'] = [det.name for det in detectors]
+    # _md['scan']['detectors'] = [det.name for det in detectors]
+    _md['scan']['motors'] = [motor.name]
+    _md['scan']['plan_args'] = {
+                         'start': start,
+                         'min_step': min_step,
+                         'max_step': max_step,
+                         }
     _md.update(md or {})
+    get_det_md(_md, list(detectors))
 
     try:
         dimensions = [(motor.hints['fields'], stream_name)]
@@ -462,10 +479,9 @@ def ra_smart_peakup(start=None,
     if verbose is False:
         livecb.append(LiveTable([motor.readback.name] + target_fields))
 
-    # Need to add LivePlot, or LiveTable
-    # @bpp.stage_decorator(list(detectors) + [motor])
-    # @bpp.run_decorator(md=_md)
-    # @bpp.subs_decorator(livecb)
+    @bpp.stage_decorator(list(detectors) + [motor])
+    @agnostic_run_decorator(not RUN_WRAPPER, md=md)
+    @bpp.subs_decorator(livecb)
     def smart_max_core(x0):
         # Optimize on a given detector
         def optimize_on_det(target_field, x0):
@@ -528,28 +544,38 @@ def ra_smart_peakup(start=None,
             if verbose:
                 print(f'Optimizing on detector {target_field}')
             x0 = yield from optimize_on_det(target_field, x0)
+        
+        # if RUN_WRAPPER:
+        #     # Clear descripter cache
+        #     for det in detectors:
+        #         yield Msg("clear_describe_cache", det)
     
-    # Open and close run, or append to other run
-    if RUN_WRAPPER:
-        @bpp.stage_decorator(list(detectors) + [motor])
-        @bpp.run_decorator(md=_md)
-        @bpp.subs_decorator(livecb)
-        def plan(start):
-            yield from smart_max_core(start)
-    else:
-        @bpp.stage_decorator(list(detectors) + [motor])
-        @bpp.subs_decorator(livecb)
-        def plan(start):
-            yield from smart_max_core(start)
+    # # Open and close run, or append to other run
+    # if RUN_WRAPPER:
+    #     @bpp.stage_decorator(list(detectors) + [motor])
+    #     @bpp.run_decorator(md=_md)
+    #     @bpp.subs_decorator(livecb)
+    #     def plan(start):
+    #         yield from smart_max_core(start)
+    # else:
+    #     @bpp.stage_decorator(list(detectors) + [motor])
+    #     @bpp.subs_decorator(livecb)
+    #     def plan(start):
+    #         yield from smart_max_core(start)
 
-    return (yield from plan(start))
+    #         # Clear descripter cache
+    #         for det in detectors:
+    #             yield Msg("clear_describe_cache", det)
+
+
+    # return (yield from plan(start))
+    return (yield from smart_max_core(start))
+
 
 
 
 # REMOVE ME!
 from event_model import RunRouter
-
-
 
 def test_optimizer():
 

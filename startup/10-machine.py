@@ -125,7 +125,8 @@ class InsertionDevice(Device, PositionerBase):
 # Setup energy axis
 class Energy(PseudoPositioner):
     # Synthetic axis
-    energy = Cpt(PseudoSingle)
+    energy = Cpt(PseudoSingle, egu='keV')
+    egu = Cpt(Signal, None, add_prefix=(), value='keV', kind="config")
 
     # Real motors
     u_gap = Cpt(InsertionDevice, "SR:C5-ID:G1{IVU21:1")
@@ -220,7 +221,7 @@ class Energy(PseudoPositioner):
         harmonic : int, optional
             The harmonic to use, defaults to 3
         """
-        p = self.u_gap.get().readback
+        ugap = self.u_gap.gap.user_readback.get() / 1000
         utoelookup = self.utoelookup
 
         fundemental = float(utoelookup(ugap))

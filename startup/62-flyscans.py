@@ -100,7 +100,9 @@ def toc(t0, str='', log_file=None):
 def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell, *,
                       flying_zebra, xmotor, ymotor,
                       delta=None, shutter=True, plot=True,
-                      md=None, snake=False, verbose=False):
+                      md=None, snake=False,
+                      vlm_snapshot=False, snapshot_after=False,
+                      N_dark=10, verbose=False):
     """Read IO from SIS3820.
     Zebra buffers x(t) points as a flyer.
     Xpress3 is our detector.
@@ -180,40 +182,9 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
 
     dets_by_name = {d.name : d
                     for d in detectors}
-
-    # Set up the merlin
-    if 'merlin' in dets_by_name:
-        dpc = dets_by_name['merlin']
-        # TODO use stage sigs
-        # Set trigger mode
-        # dpc.cam.trigger_mode.put(2)
-        # Make sure we respect whatever the exposure time is set to
-        if (dwell < 0.0066392):
-            print('The Merlin should not operate faster than 7 ms.')
-            print('Changing the scan dwell time to 7 ms.')
-            dwell = 0.007
-        # According to Ken's comments in hxntools, this is a de-bounce time
-        # when in external trigger mode
-        # dpc.cam.stage_sigs['acquire_time'] = 0.001
-        # dpc.cam.stage_sigs['acquire_period'] = 0.003
-        dpc.cam.stage_sigs['acquire_time'] = 0.9*dwell - 0.002
-        dpc.cam.stage_sigs['acquire_period'] = 0.9*dwell
-        dpc.cam.stage_sigs['num_images'] = 1
-        dpc.stage_sigs['total_points'] = xnum
-        dpc.hdf5.stage_sigs['num_capture'] = xnum
-        del dpc
-
-    # Setup dexela
-    if ('dexela' in dets_by_name):
-        xrd = dets_by_name['dexela']
-        # If the dexela is acquiring, stop
-        if xrd.cam.detector_state.get() == 1:
-            xrd.cam.acquire.set(0)
-        xrd.cam.stage_sigs['acquire_time'] = dwell
-        del xrd
+    setup_xrd_dets(detectors, dwell, xnum)
 
     # If delta is None, set delta based on time for acceleration
-    #MIN_DELTA = 0.200  # default value
     # EJM edit
     MIN_DELTA = 1.00  # default value
     if (delta is None):
@@ -232,18 +203,22 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
     md['scan']['type'] = 'XRF_FLY'
     md['scan']['scan_input'] = [xstart, xstop, xnum, ystart, ystop, ynum, dwell]
     md['scan']['sample_name'] = ''
-    md['scan']['detectors'] = [d.name for d in detectors]
+    # md['scan']['detectors'] = [d.name for d in detectors]
     md['scan']['dwell'] = dwell
     md['scan']['fast_axis'] = {'motor_name' : xmotor.name,
                                'units' : xmotor.motor_egu.get()}
     md['scan']['slow_axis'] = {'motor_name' : ymotor.name,
                                'units' : ymotor.motor_egu.get()}
-    md['scan']['theta'] = {'val' : nano_stage.th.user_readback.get(),
+    md['scan']['theta'] = {'val' : np.round(nano_stage.th.user_readback.get(), decimals=3),
                            'units' : nano_stage.th.motor_egu.get()}
     md['scan']['delta'] = {'val' : delta,
                            'units' : xmotor.motor_egu.get()}
     md['scan']['snake'] = snake
     md['scan']['shape'] = (xnum, ynum)
+    md_dets = list(detectors)
+    if vlm_snapshot:
+        md_dets = md_dets + [nano_vlm]
+    get_det_md(md, md_dets)
 
     # Setup LivePlot
     # Set the ROI pv
@@ -319,17 +294,6 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
                 xs2.hdf5.num_capture, xnum,
                 xs2.cam.num_images, xnum   # JL changed settings to cam
             )
-
-        if ('merlin' in dets_by_name):
-            merlin = dets_by_name['merlin']
-            yield from abs_set(merlin.hdf5.num_capture, xnum, wait=True)
-            yield from abs_set(merlin.cam.num_images, xnum, wait=True)
-
-        if ('dexela' in dets_by_name):
-            dexela = dets_by_name['dexela']
-            yield from abs_set(dexela.hdf5.num_capture, xnum, wait=True)
-            # yield from abs_set(dexela.hdf5.num_frames_chunks, xnum, wait=True)
-            yield from abs_set(dexela.cam.num_images, xnum, wait=True)
 
         ion = flying_zebra.sclr
         # TODO Can this be done just once per scan instead of each line?
@@ -651,6 +615,8 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
     # @monitor_during_decorator([roi_pv])
     @stage_decorator([flying_zebra])  # Below, 'scan' stage ymotor.
     @run_decorator(md=md)
+    @vlm_decorator(vlm_snapshot, after=snapshot_after)
+    @dark_decorator(detectors, N_dark=N_dark, shutter=shutter)    
     def plan():
         if verbose:
             # open file
@@ -856,6 +822,118 @@ def coarse_y_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
     yield from scan_and_fly_base(dets, *args, **kwargs)
     if center:
         yield from move_to_scanner_center(timeout=10)
+
+
+# New alias
+def xrf_map(xstart, xstop, xnum,
+            ystart, ystop, ynum, 
+            dwell,
+            fly_on_y=False, resolution='nano', extra_dets=None, center=True, **kwargs):
+    """
+    User-friendly alias for scan_and_fly_base function.
+
+    Parameters
+    ----------
+    xstart : float
+        Start position of the x-motor in motor units.
+    xstop : float
+        Stop position of the x-motor in motor units.
+    xnum : int
+        Number of pixels in the x-direction.
+    ystart : float
+        Start position of the y-motor in motor units.
+    ystop : float
+        Stop position of the y-motor in motor units.
+    ynum : int
+        Number of pixels in the y-direction.
+    dwell : float
+        Dwell time per pixel in seconds
+    fly_on_y : bool, optional
+        Flag to signal flying direction. If True, then fly in 'y' direction.
+        False by default and fly in 'x' direction.
+    resolution : {'nano', 'coarse'}, optional
+        Determine which set of motors to use. 'nano' will use the high precision
+        scanner stages and coarse will use the lower precision positioner stages.
+        'nano' by default.
+    extra_dets : list, optional
+        List of extra detectors to be included in addition to standard scaler and
+        fluorescence detectors (e.g., [dexela, merlin, ...]).
+        None by default.
+    center : bool, optional
+        Flag to center the scanner stages before and after mapping.
+    delta : float, optional
+        Offset on the ystage start position.  If not given, derive from
+        dwell + pixel size
+    shutter : bool, optional
+        Flag to disable shutters. False by default.
+    plot : bool, optional
+        Flag to enable liveplotting. True by default.
+    md : dict, optional
+        Starting metadata for scan. Empty by default.
+    snake : bool, optional
+        Flag to snake the motor motion. False by default.
+    vlm_snapshot : bool, optional
+        Flag to enable VLM snapshots before scanning. If True, snapshot_after
+        will also function. False by default.
+    snapshot_after : bool, optional
+        Flag to enable VLM snapshots after scanning. Will only function if
+        vlm_snapshot is also True. False by default.
+    N_dark : int, optional
+        Number of dark-field images to be acquired by selected detectors if
+        they are included. Only for dexela if included in extra_dets. 0 by default.
+    verbose : bool, optional
+        Flag to control the verbosity of scan_and_fly_base.
+    """
+
+    # Determine motors
+    if resolution.lower() == 'nano':
+        kwargs.setdefault('flying_zebra', nano_flying_zebra)
+        if fly_on_y:
+            fly_start, fly_stop, fly_num = ystart, ystop, ynum
+            step_start, step_stop, step_num = xstart, xstop, xnum
+            kwargs['xmotor'] = nano_stage.sy
+            kwargs['ymotor'] = nano_stage.sx
+            yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOVER', wait=True)
+            yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOHOR')
+        else:
+            fly_start, fly_stop, fly_num = xstart, xstop, xnum
+            step_start, step_stop, step_num = ystart, ystop, ynum
+            kwargs['xmotor'] = nano_stage.sx
+            kwargs['ymotor'] = nano_stage.sy
+            yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR', wait=True)
+            yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOVER')
+    elif resolution.lower() == 'coarse':
+        kwargs.setdefault('flying_zebra', nano_flying_zebra_coarse)
+        if fly_on_y:
+            fly_start, fly_stop, fly_num = ystart, ystop, ynum
+            step_start, step_stop, step_num = xstart, xstop, xnum
+            kwargs['xmotor'] = nano_stage.y
+            kwargs['ymotor'] = nano_stage.topx
+            yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOVER')
+            yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOHOR')
+        else:
+            fly_start, fly_stop, fly_num = xstart, xstop, xnum
+            step_start, step_stop, step_num = ystart, ystop, ynum
+            kwargs['xmotor'] = nano_stage.topx
+            kwargs['ymotor'] = nano_stage.y
+            yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR')
+            yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOVER')
+    
+    # Determine detectors
+    _xs = kwargs.pop('xs', xs)
+    if extra_dets is None:
+        extra_dets = []
+    dets = [_xs] + extra_dets
+
+    if center:
+        yield from move_to_scanner_center(timeout=10)
+    yield from scan_and_fly_base(dets,
+                                 fly_start, fly_stop, fly_num,
+                                 step_start, step_stop, step_num, dwell,
+                                 **kwargs)
+    if center:
+        yield from move_to_scanner_center(timeout=10)
+
 
 
 # This class is not used in this file
