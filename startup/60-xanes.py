@@ -1318,10 +1318,13 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
     # Get a harmonic value (assuming no detuning)
     if harmonic < 3:
         harmonic = 3
-        _, _, ugap = energy.energy_to_positions(e_start/1000, harmonic, 0)
+        # _, _, ugap = energy.energy_to_positions(e_start/1000, harmonic, 0)
+        _, _, ugap = energy.energy_to_positions(e_stop/1000, harmonic, 0)
         while True:
-            _, _, ugap = energy.energy_to_positions(e_start/1000, harmonic+2, 0)
-            if ugap < energy.u_gap.low_limit:
+            # _, _, ugap = energy.energy_to_positions(e_start/1000, harmonic+2, 0)
+            _, _, ugap = energy.energy_to_positions(e_stop/1000, harmonic+2, 0)
+            # if ugap < energy.u_gap.low_limit:
+            if ugap < np.amin(flyer_id_mono.lut_u.get()):
                 break
             harmonic += 2
 
