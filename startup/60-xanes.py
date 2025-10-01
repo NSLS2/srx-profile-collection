@@ -797,7 +797,7 @@ class FlyerIDMono(Device):
                                                                         # The shape will correspond to a 1-D array of 4096 bins from xspress3.
                                                                         'shape': [
                                                                                   # in multi-pass mode this is the number of pointsin one pass
-                                                                                  # self.num_triggers,
+                                                                                  self.num_triggers,
                                                                                   # We don't need the total number of frames here.
                                                                                   # xs_det.settings.num_images.get(),
                                                                                   #
@@ -1242,7 +1242,7 @@ def export_flyer_id_mono_data(uid_or_scanid, roi=1, e_min=None, e_max=None, fnam
             if "channel" in k:
                 # We will process later
                 continue
-            df[k] = tbl[k].read()
+            df[k] = tbl[k].read()[0]
 
         print(f'  Processing data...')
         print(f"{df=}")
@@ -1250,7 +1250,7 @@ def export_flyer_id_mono_data(uid_or_scanid, roi=1, e_min=None, e_max=None, fnam
 
         ch_names = [ch for ch in keys if "channel" in ch]
         for ch in ch_names:
-            df[ch] = np.sum(tbl[ch].read()[:, e_min:e_max], axis=1)
+            df[ch] = np.sum(tbl[ch].read()[0, :, e_min:e_max], axis=1)
             df.rename(columns={ch : ch.split('_')[-1]}, inplace=True)
         df['ch_sum'] = df[[ch for ch in df.keys() if "channel" in ch]].sum(axis=1)
 
@@ -1332,7 +1332,7 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
         md = {}
     md = get_stock_md(md)
     md['scan']['type'] = 'XAS_FLY'
-    md['scan']['energy'] = list(np.linspace(e_start, e_stop, num=num_pts))
+    # md['scan']['energy'] = list(np.linspace(e_start, e_stop, num=num_pts))
     md['scan']['num_points'] = num_pts
     md['scan']['scan_input'] = [e_start, e_stop, e_width, dwell, num_pts]
     md['scan']['sample_name'] = ''
