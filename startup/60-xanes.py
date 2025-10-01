@@ -1349,12 +1349,14 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
     except:
         pass
 
-    d = []
+    d, dets = [], []
     for fly in flyers:
         for flying_xs in fly.xs_detectors:
             d.append(flying_xs.name)
+            dets.append(flying_xs)
             yield from bps.mv(flying_xs.fly_next, True)
-    md['scan']['detectors'] = d
+    # md['scan']['detectors'] = d
+    get_det_md(md, dets)
 
     livepopup = []
     if (plot is True):

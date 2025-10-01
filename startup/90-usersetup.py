@@ -119,7 +119,7 @@ def get_det_md(scan_md, dets):
     # Add appropriate metadata for each detector
     for name, det in {d.name : d for d in dets}.items():
         det_dict = {}
-        if name == 'xs':
+        if name in ['xs', 'xs_id_mono_fly']:
             det_dict = {}
             # Add the first four rois, regardless if they are used
             for ind in range(det.channel01.get_mcaroi_count()):
@@ -140,6 +140,7 @@ def get_det_md(scan_md, dets):
         elif name == 'nanoZebra':
             # Is there a better way to get this information??
             det_dict['mode'] = det.pc.gate_source.get(as_string=True) # Position or time?
+            # det_dict['mode'] = det.mode.get()
         elif name in ['ring_current', 'xbpm2', 'dcm_c2_pitch', 'bpm4']:
             pass # Nothing to add
         else:
