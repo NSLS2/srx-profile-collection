@@ -1359,35 +1359,24 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
     get_det_md(md, dets)
 
     livepopup = []
-    if (plot is True):
-         plot = False
-         print("Plotting is broken! :-(")
-         # unit_epts = np.concatenate((-1*np.ones((1,)), np.linspace(e_start, e_stop, num_pts)))
-         # if scan_type == 'unidirectional':
-         #     plot_epts = np.tile(unit_epts, num_scans)
-         # else:
-         #     for i in range(num_scans):
-         #         if i == 0:
-         #             plot_epts = np.copy(unit_epts)
-         #             continue
+    roi_pv = flyer_id_mono.xs_detectors[0].channel01.mcaroi01.ts_total
+    if plot is True:
+        yield from mov(flyer_id_mono.xs_detectors[0].channel01.mcaroi.ts_control, 2, settle_time=0.1, timeout=1)
+        yield from mov(flyer_id_mono.xs_detectors[0].channel01.mcaroi.ts_num_points, num_pts, settle_time=0.1, timeout=1)
+        yield from mov(flyer_id_mono.xs_detectors[0].channel01.mcaroi.ts_control, 0, settle_time=0.1, timeout=1)
 
-         #         if i % 2 == 1:
-         #             plot_epts = np.concatenate((plot_epts, np.flipud(unit_epts)))
-         #         else:
-         #             plot_epts = np.concatenate((plot_epts, unit_epts))
-         # plot_epts = np.concatenate((plot_epts, -1*np.ones((1,))))
+        livepopup = [SRX1DTSFlyerPlot(roi_pv.name,
+                                      xstart=e_start,
+                                      xstep=(e_stop-e_start) / (num_pts-1),
+                                      xlabel="Energy (eV)")]
 
-         # livepopup = [LivePlotFlyingXAS(xs_id_mono_fly.channel01.mcaroi01.total_rbv.name,
-         #                                y_norm=xbpm2.sumT.name,
-         #                                e_pts=plot_epts,
-         #                                xlabel='Energy [eV]')]
 
     # Set the currect pulse length for zebra1 - microZebra
     yield from bps.mov(microZebra.pulse1.width, dwell, timeout=3)
     yield from bps.mov(microZebra.pulse2.width, dwell, timeout=3)
 
-    # @subs_decorator(livepopup)
-    # @monitor_during_decorator([xs_id_mono_fly.channel01.mcaroi01.total_rbv, xbpm2.sumT])
+    @subs_decorator(livepopup)
+    @ts_monitor_during_decorator([roi_pv])
     def plan():
         # yield from check_shutters(shutter, 'Open')
         uid = yield from bps.open_run(md)
