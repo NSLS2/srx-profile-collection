@@ -178,7 +178,11 @@ class Energy(PseudoPositioner):
         Returns
         -------
         bragg : float
-             The angle to set the monocromotor
+            The angle to set the monocromotor
+        c2x : float
+            The c2x position
+        ugap : float
+            The undulator gap in microns
 
         """
         # Set up constants
