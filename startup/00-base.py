@@ -176,7 +176,7 @@ def post_document(name, doc):
             # print(f"{name} {doc} Post dt = {ttime.time() - start_time}")
             # log_ipy.debug(f"{name} {doc} Post dt = {ttime.time() - start_time}")
         except Exception as exc:
-            print("Document saving failure:", repr(exc))
+            print(f"[{print_now()}] Document saving failure ({attempt+1}/{ATTEMPTS}):", repr(exc))
             error = exc
             # raise exc
         else:
