@@ -493,7 +493,7 @@ class SRXFlyer1Axis(Device):
         read_path = formatter(f'{self.root_path}{self.read_path_template}')
         return filename, read_path, write_path
 
-    KNOWN_DETS = {"xs", "xs2", "xs4", "merlin", "dexela"}
+    KNOWN_DETS = {"xs", "xs2", "xs4", "merlin", "dexela", "eiger1"}
     fast_axis = Cpt(Signal, value="HOR", kind="config")
     slow_axis = Cpt(Signal, value="VER", kind="config")
     mode = Cpt(Signal, value='position', kind='config')

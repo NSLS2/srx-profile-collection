@@ -177,8 +177,6 @@ class SRXMerlin(SingleTrigger, SRXMerlinDetector):
     path_start = "/nsls2/data/srx/"
 
     def root_path_str():
-        # data_session = self._redis_dict["data_session"]
-        # cycle = self._redis_dict["cycle"]
         data_session = RE.md["data_session"]
         cycle = RE.md["cycle"]
         if "Commissioning" in get_proposal_type():

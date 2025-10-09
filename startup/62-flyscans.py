@@ -828,7 +828,11 @@ def coarse_y_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
 def xrf_map(xstart, xstop, xnum,
             ystart, ystop, ynum, 
             dwell,
-            fly_on_y=False, resolution='nano', extra_dets=None, center=True, **kwargs):
+            fly_on_y=False,
+            resolution='nano',
+            extra_dets=None,
+            center=True,
+            **kwargs):
     """
     User-friendly alias for scan_and_fly_base function.
 

@@ -41,6 +41,18 @@ def setup_xrd_dets(dets,
         xrd.cam.stage_sigs['num_images'] = N_images
         xrd.hdf5.stage_sigs['num_capture'] = N_images
         del xrd
+    
+    # Setup eiger1
+    if 'eiger1' in dets_by_name:
+        xrd = dets_by_name['eiger1']
+        xrd.cam.acquire.set(0)
+        xrd.stage_sigs['total_points'] = N_images
+        xrd.cam.stage_sigs['num_triggers'] = N_images
+
+        # Sets bit-depth for fly-mode, otherwise actual time
+        xrd.cam.stage_sigs['acquire_time'] = dwell - 0.005
+        xrd.cam.stage_sigs['acquire_period'] = dwell
+        del xrd
 
 
 # Assumes detector stage sigs are already set
