@@ -1426,23 +1426,54 @@ def flying_xas_reset():
     if id_fly_device.control.scan_in_progress.get() == 1:
         if id_fly_device.control.abort.write_access is True:
             print('Aborting any active scans...')
-            yield from abs_set(id_fly_device.control.abort, 1)
+            yield from mov(id_fly_device.control.abort, 1, timeout=10)
 
     # Disable flying mode
     if flyer_id_mono.flying_dev.control.control.write_access is True:
        print('Disabling fly mode...')
-       yield from abs_set(flyer_id_mono.flying_dev.control.control, 0)
+       st = id_fly_device.control.set("disable")
+       st.wait(timeout=10)
 
-    # unstage flyer
+    # Unstage flyer
     print('Unstaging the flyer...')
     yield from unstage(flyer_id_mono)
 
-    #reset scaler count mode
+    # Reset scaler count mode
     print('Reinitializing the scaler...')
     sclr1 = SRXScaler("XF:05IDD-ES:1{Sclr:1}", name="sclr1")
     sclr1.read_attrs = ["channels.chan2", "channels.chan3", "channels.chan4"]
-    yield from mv(sclr1.count_mode, 1)
+    yield from mov(sclr1.count_mode, 1, timeout=10)
 
+
+def reset_after_flying_xas():
+    ivu_sp = EpicsSignal("SR:C5-ID:G1{IVU21:1-Ax:Gap}-Mtr-SP")
+    ivu_rb = EpicsSignal("SR:C5-ID:G1{IVU21:1-Ax:Gap}-Mtr.RBV")
+    ivu_move = EpicsSignal("SR:C5-ID:G1{IVU21:1-Ax:Gap}-Mtr-Go")
+
+    ivu_energy = energy.undulator_energy(harmonic=energy.selected_harmonic.get())
+    bragg_energy = energy.position.energy
+
+    if np.abs(ivu_energy - bragg_energy) > 0.005:  # keV
+        print(f"Undulator energy: {ivu_energy:3.3f} keV")
+        print(f"Bragg energy:     {bragg_energy:3.3f} keV")
+
+        _, _, sp = energy.energy_to_positions(bragg_energy, energy.selected_harmonic.get(), 0)
+
+        def cb_gap_move(*, value, old_value, **kwargs):
+            value = sp
+            old_value = ivu_rb.get()
+            if np.abs(value - old_value) < 3:
+                return True
+            return False
+
+        st = SubscriptionStatus(ivu_rb, cb_gap_move, run=True)
+        yield from mov(ivu_sp, sp, timeout=5)
+        yield from mov(ivu_move, 1)
+
+        try:
+            st.wait(timeout=10)
+        except WaitTimeoutError:
+            print("Timeout error!")
 
 """
 TODO: All scan directions and modes (uni/bi-directional), DONE
