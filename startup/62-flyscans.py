@@ -102,6 +102,7 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
                       delta=None, shutter=True, plot=True,
                       md=None, snake=False,
                       vlm_snapshot=False, snapshot_after=False,
+                      override_step_check=False,
                       N_dark=10, verbose=False):
     """Read IO from SIS3820.
     Zebra buffers x(t) points as a flyer.
@@ -164,6 +165,31 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
                          f'Min velocity: {xmotor.velocity.low_limit}')
     else:
         xmotor.stage_sigs[xmotor.velocity] = v
+    
+    # Check reasonable step sizes
+    _reasonable_steps = {1, 1.25, 2, 2.5, 3, 4, 5, 6, 7, 7.5, 8, 9}
+    reasonable_steps = []
+    for step in _reasonable_steps:
+        reasonable_steps.extend([
+            float(np.round(step * 0.1, 5)),
+            float(step),
+            float(step * 10),
+            float(step * 100)
+        ])
+    for start, stop, num, motor in zip(
+                            [xstart, ystart],
+                            [xstop, ystop],
+                            [xnum, ynum],
+                            [xmotor, ymotor]):
+        step = np.abs((stop - start) / (num - 1))
+        if (not override_step_check
+            and float(step) not in reasonable_steps):
+            err_str = (f"Calculated step size of {step} {motor.motor_egu.get()} for motor {motor.name}"
+                       + "is not in the set of reasonable step sizes:"
+                       + f"\n\t{set(reasonable_steps)}\n"
+                       + "Change the number of points to achieve a reasonable step size or set the "
+                       + "'override_step_check' to True.")
+            raise ValueError(err_str)
 
     # Set metadata
     if md is None:

@@ -493,7 +493,7 @@ class SRXFlyer1Axis(Device):
         read_path = formatter(f'{self.root_path}{self.read_path_template}')
         return filename, read_path, write_path
 
-    KNOWN_DETS = {"xs", "xs2", "xs4", "merlin", "dexela", "eiger1"}
+    KNOWN_DETS = {"xs", "xs2", "xs4", "merlin", "dexela", "eiger"}
     fast_axis = Cpt(Signal, value="HOR", kind="config")
     slow_axis = Cpt(Signal, value="VER", kind="config")
     mode = Cpt(Signal, value='position', kind='config')
@@ -767,10 +767,12 @@ class SRXFlyer1Axis(Device):
         extent = np.abs(xstop - xstart) + pxsize
         v = pxsize / dwell
 
+        # Units of microns
         if mode == 'position':
             if 'dexela' in [d.name for d in self.detectors]:
-                decrement = (pxsize / dwell) * 0.001
-                decrement = np.max([decrement, 0.001])
+                # decrement = (pxsize / dwell) * 0.001
+                # decrement = np.max([decrement, 0.001])
+                decrement = (pxsize / dwell) * 0.005
             else:
                 if dwell > 0.099:
                     decrement = (pxsize / dwell) * 0.001
@@ -781,12 +783,12 @@ class SRXFlyer1Axis(Device):
             if decrement < 1e-5:
                 print('Warning: Changing the pulse width!')
                 decrement = 1e-5
+        # Units of seconds
         elif mode == 'time':
             if 'dexela' in [d.name for d in self.detectors]:
                 decrement = 0.001
             else:
                 decrement = 0.0002
-            # decrement = 0.0002
 
         if mode == 'position':
             self._encoder.pc.gate_start.put(xstart - direction * (pxsize / 2))

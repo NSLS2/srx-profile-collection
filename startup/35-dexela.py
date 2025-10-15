@@ -179,7 +179,6 @@ class DexelaHDFWithFileStore(HDF5Plugin, DexelaFileStoreHDF5):
             sig.set(val).wait()
 
 
-
 class SRXDexelaDetector(SingleTrigger, DexelaDetector):
     total_points = Cpt(Signal,
                        value=1,

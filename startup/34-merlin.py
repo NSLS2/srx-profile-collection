@@ -47,16 +47,8 @@ class BulkMerlinDebug(BulkXspress):
         return self._handle['entry/instrument/detector/data'][1:]
 
 
-# needed to get at some debugging data
-# db.reg.register_handler('MERLIN_FLY', BulkMerlinDebug,
-#                         overwrite=True)
-# db.reg.register_handler(BulkMerlin.HANDLER_NAME, BulkMerlin,
-#                         overwrite=True)
-
-
 class MerlinFileStoreHDF5(FileStoreBase):
 
-    # _spec = 'TPX_HDF5'
     _spec = 'AD_HDF5'
 
     def __init__(self, *args, **kwargs):
@@ -89,7 +81,6 @@ class MerlinFileStoreHDF5(FileStoreBase):
     def filestore_spec(self):
         if self.parent._mode is SRXMode.fly:
             return BulkMerlin.HANDLER_NAME
-        # return 'TPX_HDF5'
         return 'AD_HDF5'
 
     def generate_datum(self, key, timestamp, datum_kwargs):
@@ -228,14 +219,6 @@ class SRXMerlin(SingleTrigger, SRXMerlinDetector):
         # do the latching
         if self.fly_next.get():
             self.fly_next.put(False)
-            # According to Ken's comments in hxntools, this is a de-bounce time
-            # when in external trigger mode
-
-            # moved this to the plan
-            # self.stage_sigs[self.cam.acquire_time] = 0.005
-            # self.stage_sigs[self.cam.acquire_period] = 0.0066392
-
-            # self.stage_sigs[self.cam.trigger_mode] = 1  # Trigger Enable
             self.stage_sigs[self.cam.trigger_mode] = 2  # Trigger Start Rising
             self._mode = SRXMode.fly
         else:
@@ -247,11 +230,6 @@ class SRXMerlin(SingleTrigger, SRXMerlinDetector):
             if count_time is not None:
                 self.stage_sigs[self.cam.acquire_time] = count_time
                 self.stage_sigs[self.cam.acquire_period] = count_time + 0.005
-
-            # self.stage_sigs.pop(self.cam.acquire_time)
-            # self.stage_sigs.pop(self.cam.acquire_period)
-            # self.stage_sigs[self.cam.trigger_mode] = 0
-
             self._mode = SRXMode.step
 
         return super().stage()

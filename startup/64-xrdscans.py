@@ -36,22 +36,28 @@ def setup_xrd_dets(dets,
         xrd = dets_by_name['dexela']
         xrd.cam.acquire.set(0) # Halt any current acquisition
         xrd.stage_sigs['total_points'] = N_images
-        xrd.cam.stage_sigs['acquire_time'] = dwell
+        xrd.cam.stage_sigs['acquire_time'] = dwell - 0.005 # trying this...
         xrd.cam.stage_sigs['acquire_period'] = dwell
         xrd.cam.stage_sigs['num_images'] = N_images
         xrd.hdf5.stage_sigs['num_capture'] = N_images
         del xrd
     
-    # Setup eiger1
-    if 'eiger1' in dets_by_name:
-        xrd = dets_by_name['eiger1']
+    # Setup eiger
+    if 'eiger' in dets_by_name:
+        xrd = dets_by_name['eiger']
         xrd.cam.acquire.set(0)
         xrd.stage_sigs['total_points'] = N_images
         xrd.cam.stage_sigs['num_triggers'] = N_images
+        xrd.hdf5.stage_sigs['num_capture'] = N_images
 
         # Sets bit-depth for fly-mode, otherwise actual time
-        xrd.cam.stage_sigs['acquire_time'] = dwell - 0.005
+        xrd.cam.stage_sigs['acquire_time'] = dwell - 0.005 # 10 ms is a lot, but dropping too many frames
         xrd.cam.stage_sigs['acquire_period'] = dwell
+
+        # Update energy thresholds
+        # Should do this for merlin too...
+        xrd.cam.stage_sigs['photon_energy'] = 1e3 * np.round(energy.energy.setpoint.get())
+        xrd.cam.stage_sigs['threshold_energy'] = 1e3 * 0.5 * np.round(energy.energy.setpoint.get())
         del xrd
 
 
