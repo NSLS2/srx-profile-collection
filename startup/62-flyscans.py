@@ -258,7 +258,7 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
             yield from bps.checkpoint()
             yield from bps.abs_set(xmotor, row_start, group=row_str)
             yield from bps.abs_set(motor, step, group=row_str)
-            yield from bps.wait(group=row_str)
+            yield from bps.wait(group=row_str, timeout=120)
             # Beginning of line read
             yield from bps.trigger_and_read([motor, nano_stage_interferometer])
 
