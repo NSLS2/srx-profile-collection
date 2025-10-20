@@ -24,8 +24,8 @@ def setup_xrd_dets(dets,
             dwell = 0.007
         # According to Ken's comments in hxntools, this is a de-bounce time
         # when in external trigger mode
-        xrd.cam.stage_sigs['acquire_time'] = 0.9*dwell - 0.002
-        xrd.cam.stage_sigs['acquire_period'] = 0.9*dwell
+        xrd.cam.stage_sigs['acquire_time'] = 0.9 * dwell - 0.002
+        xrd.cam.stage_sigs['acquire_period'] = 0.9 * dwell
         xrd.cam.stage_sigs['num_images'] = N_images
         xrd.stage_sigs['total_points'] = N_images
         xrd.hdf5.stage_sigs['num_capture'] = N_images
@@ -36,7 +36,7 @@ def setup_xrd_dets(dets,
         xrd = dets_by_name['dexela']
         xrd.cam.acquire.set(0) # Halt any current acquisition
         xrd.stage_sigs['total_points'] = N_images
-        xrd.cam.stage_sigs['acquire_time'] = dwell - 0.005 # trying this...
+        xrd.cam.stage_sigs['acquire_time'] = dwell# - 0.005 # trying this...
         xrd.cam.stage_sigs['acquire_period'] = dwell
         xrd.cam.stage_sigs['num_images'] = N_images
         xrd.hdf5.stage_sigs['num_capture'] = N_images
@@ -51,7 +51,7 @@ def setup_xrd_dets(dets,
         xrd.hdf5.stage_sigs['num_capture'] = N_images
 
         # Sets bit-depth for fly-mode, otherwise actual time
-        xrd.cam.stage_sigs['acquire_time'] = dwell - 0.005 # 10 ms is a lot, but dropping too many frames
+        xrd.cam.stage_sigs['acquire_time'] = dwell #  - 0.005 # 10 ms is a lot, but dropping too many frames
         xrd.cam.stage_sigs['acquire_period'] = dwell
 
         # Update energy thresholds
