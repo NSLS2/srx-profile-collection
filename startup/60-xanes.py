@@ -677,8 +677,24 @@ class FlyerIDMono(Device):
 
         # print(f'Enabling fly scan')
         st = self.flying_dev.control.set("enable")
-        while not st.done:
-            ttime.sleep(0.1)
+        try:
+            st.wait(10)
+        except WaitTimeoutError as ex:
+            print("Timeout while requesting control of IVU!")
+            print("Trying again...")
+
+            print("  disabling...", end="", flush=True)
+            st = self.flying_dev.control.set("disable")
+            st.wait(10)
+            print("done")
+
+            print("  requesting...", end="", flush=True)
+            st = self.flying_dev.control.set("enable")
+            st.wait(10)
+            print("done")
+        except Exception as ex:
+            raise ex
+
 
         # Reset the trigger count and current scan:
         self.flying_dev.parameters.trigger_count_reset.put(1)
