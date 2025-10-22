@@ -146,9 +146,9 @@ def find_edge(scanid, use_xrf=True, element='', norm_key="i0"):
             it = tbl["sclr_it"].read().astype(float)
     elif "XAS_FLY" in h.start["scan"]["type"]:
         tbl = h["scan_001"]["data"]
-        energypoints = tbl["energy"].read()
+        energypoints = tbl["energy"].read()[0]
         if 'energy_bragg' in tbl:
-            braggpoints = tbl["energy_bragg"].read()
+            braggpoints = tbl["energy_bragg"].read()[0]
         else:
             warn_str = ('WARNING: Bragg was not found for XAS_FLY scanning. Back-calculating Bragg '
                        + 'from recorded energy components using the current id_fly_device hdcm_parameters.')
@@ -158,16 +158,16 @@ def find_edge(scanid, use_xrf=True, element='', norm_key="i0"):
             braggpoints = (np.arcsin((ANG_OVER_EV / (energypoints / 1e3)) / (2 * d111)) / np.pi * 180 - delta_bragg)
 
         if "i0" in norm_key.lower():
-            i0 = tbl["i0"].read()
+            i0 = tbl["i0"].read()[0]
         elif "im" in norm_key.lower():
-            i0 = tbl["im"].read()
+            i0 = tbl["im"].read()[0]
         else:
             raise KeyError(f"{norm_key} not recognized!")
         # XRF
         if use_xrf:
-            xrf = np.sum([tbl[f"xs_id_mono_fly_channel0{ind}"] for ind in range(1, 8)], axis=0)
+            xrf = np.sum([tbl[f"xs_id_mono_fly_channel0{ind}"][0] for ind in range(1, 8)], axis=0)
         else:
-            it = tbl["it"].read().astype(float)
+            it = tbl["it"].read()[0].astype(float)
     else:
         raise TypeError(f'Scan of {h.start["scan"]["type"]} not supported for Bragg calibration.')
 
@@ -184,6 +184,10 @@ def find_edge(scanid, use_xrf=True, element='', norm_key="i0"):
         tau = it / i0.astype(float)
         norm_tau = (tau - tau[0]) / (tau[-1] - tau[0])
         mu = -1 * np.log(np.abs(norm_tau))
+    
+    # print(f'{braggpoints.shape=}')
+    # print(f'{energypoints.shape=}')
+    # print(f'{mu.shape=}')
 
     # if use_xrf is False:
     #     tau = it / i0
