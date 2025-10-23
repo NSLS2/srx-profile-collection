@@ -186,7 +186,7 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
         step = np.abs((stop - start) / (num - 1))
         if (not override_step_check
             and float(step) not in reasonable_steps):
-            err_str = (f"Calculated step size of {step} {motor.motor_egu.get()} for motor {motor.name}"
+            err_str = (f"Calculated step size of {step} {motor.motor_egu.get()} for motor {motor.name} "
                        + "is not in the set of reasonable step sizes:"
                        + f"\n\t{set(reasonable_steps)}\n"
                        + "Change the number of points to achieve a reasonable step size or set the "
