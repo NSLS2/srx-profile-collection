@@ -177,7 +177,7 @@ def export_sis_data(ion, filepath, zebra):
             return False
     st = SubscriptionStatus(zs.acquire, callback=cb, run=False)
     zs.acquire.put(1)
-    st.wait()
+    st.wait(timeout=60)
     zs.file_stage.put("unstaged")
 
 

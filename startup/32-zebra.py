@@ -946,10 +946,16 @@ class SRXFlyer1Axis(Device):
         # Write the file.
         # @timer_wrapper
         def get_zebra_data():
-            if 'nano' in self.name:
-                export_nano_zebra_data(self._encoder, self.__write_filepath, self.fast_axis.get())
-            else:
-                export_zebra_data(self._encoder, self.__write_filepath, self.fast_axis)
+            try:
+                if 'nano' in self.name:
+                    export_nano_zebra_data(self._encoder, self.__write_filepath, self.fast_axis.get())
+                else:
+                    export_zebra_data(self._encoder, self.__write_filepath, self.fast_axis)
+            except TimeoutError as ex:
+                print(f"Zebra data collection timeout error. {ex}")
+                print("Scan continuing...")
+            except Exception as ex:
+                raise ex
 
         if amk_debug_flag:
             t_getzebradata = tic()
@@ -959,9 +965,16 @@ class SRXFlyer1Axis(Device):
 
         # @timer_wrapper
         def get_sis_data():
-            export_sis_data(
-                self._sis, self.__write_filepath_sis, self._encoder
-            )
+            try:
+                export_sis_data(
+                    self._sis, self.__write_filepath_sis, self._encoder
+                )
+            except TimeoutError as ex:
+                print(f"Scaler data collection timeout error. {ex}")
+                print("Scan continuing...")
+            except Exception as ex:
+                raise ex
+
 
         if amk_debug_flag:
             t_sisdata = tic()
@@ -1199,7 +1212,7 @@ def export_nano_zebra_data(zebra, filepath, fastaxis):
             return False
     st = SubscriptionStatus(zs.acquire, callback=cb, run=False)
     zs.acquire.put(1)
-    st.wait()
+    st.wait(timeout=60)
 
     zs.file_stage.put("unstaged")
 

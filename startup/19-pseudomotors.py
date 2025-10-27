@@ -167,7 +167,8 @@ class ProjectedTopStage(PseudoPositioner):
 
     
     # Wrap move function with stage_sigs-like behavior
-    def move(self, *args, **kwargs):
+    def move(self, *args, timeout=60, **kwargs):
+
         # Get starting velocities
         start_topx_velocity = self.velocity_x.get()
         start_topz_velocity = self.velocity_z.get()
@@ -179,7 +180,7 @@ class ProjectedTopStage(PseudoPositioner):
         # Move like normal
         # print('starting move')
         mv_st = super().move(*args, **kwargs)
-        mv_st.wait()
+        mv_st.wait(timeout=timeout)
         # print('move done')
 
         # Reset component velocities to original values

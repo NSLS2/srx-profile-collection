@@ -55,7 +55,7 @@ class InsertionDevice(Device, PositionerBase):
 
     def set(self, *args, **kwargs):
         # set_and_wait(self.brake, 1) // deprecated
-        self.brake.set(1).wait()
+        self.brake.set(1).wait(timeout=10)
         return self.gap.set(*args, **kwargs)
 
     def stop(self, *, success=False):
