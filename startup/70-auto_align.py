@@ -7,7 +7,27 @@ sr_permit = EpicsSignalRO("SR-EPS{PLC:1}Sts:MstrSh-Sts")
 srx_permit = EpicsSignalRO("XF:05ID-CT{}Prmt:Remote-Sel")
 srx_enable = EpicsSignalRO("SR:C05-EPS{PLC:1}Sts:ID_BE_Enbl-Sts")
 
-def auto_align(all_checks=True):
+def auto_align(focus=0.5, all_checks=True):
+    """
+    Function for auto aligning the beamline.
+    Must start with vlm marker on cross of knife edge features
+
+    Parameters
+    ----------
+    focus : float or iterable, optional
+        Target focus in microns. If given as an iterable, the target focus
+        will be interpretted as (focus_y, focus_x) both in microns.
+        By default both target values are 0.5 microns. 
+    all_checks : bool, optional
+        Flag for checking upstream optics.
+        True by default and checks all upstream optics.
+    """
+
+    # Parse focus parameter
+    if isinstance(focus, (float, int)):
+        focus = (focus, focus)
+    else:
+        focus = (focus[0], focus[1])
 
     if all_checks:
         # Check we are on the commissioning proposal
@@ -170,6 +190,9 @@ def auto_align(all_checks=True):
 
     # Check for sample!
     x0, y0 = nano_stage.topx.user_readback.get(), nano_stage.y.user_readback.get()
+    over_x = nano_vlm.over.overlay_1.position_x.get()
+    over_y = nano_vlm.over.overlay_1.position_y.get()
+    over_dx, over_dy = 0, 0
     
     # Initial vertical focus checks
     print('Checking for vertical knife-edge position and focus...')
@@ -178,26 +201,35 @@ def auto_align(all_checks=True):
         # Find the feature
         print('Searching for vertical knife edge...')
         cent_y, _ = yield from knife_edge(nano_stage.sy, -45, 45, 1, 0.05)
+        over_dy += cent_y
         print(f'Vertical knife edge found at {cent_y:.2f} um. Moving and centering stages at this new position!')
         yield from mov(nano_stage.sy, cent_y)
         yield from bps.sleep(1)
         yield from center_scanner()
         yield from bps.sleep(1)
-        y0 = nano_stage.y.user_readback.get()
+        y0 = nano_stage.y.user_readback.get() # Not currently used
 
         # Measure the fwhm
         print('Measuring vertical focus...')
         cent_y, fwhm_y = yield from knife_edge(nano_stage.sy, -10, 10, 0.1, 0.05)
+        over_dy += cent_y
         print(f'Vertical focus is {fwhm_y:.4f} um.')
-        if fwhm_y < 0.5:
-            print('Vertical focus is less than desired 0.5 um!')
+        if fwhm_y < focus[0]:
+            print(f'Vertical focus is less than desired {focus[0]} um!')
         else:
+            print('Vertical focus is larger than desired focus. Manual focusing required.')
             pass
+
+        # Final re-center scanner
+        print(f'Final vertical knife edge found at {cent_y:.2f} um. Moving and centering stages at this new position!')
+        yield from mov(nano_stage.sy, cent_y)
+        yield from bps.sleep(1)
+        yield from center_scanner()
+        yield from bps.sleep(1)
 
     except Exception as e:
         print('Unknown exception encountered when checking the vertical focus!')
         raise e
-
 
     # Initial horizontal focus checks
     print('Checking for horizontal knife-edge position and focus...')
@@ -207,25 +239,42 @@ def auto_align(all_checks=True):
         # Find the feature
         print('Searching for horizontal knife edge...')
         cent_x, _ = yield from knife_edge(nano_stage.sx, -45, 45, 1, 0.05)
+        over_dx += cent_x
         print(f'Horizontal knife edge found at {cent_x:.2f} um. Moving and centering stages at this new position!')
         yield from mov(nano_stage.sx, cent_x)
         yield from bps.sleep(1)
         yield from center_scanner()
         yield from bps.sleep(1)
-        x0 = nano_stage.topx.user_readback.get()
+        x0 = nano_stage.topx.user_readback.get() # Not currently used
 
         # Measure the fwhm
         print('Measuring horizontal focus...')
         cent_x, fwhm_x = yield from knife_edge(nano_stage.sx, -10, 10, 0.1, 0.05)
+        over_dx += cent_x
         print(f'Horizontal focus is {fwhm_x:.4f} um.')
-        if fwhm_x < 0.5:
-            print('Horizontal focus is less than desired 0.5 um!')
+        if fwhm_x < focus[1]:
+            print(f'Horizontal focus is less than desired {focus[1]} um!')
         else:
+            print('Horizontal focus is larger than desired focus. Manual focusing required.')
             pass
 
+        # Final re-center scanner
+        print(f'Final horizontal knife edge found at {cent_x:.2f} um. Moving and centering stages at this new position!')
+        yield from mov(nano_stage.sx, cent_x)
+        yield from bps.sleep(1)
+        yield from center_scanner()
+        yield from bps.sleep(1)
+        
     except Exception as e:
         print('Unknown exception encountered when checking the horizontal focus!')
         raise e
+
+    # TODO: Check signs and cumulative moves
+    vlm_scale = 0.345 # um/pixel
+    yield from abs_set(nano_vlm.over.overlay_1.position_x,
+                       over_x - int(np.round(vlm_scale / over_dx)), 
+                       nano_vlm.over.overlay_1.position_y, 
+                       over_y - int(np.round(vlm_scale / over_dy)))
 
 
 
