@@ -1212,7 +1212,9 @@ def export_nano_zebra_data(zebra, filepath, fastaxis):
             return False
     st = SubscriptionStatus(zs.acquire, callback=cb, run=False)
     zs.acquire.put(1)
+    print("Let's wait for zebra-save...", end="", flush=True)
     st.wait(timeout=60)
+    print("done")
 
     zs.file_stage.put("unstaged")
 
