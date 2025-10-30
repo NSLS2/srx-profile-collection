@@ -55,7 +55,7 @@ class InsertionDevice(Device, PositionerBase):
 
     def set(self, *args, **kwargs):
         # set_and_wait(self.brake, 1) // deprecated
-        self.brake.set(1).wait()
+        self.brake.set(1).wait(timeout=10)
         return self.gap.set(*args, **kwargs)
 
     def stop(self, *, success=False):
@@ -376,8 +376,8 @@ class Energy(PseudoPositioner):
 
 
 cal_data_2025cycle3 = {
-    "d_111": 3.1288110559600995,
-    "delta_bragg": 0.23220073137275954,
+    "d_111": 3.1286911960950756,
+    "delta_bragg": 0.22737194251017273,
     "C2Xcal": 3.6,
     "T2cal": 15.0347755916,
     "xoffset": 24.65,

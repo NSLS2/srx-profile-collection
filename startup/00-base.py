@@ -167,7 +167,7 @@ def post_document(name, doc):
     elif name == "event_page" and doc["descriptor"] in descriptor_uids:
         return
     # print(f"==================  name={name!r} doc={doc} type(doc)={type(doc)}")
-    ATTEMPTS = 20
+    ATTEMPTS = 120
     error = None
     for attempt in range(ATTEMPTS):
         try:
@@ -181,7 +181,7 @@ def post_document(name, doc):
             # raise exc
         else:
             break
-        time.sleep(2)
+        ttime.sleep(2)
     else:
         # Out of attempts
         raise error

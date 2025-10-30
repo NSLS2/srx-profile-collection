@@ -152,7 +152,7 @@ class DexelaHDFWithFileStore(HDF5Plugin, DexelaFileStoreHDF5):
 
         This needs to be redefined because there is no trigger_mode = Internal
         """
-        self.enable.set(1).wait()
+        self.enable.set(1).wait(timeout=10)
         sigs = OrderedDict(
             [
                 (self.parent.cam.array_callbacks, 1),
@@ -170,13 +170,13 @@ class DexelaHDFWithFileStore(HDF5Plugin, DexelaFileStoreHDF5):
         for sig, val in sigs.items():
             ttime.sleep(0.1)  # abundance of caution
             # print(f"{sig=}\t{val=}")
-            sig.set(val).wait()
+            sig.set(val).wait(timeout=10)
 
         ttime.sleep(2)  # wait for acquisition
 
         for sig, val in reversed(list(original_vals.items())):
             ttime.sleep(0.1)
-            sig.set(val).wait()
+            sig.set(val).wait(timeout=10)
 
 
 class SRXDexelaDetector(SingleTrigger, DexelaDetector):
