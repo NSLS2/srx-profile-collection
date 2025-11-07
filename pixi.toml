@@ -2,22 +2,22 @@
 channels = ["conda-forge"]
 name = "srx-profile-collection"
 platforms = ["linux-64"]
-version = "2025.3.0"
+version = "2025.3.1"
 
 [system-requirements]
 libc = "2.17"
 
 [feature.profile.dependencies]
-bluesky-base = "==1.14.4"
+bluesky-base = ">=1.14.4"
 bluesky-queueserver = "*"
 matplotlib-base= ">=3.9.3,<4"
 networkx = ">=3.4.2,<4"
 numpy = ">2"
-ophyd = "==1.11.0"
+ophyd = ">=1.11.0"
 pyepics = "*"
 python = ">=3.12,<3.13"
 semver = ">=3.0.4,<4"
-tiled-client = "==0.1.0b39"
+tiled-client = ">=0.1.6"
 # needed until we get ophyd-async packaged
 colorlog = ">=6.9.0,<7"
 nslsii = "==0.11.4"
@@ -34,6 +34,7 @@ blosc-hdf5-plugin = ">=1.0.1,<2"
 databroker = "==2.0.0b68"
 p4p = ">=4.2.0,<5"
 epicscorelibs = ">=7.0.7.99.1.1,<8"
+bluesky-tiled-plugins = ">=2.0.0b68"
 
 
 [feature.profile.pypi-dependencies]
