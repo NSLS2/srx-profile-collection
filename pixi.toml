@@ -39,6 +39,7 @@ bluesky-tiled-plugins = ">=2.0.0b68"
 
 [feature.profile.pypi-dependencies]
 ophyd-async = { version = ">0.10.0", extras = ["ca", "pva"] }
+pvxslibs = ">=1.3.2, <2"
 
 
 [feature.qs.dependencies]
