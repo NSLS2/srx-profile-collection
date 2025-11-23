@@ -272,9 +272,12 @@ def auto_align(focus=0.5, all_checks=True):
     # TODO: Check signs and cumulative moves
     vlm_scale = 0.345 # um/pixel
     yield from abs_set(nano_vlm.over.overlay_1.position_x,
-                       over_x - int(np.round(vlm_scale / over_dx)), 
-                       nano_vlm.over.overlay_1.position_y, 
+                       over_x - int(np.round(vlm_scale / over_dx)))
+    yield from abs_set(nano_vlm.over.overlay_1.position_y,
                        over_y - int(np.round(vlm_scale / over_dy)))
+
+    # Return to starting location
+    yield from movr(nano_stage.y, -50)
 
 
 
@@ -312,4 +315,3 @@ def auto_align(focus=0.5, all_checks=True):
     #     print('Unknown error encountered closing the D-shutter!')
     #     raise e
 
-        
