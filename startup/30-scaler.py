@@ -6,7 +6,7 @@ import numpy as np
 from ophyd import Device, EpicsScaler, EpicsSignal, EpicsSignalRO
 from ophyd import Component as Cpt
 from ophyd.device import DynamicDeviceComponent as DDC
-from ophyd.status import SubscriptionStatus
+from ophyd.status import SubscriptionStatus, WaitTimeoutError
 from collections import OrderedDict
 from databroker.assets.handlers import HandlerBase
 
@@ -177,9 +177,13 @@ def export_sis_data(ion, filepath, zebra):
             return False
     st = SubscriptionStatus(zs.acquire, callback=cb, run=False)
     zs.acquire.put(1)
-    print("Let's wait for scaler-save...", end="", flush=True)
-    st.wait(timeout=60)
-    print("done")
+    try:
+        st.wait(timeout=60)
+    except WaitTimeoutError:
+        print("Scaler-save timed out! Continuing...")
+    except Exception as e:
+        raise e
+
     zs.file_stage.put("unstaged")
 
 

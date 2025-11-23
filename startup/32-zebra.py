@@ -10,9 +10,8 @@ import time as ttime
 from ophyd import Device, EpicsSignal, EpicsSignalRO
 from ophyd import Component as Cpt
 from ophyd import FormattedComponent as FC
-from ophyd.status import SubscriptionStatus
+from ophyd.status import SubscriptionStatus, WaitTimeoutError
 from ophyd.areadetector.filestore_mixins import FileStorePluginBase, FileStoreHDF5
-# from hxntools.detectors.zebra import Zebra, EpicsSignalWithRBV
 from nslsii.detectors.zebra import Zebra, EpicsSignalWithRBV
 
 
@@ -1212,9 +1211,12 @@ def export_nano_zebra_data(zebra, filepath, fastaxis):
             return False
     st = SubscriptionStatus(zs.acquire, callback=cb, run=False)
     zs.acquire.put(1)
-    print("Let's wait for zebra-save...", end="", flush=True)
-    st.wait(timeout=60)
-    print("done")
+    try:
+        st.wait(timeout=60)
+    except WaitTimeoutError:
+        print("Zebra-save timed out! Continuing...")
+    except Exception as e:
+        raise e
 
     zs.file_stage.put("unstaged")
 
