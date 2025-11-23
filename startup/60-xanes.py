@@ -1431,7 +1431,21 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
         yield from mv(sclr1.count_mode, 1)
         yield from bps.close_run()
         for flyer in flyers:
-            yield from bps.mv(flyer.flying_dev.control, "disable")
+            # yield from bps.mv(flyer.flying_dev.control, "disable")
+            st = flyer.flying_dev.control.set("disable")
+            try:
+                st.wait(10)
+            except WaitTimeoutError as ex:
+                print("Timeout while disabling control of IVU!")
+                print("Trying again...")
+
+                print("  disabling...", end="", flush=True)
+                st = self.flying_dev.control.set("disable")
+                st.wait(10)
+                print("done")
+            except Exception as ex:
+                raise ex
+
         return uid
 
 
