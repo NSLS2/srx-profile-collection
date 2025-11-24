@@ -18,13 +18,10 @@ pyepics = "*"
 python = ">=3.12,<3.13"
 semver = ">=3.0.4,<4"
 tiled-client = ">=0.1.6"
-# needed until we get ophyd-async packaged
-colorlog = ">=6.9.0,<7"
 nslsii = "==0.11.4"
 hxntools = ">=0.6.3,<0.7"
 pyqt = "<6"
 lmfit = ">=1.3.4,<2"
-pydantic-numpy = ">=8.0.0,<9"
 scikit-beam = ">=0.0.27,<0.0.28"
 pyxrf = ">=1.0.31,<2"
 xray-vision = ">=0.1.1,<0.2"
@@ -32,13 +29,12 @@ bluesky-queueserver-api = ">=0.0.12,<0.0.13"
 hdf5-external-filter-plugins = ">=0.1.0,<0.2"
 blosc-hdf5-plugin = ">=1.0.1,<2"
 databroker = "==2.0.0b68"
-p4p = ">=4.2.0,<5"
 epicscorelibs = ">=7.0.7.99.1.1,<8"
 bluesky-tiled-plugins = ">=2.0.0b68"
+ophyd-async = ">=0.13.7,<0.14"
 
 
 [feature.profile.pypi-dependencies]
-ophyd-async = { version = ">0.10.0", extras = ["ca", "pva"] }
 pvxslibs = ">=1.3.2, <2"
 
 
