@@ -127,6 +127,7 @@ class Energy(PseudoPositioner):
     # Synthetic axis
     energy = Cpt(PseudoSingle, egu='keV')
     egu = Cpt(Signal, None, add_prefix=(), value='keV', kind="config")
+    motor_egu = Cpt(Signal, None, add_prefix=(), value='eV', kind="config")
 
     # Real motors
     u_gap = Cpt(InsertionDevice, "SR:C5-ID:G1{IVU21:1")
