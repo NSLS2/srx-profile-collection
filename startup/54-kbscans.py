@@ -35,7 +35,7 @@ def nano_knife_edge(motor, start, stop, stepsize, acqtime,
         def _plan():
             yield from nano_scan_and_fly(start, stop, num,
                                          y0, y0, 1, acqtime,
-                                         shutter=shutter)
+                                         shutter=shutter, vlm_snapshot=False)
         yield from _plan()
     elif (motor.name == 'nano_stage_sy'):
         fly = True
@@ -47,7 +47,7 @@ def nano_knife_edge(motor, start, stop, stepsize, acqtime,
         def _plan():
             yield from nano_y_scan_and_fly(start, stop, num,
                                            x0, x0, 1, acqtime,
-                                           shutter=shutter)
+                                           shutter=shutter, vlm_snapshot=False)
         yield from _plan()
     elif (motor.name == 'nano_stage_x'):
         fly = False

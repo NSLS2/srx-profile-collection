@@ -271,14 +271,14 @@ def slit_nanoflyscan(scan_motor, scan_start, scan_stop, scan_stepsize, acqtime,
         def _knife_plan():
            yield from  nano_scan_and_fly(scan_start, scan_stop, snum,
                                          y0, y0, 1, acqtime,
-                                         shutter=False, plot=False)
+                                         shutter=False, plot=False, vlm_snapshot=False)
     else:
         x0 = nano_stage.sx.user_readback.get()
         @subs_decorator(livepopup)
         def _knife_plan():
             yield from nano_y_scan_and_fly(scan_start, scan_stop, snum,
                                            x0, x0, 1, acqtime,
-                                           shutter=False, plot=False)
+                                           shutter=False, plot=False, vlm_snapshot=False)
 
     def _plan():
         uid = yield from _knife_plan()
