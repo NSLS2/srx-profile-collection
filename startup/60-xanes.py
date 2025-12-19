@@ -305,7 +305,7 @@ def xanes_batch_plan(xypos=[], erange=[], estep=[], acqtime=1.0,
             yield from mov(nano_stage.sz, xypos[i][2])
 
         # Move above edge and peak up
-        if (i % peakup_N == 0):
+        if (i % peakup_N == 0 and i != 0):
             yield from mov(energy, peakup_E)
             yield from peakup()
 
