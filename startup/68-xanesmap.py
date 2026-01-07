@@ -53,4 +53,71 @@ def xanes_map(erange=[], estep=[],
                                      shutter=shutter, md=scan_md)
 
 
+# 1D xanes_map
+def xas_slice(start, stop, num,
+              estart, estop, enum, 
+              dwell, *
+              fly_motor,
+              extra_dets=None,
+              center_scanner=True,
+              **kwargs):
+    
+    # Set energy pseudomotor as slow_axis
+    kwargs.setdefault('ymotor', energy)
+    kwargs.setdefault('xmotor', fly_motor)
 
+    # Setup fast axis and zebra
+    if fly_motor in [nano_stage.sx,
+                     nano_stage.sy,
+                     nano_stage.sz]:
+        kwargs.setdefault('flying_zebra', nano_flying_zebra)
+        yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOHOR')
+
+        match fly_motor:
+            case nano_stage.sx:
+                yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR', wait=True)  
+            case nano_stage.sy:
+                yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOVER', wait=True)
+            case nano_stage.sz:
+                yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOZ', wait=True)
+
+    else:
+        kwargs.setdefault('flying_zebra', nano_flying_zebra_coarse)
+        yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOHOR')
+
+        match fly_motor:
+            case nano_stage.x:
+                yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR')
+            case nano_stage.y:
+                yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOVER')
+            case nano_stage.z:
+                yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOZ')
+            case nano_stage.th:
+                yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR')
+            case nano_stage.topx:
+                yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR')
+            case nano_stage.topz:
+                yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOZ')
+
+    # Determine detectors
+    _xs = kwargs.pop('xs', xs)
+    if extra_dets is None:
+        extra_dets = []
+    dets = [_xs] + extra_dets
+
+    # Modify md
+    if 'md' in kwargs:
+        md = kwargs.pop('md')
+    md = get_stock_md(md)
+    md['scan']['type'] = 'XAS_SLICE'
+
+    if center_scanner:
+        yield from move_to_scanner_center(timeout=10)
+    yield from scan_and_fly_base(dets,
+                                 start, stop, num,
+                                 estart, estop, enum, dwell,
+                                 **kwargs)
+    if center_scanner:
+        yield from move_to_scanner_center(timeout=10)
+
+    return
