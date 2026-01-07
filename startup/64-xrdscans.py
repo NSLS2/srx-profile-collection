@@ -152,11 +152,13 @@ def dark_decorator(dets, N_dark=10, shutter=True):
     return inner_decorator
 
 
+@append_srx_kwargs_md
 def energy_rocking_curve(e_low,
                          e_high,
                          e_num,
                          dwell,
                          xrd_dets,
+                         md=None,
                          N_dark=10,
                          vlm_snapshot=False,
                          snapshot_after=False,
@@ -196,8 +198,7 @@ def energy_rocking_curve(e_low,
         yield from abs_set(getattr(obj, key), value)
 
     # Defining scan metadata
-    md = {}
-    get_stock_md(md)
+    md = get_stock_md(md)
     md['scan']['type'] = 'ENERGY_RC'
     md['scan']['scan_input'] = [e_low, e_high, e_num, dwell]
     md['scan']['dwell'] = dwell
@@ -320,13 +321,16 @@ def extended_energy_rocking_curve(e_low,
                                         return_to_start=False)
 
 
+# WIP
 # Re-write to encompass a single scan ID with intelligent vlm and dark-field support
 # TODO: livecallbacks may fail switching back and forth...
+@append_srx_kwargs_md
 def continuous_energy_rocking_curve(e_low,
                                     e_high,
                                     e_num,
                                     dwell,
                                     xrd_dets,
+                                    md=None,
                                     N_dark=0,
                                     vlm_snapshot=False,
                                     snapshot_after=False,
@@ -371,8 +375,7 @@ def continuous_energy_rocking_curve(e_low,
         yield from abs_set(getattr(obj, key), value)
 
     # Defining scan metadata
-    md = {}
-    get_stock_md(md)
+    md = get_stock_md(md)
     md['scan']['type'] = 'ENERGY_RC'
     md['scan']['scan_input'] = [e_low, e_high, e_num, dwell]
     md['scan']['dwell'] = dwell
@@ -418,11 +421,13 @@ def continuous_energy_rocking_curve(e_low,
         yield from mov(energy, start_energy)
 
 
+@append_srx_kwargs_md
 def angle_rocking_curve(th_low,
                         th_high,
                         th_num,
                         dwell,
                         xrd_dets,
+                        md=None,
                         N_dark=10,
                         vlm_snapshot=False,
                         snapshot_after=False,
@@ -456,8 +461,7 @@ def angle_rocking_curve(th_low,
         yield from abs_set(getattr(obj, key), value)
 
     # Defining scan metadata
-    md = {}
-    get_stock_md(md)
+    md = get_stock_md(md)
     md['scan']['type'] = 'ANGLE_RC'
     md['scan']['scan_input'] = [th_low, th_high, th_num, dwell]
     md['scan']['dwell'] = dwell
@@ -573,9 +577,11 @@ def relative_flying_angle_rocking_curve(th_range,
 
 
 # A static xrd measurement without changing energy or moving stages
+@append_srx_kwargs_md
 def static_xrd(num,
                dwell,
                xrd_dets,
+               md=None,
                N_dark=10,
                vlm_snapshot=False,
                snapshot_after=False,
@@ -601,8 +607,7 @@ def static_xrd(num,
         yield from abs_set(getattr(obj, key), value)
 
     # Defining scan metadata
-    md = {}
-    get_stock_md(md)
+    md = get_stock_md(md)
     md['scan']['type'] = 'STATIC_XRD'
     md['scan']['scan_input'] = [num, dwell]
     md['scan']['dwell'] = dwell                               
