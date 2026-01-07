@@ -190,7 +190,7 @@ def nano_xrf(xstart, xstop, xnum,
              shutter=True,
              extra_dets=None,
              xmotor=nano_stage.sx, ymotor=nano_stage.sy, snake=True,
-             vlm_snapshot=False, snapshot_after=False, N_dark=10):
+             vlm_snapshot=True, N_dark=10):
     
     # Check for negative number of points
     if (xnum < 1 or ynum < 1):
@@ -252,13 +252,15 @@ def nano_xrf(xstart, xstop, xnum,
                                   x_positive='right', y_positive='down'))
     
     @run_decorator(md=md)
-    @vlm_decorator(vlm_snapshot, after=snapshot_after)
+    @vlm_decorator(vlm_snapshot, after=True, position=(xmotor, (xstop - xstart) / 2,
+                                                       ymotor, (ystop - ystart) / 2))
     @dark_decorator(dets, N_dark=N_dark, shutter=shutter)
     def plan():
         yield from mod_grid_scan(dets,
                                  ymotor, ystart, ystop, ynum,
                                  xmotor, xstart, xstop, xnum, snake,
                                  run_agnostic=True)
+
     myplan = plan() # This line feels silly
 
     # myplan = grid_scan(dets,
