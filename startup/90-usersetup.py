@@ -93,6 +93,8 @@ if if_touch_beamline():
 # os.symlink(userdatadir, '/nsls2/data/srx/legacy/xf05id1/shared/current_user_data')
 
 def get_stock_md(scan_md):
+    if scan_md is None:
+        scan_md = {}
     scan_md['time_str'] =  ttime.ctime(ttime.time())
     if 'scan' not in scan_md:
         scan_md['scan'] = {}
@@ -124,8 +126,6 @@ def get_det_md(scan_md, dets):
             # Add the first four rois, regardless if they are used
             for ind in range(det.channel01.get_mcaroi_count()):
                 det_dict[f'roi{ind + 1}'] = det.channel01.get_mcaroi(mcaroi_number=ind + 1).roi_name.get()
-        elif name == 'sclr1':
-            pass # Nothing to add
         elif name == 'merlin':
             # Merlin attr is protected as operating_energy is non-standard
             for obj, attr in [(det.cam, 'operating_energy')]:
@@ -141,7 +141,7 @@ def get_det_md(scan_md, dets):
             # Is there a better way to get this information??
             det_dict['mode'] = det.pc.gate_source.get(as_string=True) # Position or time?
             # det_dict['mode'] = det.mode.get()
-        elif name in ['ring_current', 'xbpm2', 'dcm_c2_pitch', 'bpm4']:
+        elif name in ['sclr1', 'ring_current', 'xbpm2', 'dcm_c2_pitch', 'bpm4']:
             pass # Nothing to add
         else:
             note_str = ('NOTE: Standard detector metadata has not yet be '
