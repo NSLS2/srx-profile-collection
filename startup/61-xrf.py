@@ -182,8 +182,11 @@ def export_merlin2tiff(scanid=-1, wd=None):
     }
 })
 def nano_xrf(xstart, xstop, xnum,
-             ystart, ystop, ynum, dwell,
-             shutter=True, extra_dets=None,
+             ystart, ystop, ynum,
+             dwell,
+             md=None,
+             shutter=True,
+             extra_dets=None,
              xmotor=nano_stage.sx, ymotor=nano_stage.sy, snake=True,
              vlm_snapshot=False, snapshot_after=False, N_dark=10):
     
@@ -197,26 +200,25 @@ def nano_xrf(xstart, xstop, xnum,
     dets = [sclr1, xs, xmotor, ymotor] + extra_dets
 
     # Record relevant metadata in the Start document, defined in 90-usersetup.py
-    scan_md = {}
-    get_stock_md(scan_md)
-    scan_md['scan']['type'] = 'XRF_STEP'
-    scan_md['scan']['scan_input'] = [xstart, xstop, xnum, ystart, ystop, ynum, dwell]
-    # scan_md['scan']['detectors'] = [d.name for d in dets]
-    scan_md['dwell'] = dwell
-    scan_md['scan']['fast_axis'] = {'motor_name' : xmotor.name,
+    md = get_stock_md(md)
+    md['scan']['type'] = 'XRF_STEP'
+    md['scan']['scan_input'] = [xstart, xstop, xnum, ystart, ystop, ynum, dwell]
+    # md['scan']['detectors'] = [d.name for d in dets]
+    md['dwell'] = dwell
+    md['scan']['fast_axis'] = {'motor_name' : xmotor.name,
                                     'units' : xmotor.motor_egu.get()}
-    scan_md['scan']['slow_axis'] = {'motor_name' : ymotor.name,
+    md['scan']['slow_axis'] = {'motor_name' : ymotor.name,
                                     'units' : ymotor.motor_egu.get()}
-    scan_md['scan']['theta'] = {'val' : np.round(nano_stage.th.user_readback.get(), decimals=3),
+    md['scan']['theta'] = {'val' : np.round(nano_stage.th.user_readback.get(), decimals=3),
                                 'units' : nano_stage.th.motor_egu.get()}
-    scan_md['scan']['delta'] = {'val' : 0,
+    md['scan']['delta'] = {'val' : 0,
                                 'units' : xmotor.motor_egu.get()}
-    scan_md['scan']['snake'] = 1 if snake else 0
-    scan_md['scan']['shape'] = (xnum, ynum)
+    md['scan']['snake'] = 1 if snake else 0
+    md['scan']['shape'] = (xnum, ynum)
     md_dets = list(dets)
     if vlm_snapshot:
         md_dets = md_dets + [nano_vlm]
-    get_det_md(scan_md, md_dets)
+    get_det_md(md, md_dets)
 
     # Set xs mode to step.
     xs.mode = SRXMode.step
@@ -229,8 +231,8 @@ def nano_xrf(xstart, xstop, xnum,
         merlin.cam.acquire_time.put(dwell)
         merlin.cam.acquire_period.put(dwell + 0.005)
         merlin.hdf5.stage_sigs['num_capture'] = xnum * ynum
-        scan_md['scan']['merlin'] = {'merlin_exp_time' : dwell,
-                                     'merlin_exp_period' : dwell + 0.005}
+        md['scan']['merlin'] = {'merlin_exp_time' : dwell,
+                                'merlin_exp_period' : dwell + 0.005}
 
     # LiveTable
     livecallbacks = []
@@ -247,7 +249,7 @@ def nano_xrf(xstart, xstop, xnum,
                                   extent=[xstart, xstop, ystart, ystop],
                                   x_positive='right', y_positive='down'))
     
-    @run_decorator(md=scan_md)
+    @run_decorator(md=md)
     @vlm_decorator(vlm_snapshot, after=snapshot_after)
     @dark_decorator(dets, N_dark=N_dark, shutter=shutter)
     def plan():
@@ -260,7 +262,7 @@ def nano_xrf(xstart, xstop, xnum,
     # myplan = grid_scan(dets,
     #                    ymotor, ystart, ystop, ynum,
     #                    xmotor, xstart, xstop, xnum, snake,
-    #                    md=scan_md)
+    #                    md=md)
 
     myplan = subs_wrapper(myplan,
                           {'all': livecallbacks})
