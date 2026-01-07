@@ -225,3 +225,58 @@ def custom_one_nd_step(detectors, step, pos_cache):
     yield from bps.sleep(1)
 
     yield from trigger_and_read(list(detectors) + list(motors))
+
+
+def append_kwargs_md(**scan_md_kwargs):
+    """
+    General decorator for adding keywords to a function that will be appended into the scan metadata.
+    """
+
+    def with_metadata(func):
+        @functools.wraps(func)
+        def wrapped(*args,
+                    **kwargs):
+
+            # Because functions may not explicitly have an 'md' keyword argument,
+            # there is no way to check if 'md' will be properly handled
+            if 'md' in kwargs:
+                md = kwargs.pop('md')
+                if md is None:
+                    md = {}
+            else:
+                md = {}
+            
+            if 'scan' not in md:
+                md['scan'] = {}
+            md['scan'].update(scan_md_kwargs)
+            kwargs['md'] = md            
+
+            return func(*args, **kwargs)
+        
+        return wrapped
+    return with_metadata
+
+# Convenience version for adding default kwargs to md
+append_srx_kwargs_md = append_kwargs_md(sample_name='')
+
+
+# TODO: TEST ME!
+# Stand-alone vlm snapshot plan
+@append_srx_kwargs_md
+def vlm_snapshot(md=None):
+
+    # Define metadata
+    md = get_stock_md(md)
+    md['detectors'] = [nano_vlm.name]
+    md['motors'] = []
+    md['plan_args'] = {}
+    md['plan_name'] = 'vlm_snapshot'
+    md['scan']['type'] = 'VLM_SNAPSHOT'
+    md['scan']['detectors'] = nano_vlm.name
+
+    # Define plan
+    @bpp.run_decorator(md=md)
+    def plan():
+        yield from _camera_snapshot([nano_vlm])
+
+    return (yield from plan())
