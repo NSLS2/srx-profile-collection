@@ -175,6 +175,8 @@ def export_merlin2tiff(scanid=-1, wd=None):
     gc.collect()
 
 
+
+@append_srx_kwargs_md
 @parameter_annotation_decorator({
     "parameters": {
         "xmotor": {"default": "'hf_stage.sx'"},
