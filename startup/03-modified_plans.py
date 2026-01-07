@@ -3,13 +3,11 @@ print(f"Loading {__file__}...")
 import collections
 import inspect
 import os
-import sys
-import time
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from functools import partial
-from itertools import chain, zip_longest
-from typing import Any, Callable, Optional, Union
+from itertools import zip_longest
+from typing import Any, Optional, Union
 
 try:
     # cytools is a drop-in replacement for toolz, implemented in Cython
@@ -18,27 +16,27 @@ except ImportError:
     from toolz import partition
 
 from bluesky.plans import (
-    count,
-    list_scan,
     _check_detectors_type_input
 )
 
 from bluesky import plan_patterns, utils
 from bluesky import plan_stubs as bps
 from bluesky import preprocessors as bpp
-from bluesky.protocols import Flyable, Movable, NamedMovable, Readable
+from bluesky.protocols import (
+    Movable,
+    Readable,
+    Reading,
+    Triggerable
+)
 from bluesky.utils import (
     CustomPlanMetadata,
-    Msg,
     MsgGenerator,
     ScalarOrIterableFloat,
-    get_hinted_fields,
+    plan
 )
 
 from bluesky.plans import (
     PerShot,
-    PerStep1D,
-    PerStepND,
     PerStep
 )
 
@@ -483,3 +481,74 @@ def mod_grid_scan(
                                    per_step=per_step,
                                    md=_md,
                                    run_agnostic=run_agnostic))
+
+
+@plan
+def mod_trigger_and_read(devices: Sequence[Readable],
+                         name: str = "primary",
+                         timeout: float = None) -> MsgGenerator[Mapping[str, Reading]]:
+    """
+    Trigger and read a list of detectors and bundle readings into one Event.
+
+    Parameters
+    ----------
+    devices : list
+        devices to trigger (if they have a trigger method) and then read
+    name : string, optional
+        event stream name, a convenient human-friendly identifier; default
+        name is 'primary'
+    timeout : float, optional
+        Time to wait before triggering and WaitTimeoutError. Does not wait by
+        default matching the unmodified behavior.
+
+    Returns
+    -------
+    readings:
+        dict of device name to recorded information
+
+    Yields
+    ------
+    msg : Msg
+        messages to 'trigger', 'wait' and 'read'
+    """
+    from bluesky.preprocessors import contingency_wrapper
+
+    # If devices is empty, don't emit 'create'/'save' messages.
+    if not devices:
+        yield from bps.null()
+    devices = bps.separate_devices(devices)  # remove redundant entries
+    rewindable = bps.all_safe_rewind(devices)  # if devices can be re-triggered
+
+    def inner_trigger_and_read():
+        grp = bps._short_uid("trigger")
+        no_wait = True
+        for obj in devices:
+            if isinstance(obj, Triggerable):
+                no_wait = False
+                yield from bps.trigger(obj, group=grp)
+        # Skip 'wait' if none of the devices implemented a trigger method.
+        if not no_wait:
+            yield from bps.wait(group=grp, timeout=timeout)
+        yield from bps.create(name)
+
+        def read_plan():
+            ret = {}  # collect and return readings to give plan access to them
+            for obj in devices:
+                reading = yield from bps.read(obj)
+                if reading is not None:
+                    ret.update(reading)
+            return ret
+
+        def standard_path():
+            yield from bps.save()
+
+        def exception_path(exp):
+            yield from bps.drop()
+            raise exp
+
+        ret = yield from contingency_wrapper(read_plan(), except_plan=exception_path, else_plan=standard_path)
+        return ret
+
+    from bluesky.preprocessors import rewindable_wrapper
+
+    return (yield from rewindable_wrapper(inner_trigger_and_read(), rewindable))
