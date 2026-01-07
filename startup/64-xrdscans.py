@@ -540,6 +540,13 @@ def flying_angle_rocking_curve(th_low,
 
     dets = [xs] + xrd_dets
 
+    # Modify md
+    if 'md' in kwargs:
+        md = kwargs.pop('md')
+    md = get_stock_md(md)
+    md['scan']['type'] = 'FLY_ANGLE_RC'
+    kwargs['md'] = md
+
     yield from scan_and_fly_base(dets,
                                  th_low,
                                  th_high,
