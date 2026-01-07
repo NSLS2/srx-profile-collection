@@ -97,10 +97,15 @@ def toc(t0, str='', log_file=None):
 
 # changed the flyer device to be aware of fast vs slow axis in a 2D scan
 # should abstract this method to use fast and slow axes, rather than x and y
-def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell, *,
+@append_srx_kwargs_md
+def scan_and_fly_base(detectors,
+                      xstart, xstop, xnum,
+                      ystart, ystop, ynum,
+                      dwell, *,
                       flying_zebra, xmotor, ymotor,
                       delta=None, shutter=True, plot=True,
-                      md=None, snake=False,
+                      md=None,
+                      snake=False,
                       vlm_snapshot=False, snapshot_after=False,
                       N_dark=10, verbose=False):
     """Read IO from SIS3820.
@@ -166,8 +171,6 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
         xmotor.stage_sigs[xmotor.velocity] = v
 
     # Set metadata
-    if md is None:
-        md = {}
     md = get_stock_md(md)
 
     # Set xs.mode to fly.
@@ -202,7 +205,6 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
     # Scan metadata
     md['scan']['type'] = 'XRF_FLY'
     md['scan']['scan_input'] = [xstart, xstop, xnum, ystart, ystop, ynum, dwell]
-    md['scan']['sample_name'] = ''
     # md['scan']['detectors'] = [d.name for d in detectors]
     md['scan']['dwell'] = dwell
     md['scan']['fast_axis'] = {'motor_name' : xmotor.name,
@@ -833,7 +835,11 @@ def coarse_y_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
 def xrf_map(xstart, xstop, xnum,
             ystart, ystop, ynum, 
             dwell,
-            fly_on_y=False, resolution='nano', extra_dets=None, center=True, **kwargs):
+            fly_on_y=False,
+            resolution='nano',
+            extra_dets=None,
+            center=True,
+            **kwargs):
     """
     User-friendly alias for scan_and_fly_base function.
 
@@ -937,6 +943,185 @@ def xrf_map(xstart, xstop, xnum,
                                  step_start, step_stop, step_num, dwell,
                                  **kwargs)
     if center:
+        yield from move_to_scanner_center(timeout=10)
+
+
+# New alias
+def xrf_map2(xstart, xstop, xnum,
+            ystart, ystop, ynum, 
+            dwell,
+            fly_axis='auto',
+            type='auto',
+            coordinates='relative',
+            extra_dets=None,
+            center_scanner=True,
+            **kwargs):
+    """
+    User-friendly alias for scan_and_fly_base function.
+
+    Parameters
+    ----------
+    xstart : float
+        Start position of the x-motor in motor units.
+    xstop : float
+        Stop position of the x-motor in motor units.
+    xnum : int
+        Number of pixels in the x-direction.
+    ystart : float
+        Start position of the y-motor in motor units.
+    ystop : float
+        Stop position of the y-motor in motor units.
+    ynum : int
+        Number of pixels in the y-direction.
+    dwell : float
+        Dwell time per pixel in seconds
+    coordinates : {'auto', 'relative', 'absolute'}, optional
+        Determing whether input coordinates are absolute or relative.
+        'relative' by default.
+    type : {'auto', 'nano', 'coarse', 'step'}, optional
+        Determine which set of motors to use and how they are controlled. 'auto'
+        will automatically chose motors based on scan range. Less than 90 microns
+        will use the scanner stages and more than 90 microns will use the coarse
+        motors. 'nano' or 'coarse' values will force these decisions, but the extent
+        will still need to match the appropriate motor extents. 'step' will call a
+        step scan using the scanner stages. 'auto' is used by default.
+    fly_axis : {'auto', 'x', 'y'}, optional
+        Determine which set of motor is used as the flying axis. 'auto' will 
+        automatically determine the flying axis with maps of aspect ratios less than 1.2
+        flying along 'x' and greater than 1.2 aspect ratios flying along the 'y' axis.
+        The flying axis can be forced along a certain axis by selecting 'x' or 'y'
+        specifically. 'auto' is used by default.
+    extra_dets : list, optional
+        List of extra detectors to be included in addition to standard scaler and
+        fluorescence detectors (e.g., [dexela, merlin, ...]).
+        None by default.
+    center_scanner : bool, optional
+        Flag to center the scanner stages before and after mapping.
+    delta : float, optional
+        Offset on the stage start position.  If not given, derive from
+        dwell + pixel size
+    shutter : bool, optional
+        Flag to disable shutters. False by default.
+    plot : bool, optional
+        Flag to enable liveplotting. True by default.
+    md : dict, optional
+        Starting metadata for scan. Empty by default.
+    snake : bool, optional
+        Flag to snake the motor motion. False by default.
+    vlm_snapshot : bool, optional
+        Flag to enable VLM snapshots before scanning. If True, snapshot_after
+        will also function. False by default.
+    snapshot_after : bool, optional
+        Flag to enable VLM snapshots after scanning. Will only function if
+        vlm_snapshot is also True. False by default.
+    N_dark : int, optional
+        Number of dark-field images to be acquired by selected detectors if
+        they are included. Only for dexela if included in extra_dets. 0 by default.
+    verbose : bool, optional
+        Flag to control the verbosity of scan_and_fly_base.
+    """
+
+    # Staff parameters for determining 'auto' response
+    REASONABLE_SCANNER_STAGE_EXTENT = 90 # in motor units
+    REASONABLE_ASPECT_RATIO_FOR_X_FLY = 1.2 # y-range / x-range
+
+    # Parse inputs. Also ensures they are strings
+    type = type.lower()
+    fly_axis = fly_axis.lower()
+
+    # Determine scan parameters
+    x_range = float(np.abs(xstop - xstart))
+    y_range = float(np.abs(ystop - ystart))
+
+    # Determine scan type
+    if type == 'step':
+        resolution = ''
+        def inner_map():
+            yield from nano_xrf(xstart, xstop, xnum,
+                                ystart, ystop, ynum,
+                                dwell,
+                                extra_dets=extra_dets,
+                                **kwargs)
+    elif type == 'auto':
+        if max([x_range, y_range]) < REASONABLE_SCANNER_STAGE_EXTENT:
+            resolution = 'nano'
+        else:
+            resolution == 'coarse'
+    elif type == 'nano':
+        resolution = 'nano'
+    elif type == 'coarse':
+        resolution = 'coarse'
+    else:
+        err_str = f'Unknown scan type of {type}.'
+        err_str += " Only {'auto', 'nano', 'coarse', 'step'} types are accepted."
+        raise ValueError(err_str)
+    
+    # Determine flying axis
+    if fly_axis == 'auto':
+        if y_range / x_range > REASONABLE_ASPECT_RATIO_FOR_X_FLY:
+            fly_on_y = True
+        else:
+            fly_on_y = False
+    elif fly_axis == 'x':
+        fly_on_y = False
+    elif fly_axis == 'y':
+        fly_on_y = True
+    else:
+        err_str = f'Unknown flying axis of {fly_axis}.'
+        err_str += " Only {'auto', 'x', 'y'} axes are accepted."
+        raise ValueError(err_str)
+
+    # Determine motors for fly scanning
+    if resolution == 'nano':
+        kwargs.setdefault('flying_zebra', nano_flying_zebra)
+        if fly_on_y:
+            fly_start, fly_stop, fly_num = ystart, ystop, ynum
+            step_start, step_stop, step_num = xstart, xstop, xnum
+            kwargs['xmotor'] = nano_stage.sy
+            kwargs['ymotor'] = nano_stage.sx
+            yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOVER', wait=True)
+            yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOHOR')
+        else:
+            fly_start, fly_stop, fly_num = xstart, xstop, xnum
+            step_start, step_stop, step_num = ystart, ystop, ynum
+            kwargs['xmotor'] = nano_stage.sx
+            kwargs['ymotor'] = nano_stage.sy
+            yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR', wait=True)
+            yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOVER')
+    elif resolution == 'coarse':
+        kwargs.setdefault('flying_zebra', nano_flying_zebra_coarse)
+        if fly_on_y:
+            fly_start, fly_stop, fly_num = ystart, ystop, ynum
+            step_start, step_stop, step_num = xstart, xstop, xnum
+            kwargs['xmotor'] = nano_stage.y
+            kwargs['ymotor'] = nano_stage.topx
+            yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOVER')
+            yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOHOR')
+        else:
+            fly_start, fly_stop, fly_num = xstart, xstop, xnum
+            step_start, step_stop, step_num = ystart, ystop, ynum
+            kwargs['xmotor'] = nano_stage.topx
+            kwargs['ymotor'] = nano_stage.y
+            yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR')
+            yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOVER')
+    
+    if type != 'step':    
+        # Determine detectors
+        _xs = kwargs.pop('xs', xs)
+        if extra_dets is None:
+            extra_dets = []
+        dets = [_xs] + extra_dets
+
+        def inner_map():
+            yield from scan_and_fly_base(dets,
+                                         fly_start, fly_stop, fly_num,
+                                         step_start, step_stop, step_num, dwell,
+                                         **kwargs)
+
+    if center_scanner:
+        yield from move_to_scanner_center(timeout=10)
+    yield from inner_map()
+    if center_scanner:
         yield from move_to_scanner_center(timeout=10)
 
 
