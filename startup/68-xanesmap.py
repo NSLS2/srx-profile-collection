@@ -110,6 +110,7 @@ def xas_slice(start, stop, num,
         md = kwargs.pop('md')
     md = get_stock_md(md)
     md['scan']['type'] = 'XAS_SLICE'
+    kwargs['md'] = md
 
     if center_scanner:
         yield from move_to_scanner_center(timeout=10)
