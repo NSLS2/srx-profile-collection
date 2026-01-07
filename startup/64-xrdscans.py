@@ -160,8 +160,7 @@ def energy_rocking_curve(e_low,
                          xrd_dets,
                          md=None,
                          N_dark=10,
-                         vlm_snapshot=False,
-                         snapshot_after=False,
+                         vlm_snapshot=True,
                          shutter=True,
                          peakup_flag=True,
                          plotme=False,
@@ -221,7 +220,7 @@ def energy_rocking_curve(e_low,
         yield from peakup(shutter=shutter)
     
     @run_decorator(md=md)
-    @vlm_decorator(vlm_snapshot, after=snapshot_after)
+    @vlm_decorator(vlm_snapshot, after=True)
     @dark_decorator(dets, N_dark=N_dark, shutter=shutter) 
     def plan():
         # Always check shutters to print banner
@@ -332,8 +331,7 @@ def continuous_energy_rocking_curve(e_low,
                                     xrd_dets,
                                     md=None,
                                     N_dark=0,
-                                    vlm_snapshot=False,
-                                    snapshot_after=False,
+                                    vlm_snapshot=True,
                                     shutter=True,
                                     peakup_flag=True,
                                     plotme=False,
@@ -392,7 +390,7 @@ def continuous_energy_rocking_curve(e_low,
         livecallbacks.append(LivePlot('dexela_stats2_total', x='energy_energy'))
 
     @run_decorator(md=md)
-    @vlm_decorator(vlm_snapshot, after=snapshot_after)
+    @vlm_decorator(vlm_snapshot, after=True)
     @dark_decorator(dets, N_dark=N_dark, shutter=shutter)
     def plan():
         for iteration, e_rc in enumerate(e_rcs):
@@ -429,8 +427,7 @@ def angle_rocking_curve(th_low,
                         xrd_dets,
                         md=None,
                         N_dark=10,
-                        vlm_snapshot=False,
-                        snapshot_after=False,
+                        vlm_snapshot=True,
                         shutter=True,
                         plotme=False,
                         return_to_start=True):
@@ -478,7 +475,7 @@ def angle_rocking_curve(th_low,
         livecallbacks.append(LivePlot('dexela_stats2_total', x='nano_stage_th_user_setpoint'))
 
     @run_decorator(md=md)
-    @vlm_decorator(vlm_snapshot, after=snapshot_after)
+    @vlm_decorator(vlm_snapshot, after=True, position=(nano_stage.th, (th_high - th_low) / 2))
     @dark_decorator(dets, N_dark=N_dark, shutter=shutter) 
     def plan():
         # Always check shutters to print banner
@@ -584,7 +581,6 @@ def static_xrd(num,
                md=None,
                N_dark=10,
                vlm_snapshot=False,
-               snapshot_after=False,
                shutter=True,
                plotme=False):
 
@@ -625,7 +621,7 @@ def static_xrd(num,
         livecallbacks.append(LivePlot('dexela_stats2_total'))
 
     @run_decorator(md=md)
-    @vlm_decorator(vlm_snapshot, after=snapshot_after)
+    @vlm_decorator(vlm_snapshot, after=True)
     @dark_decorator(dets, N_dark=N_dark, shutter=shutter)  
     def plan():
         # Always check shutters to print banner
