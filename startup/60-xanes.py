@@ -43,8 +43,7 @@ def xanes_plan(erange=[], estep=[], acqtime=1.,
                shutter=True,
                per_step=None,
                reverse=False,
-               vlm_snapshot=False,
-               snapshot_after=False):
+               vlm_snapshot=True):
     '''
     erange (list of floats): energy ranges for XANES in eV, e.g. erange = [7112-50, 7112-20, 7112+50, 7112+120]
     estep  (list of floats): energy step size for each energy range in eV, e.g. estep = [2, 1, 5]
@@ -235,7 +234,7 @@ def xanes_plan(erange=[], estep=[], acqtime=1.,
 
     # Adding vlm options to modified list scan
     @run_decorator(md=md)
-    @vlm_decorator(vlm_snapshot, after=snapshot_after)
+    @vlm_decorator(vlm_snapshot, after=True)
     def myscan():
         yield from mod_list_scan(det, energy, list(ept), per_step=per_step, run_agnostic=True)
 
@@ -1307,7 +1306,8 @@ def flying_xas(num_passes=1, shutter=True, md=None):
 })
 def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
                         num_scans=1, scan_type='uni', shutter=True, plot=False,
-                        flyers=[flyer_id_mono], harmonic=1, roi_num=1, md=None):
+                        flyers=[flyer_id_mono], harmonic=1, roi_num=1,
+                        md=None):
     """This is a modified version of bp.fly to support multiple passes of the flyer."""
     flyer_id_mono.flying_dev.parameters.first_trigger.put(e_start)
     flyer_id_mono.flying_dev.parameters.last_trigger.put(e_stop)
