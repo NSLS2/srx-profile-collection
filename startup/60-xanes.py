@@ -26,15 +26,25 @@ from ophyd.sim import NullStatus
 # warnings.filterwarnings(action="ignore", message="MSG_SIZE_TOO_LARGE")
 
 
+@append_srx_kwargs_md
 @parameter_annotation_decorator({
     "parameters": {
         "det_xs": {"default": "'xs'"},
     }
 })
-def xanes_plan(erange=[], estep=[], acqtime=1., samplename='',
-               det_xs=xs, harmonic=1, detune=0, align=False, align_at=None,
-               roinum=1, shutter=True, per_step=None, reverse=False,
-               vlm_snapshot=False, snapshot_after=False):
+def xanes_plan(erange=[], estep=[], acqtime=1.,
+               md=None,
+               det_xs=xs,
+               harmonic=1,
+               detune=0,
+               align=False,
+               align_at=None,
+               roinum=1,
+               shutter=True,
+               per_step=None,
+               reverse=False,
+               vlm_snapshot=False,
+               snapshot_after=False):
     '''
     erange (list of floats): energy ranges for XANES in eV, e.g. erange = [7112-50, 7112-20, 7112+50, 7112+120]
     estep  (list of floats): energy step size for each energy range in eV, e.g. estep = [2, 1, 5]
@@ -99,24 +109,17 @@ def xanes_plan(erange=[], estep=[], acqtime=1., samplename='',
 
     # Record relevant meta data in the Start document, defined in 90-usersetup.py
     # Add user meta data
-    scan_md = {}
-    get_stock_md(scan_md)
-    scan_md['scan']['sample_name'] = samplename
-    scan_md['scan']['type'] = 'XAS_STEP'
-    scan_md['scan']['ROI'] = roinum
-    scan_md['scan']['dwell'] = acqtime
-    # scan_md['scaninfo'] = {'type' : 'XANES',
-    #                        'ROI' : roinum,
-    #                        'raster' : False,
-    #                        'dwell' : acqtime}
-    scan_md['scan']['scan_input'] = str(np.around(erange, 2)) + ', ' + str(np.around(estep, 2))
-    # scan_md['scan']['energy'] = ept
+    md = get_stock_md(md)
+    md['scan']['type'] = 'XAS_STEP'
+    md['scan']['ROI'] = roinum
+    md['scan']['dwell'] = acqtime
+    md['scan']['scan_input'] = str(np.around(erange, 2)) + ', ' + str(np.around(estep, 2))
     md_dets = list(det)
     if vlm_snapshot:
         md_dets = md_dets + [nano_vlm]
-    get_det_md(scan_md, md_dets)
+    get_det_md(md, md_dets)
     # Fix for the exporter
-    scan_md['detectors'] = [det.name for det in md_dets]
+    md['detectors'] = [det.name for det in md_dets]
 
     # Setup the scaler
     # TODO: Is there a better way to consider this?
@@ -213,7 +216,7 @@ def xanes_plan(erange=[], estep=[], acqtime=1., samplename='',
     def at_scan(name, doc):
         scanrecord.current_scan.put(doc['uid'][:6])
         scanrecord.current_scan_id.put(str(doc['scan_id']))
-        scanrecord.current_type.put(scan_md['scan']['type'])
+        scanrecord.current_type.put(md['scan']['type'])
         scanrecord.scanning.put(True)
 
 
@@ -231,12 +234,12 @@ def xanes_plan(erange=[], estep=[], acqtime=1., samplename='',
     energy.move(ept[0])
 
     # Adding vlm options to modified list scan
-    @run_decorator(md=scan_md)
+    @run_decorator(md=md)
     @vlm_decorator(vlm_snapshot, after=snapshot_after)
     def myscan():
         yield from mod_list_scan(det, energy, list(ept), per_step=per_step, run_agnostic=True)
 
-    # myscan = mod_list_scan(det, energy, list(ept), per_step=per_step, md=scan_md)
+    # myscan = mod_list_scan(det, energy, list(ept), per_step=per_step, md=md)
     # myscan must be called to return the generators
     myscan = finalize_wrapper(myscan(), finalize_scan)
 
@@ -1296,6 +1299,7 @@ def flying_xas(num_passes=1, shutter=True, md=None):
     yield from check_shutters(shutter, 'Close')
 
 
+@append_srx_kwargs_md
 @parameter_annotation_decorator({
     "parameters": {
         "flyers": {"default": "['flyer_id_mono']"},
@@ -1347,8 +1351,6 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
     # set harmonic
     flyer_id_mono.flying_dev.parameters.harmonic.put(harmonic)
 
-    if md is None:
-        md = {}
     md = get_stock_md(md)
     md['scan']['type'] = 'XAS_FLY'
     # md['scan']['energy'] = list(np.linspace(e_start, e_stop, num=num_pts))
