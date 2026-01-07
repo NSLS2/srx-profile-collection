@@ -386,11 +386,18 @@ cal_data_2025cycle3 = {
 
 # print('Connecting to energy PVs...')
 energy = Energy(prefix="", name="energy", **cal_data_2025cycle3)
-energy.wait_for_connection()
+try:
+    energy.wait_for_connection()
+except TimeoutError as e:
+    print('Connecting to energy pseudomotor signals...')
+    print('  Timeout error connecting signals!')
+    print('  Continuing without proper connections. This may raise further errors...')
+    print(f'  {e}')
+except Exception as e:
+    print(e)
+    raise(e)
 energy.synch_with_epics()
 energy.value = 1.0
-
-
 
 # Setup front end slits (primary slits)
 class SRXSlitsFE(Device):
@@ -512,6 +519,11 @@ except ReadOnlyError as e:
     print('Connecting to ID flyer...')
     print('  Read only error connecting to flying ID PVs!')
     print('  Continuing...')
+except TimeoutError as e:
+    print('Connecting to ID flyer...')
+    print('  Timeout error connecting to flying ID PVs!')
+    print('  Continuing without proper connections. This may raise further errors...')
+    print(f'  {e}')
 except Exception as e:
     print(e)
     raise(e)
