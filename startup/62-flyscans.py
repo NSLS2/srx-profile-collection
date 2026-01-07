@@ -106,8 +106,8 @@ def scan_and_fly_base(detectors,
                       delta=None, shutter=True, plot=True,
                       md=None,
                       snake=False,
-                      vlm_snapshot=False, snapshot_after=False,
-                      N_dark=10, verbose=False):
+                      vlm_snapshot=True, N_dark=10,
+                      verbose=False):
     """Read IO from SIS3820.
     Zebra buffers x(t) points as a flyer.
     Xpress3 is our detector.
@@ -170,9 +170,6 @@ def scan_and_fly_base(detectors,
     else:
         xmotor.stage_sigs[xmotor.velocity] = v
 
-    # Set metadata
-    md = get_stock_md(md)
-
     # Set xs.mode to fly.
     for det in detectors:
         if isinstance(det, CommunitySrxXspress3Detector):
@@ -203,7 +200,9 @@ def scan_and_fly_base(detectors,
     row_stop = xstop + delta + (pxsize / 2)
 
     # Scan metadata
-    md['scan']['type'] = 'XRF_FLY'
+    md = get_stock_md(md)
+    if 'type' not in md['scan']:
+        md['scan']['type'] = 'XRF_FLY'
     md['scan']['scan_input'] = [xstart, xstop, xnum, ystart, ystop, ynum, dwell]
     # md['scan']['detectors'] = [d.name for d in detectors]
     md['scan']['dwell'] = dwell
@@ -617,7 +616,8 @@ def scan_and_fly_base(detectors,
     # @monitor_during_decorator([roi_pv])
     @stage_decorator([flying_zebra])  # Below, 'scan' stage ymotor.
     @run_decorator(md=md)
-    @vlm_decorator(vlm_snapshot, after=snapshot_after)
+    @vlm_decorator(vlm_snapshot, after=True, position=(xmotor, (xstop - xstart) / 2,
+                                                       ymotor, (ystop - ystart) / 2))
     @dark_decorator(detectors, N_dark=N_dark, shutter=shutter)    
     def plan():
         if verbose:
@@ -691,7 +691,6 @@ def scan_and_fly_base(detectors,
                            ion.count_mode, 1)
         if xs2 in flying_zebra.detectors:
             yield from bps.mov(xs2.external_trig, False)
-        # yield from mv(nano_stage.sx, 0, nano_stage.sy, 0, nano_stage.sz, 0)
 
     # Setup the final scan plan
     if shutter:
@@ -1011,12 +1010,9 @@ def xrf_map2(xstart, xstop, xnum,
     vlm_snapshot : bool, optional
         Flag to enable VLM snapshots before scanning. If True, snapshot_after
         will also function. False by default.
-    snapshot_after : bool, optional
-        Flag to enable VLM snapshots after scanning. Will only function if
-        vlm_snapshot is also True. False by default.
     N_dark : int, optional
         Number of dark-field images to be acquired by selected detectors if
-        they are included. Only for dexela if included in extra_dets. 0 by default.
+        they are included. Only for dexela if included in extra_dets. 10 by default.
     verbose : bool, optional
         Flag to control the verbosity of scan_and_fly_base.
     """
