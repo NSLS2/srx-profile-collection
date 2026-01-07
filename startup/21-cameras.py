@@ -15,9 +15,12 @@ from ophyd.areadetector.filestore_mixins import (FileStoreIterativeWrite,
 from ophyd.areadetector.trigger_mixins import SingleTrigger
 from ophyd.areadetector.cam import AreaDetectorCam
 from ophyd.device import Component as Cpt
+# from ophyd.status import WaitTimeoutError
 
 from ophyd.areadetector.plugins import (ImagePlugin_V33, TIFFPlugin_V33,
                                         ROIPlugin_V33, StatsPlugin_V33)
+
+from bluesky.run_engine import WaitForTimeoutError
 
 
 class SRXTIFFPlugin(TIFFPlugin,
@@ -123,8 +126,18 @@ def _camera_snapshot(cameras=[nano_vlm]):
         
         # Snapshot!
         # Should even work with different dwell times
-        yield from bps.trigger_and_read(cameras, name='camera_snapshot')
-        
+        # yield from bps.trigger_and_read(cameras, name='camera_snapshot')
+        try:
+            yield from mod_trigger_and_read(cameras,
+                                            name='camera_snapshot',
+                                            timeout=10) # 10 seconds
+        except WaitForTimeoutError:
+            warn_str = "WARNING: Camera snapshot failed to trigger in designated time. Continuing without..."
+            print(warn_str)
+        except Exception as e:
+            print(e)
+            raise(e)
+
         # Precautionary unstaging
         for staged, cam in zip(staging_list, cameras):
             yield from bps.unstage(cam)
