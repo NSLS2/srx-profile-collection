@@ -38,14 +38,35 @@ def auto_align(focus=0.5, all_checks=True):
             print("FAIL!")
             raise RuntimeError("Please change the proposal!")
 
-        # Check if we are enabled
-        print("Checking beamline is enabled...", end="")
-        if not (sr_permit.get(as_string=True) == "ENABLE" and
+        # # Check if we are enabled
+        # print("Checking beamline is enabled...", end="")
+        # if not (sr_permit.get(as_string=True) == "ENABLE" and
+        #         srx_permit.get(as_string=True) == "Permitted" and
+        #         srx_enable.get(as_string=True) == "Enabled"):
+        #     print()
+        #     raise RuntimeError("Beamline not fully enabled!")
+        # print("Enabled")
+        
+        # Check and wait for beamline to be enabled
+        print("Checking if beamline is enabled...", end="")
+        wait_iter = 0
+        while True:
+            if (sr_permit.get(as_string=True) == "ENABLE" and
                 srx_permit.get(as_string=True) == "Permitted" and
                 srx_enable.get(as_string=True) == "Enabled"):
-            print()
-            raise RuntimeError("Beamline not fully enabled!")
-        print("Enabled")
+                print('Enabled')
+                break
+            elif wait_iter > 60:
+                print('Wait time for beamline to be enabled has surpased 1 hour!')
+                raise RuntimeError('Beamline not fully enabled!')
+            else:
+                if wait_iter == 0:
+                    print()
+                ostr = f"Beamline not enabled. {wait_iter} minutes spent waiting."
+                print(ostr, end='\r', flush=True)
+                yield from bps.sleep(60)
+                wait_iter += 1
+                continue
 
         # Close all shutters for safety
         print("Closing all shutters...")
