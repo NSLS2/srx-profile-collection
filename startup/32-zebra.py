@@ -271,7 +271,6 @@ class ZebraPulse(Device):
                          read_attrs=read_attrs, parent=parent, **kwargs)
 
 
-
 class SRXZebra(Zebra):
     """
     SRX Zebra device.
