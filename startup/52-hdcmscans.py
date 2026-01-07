@@ -446,29 +446,40 @@ def smart_peakup(start=None,
             except Exception as ex:
                 print(st)
                 raise ex
-
+            
     # Add metadata
-    _md = {'plan_name': 'smart_peakup',
-           'hints': {},
-           }
-    _md = get_stock_md(_md)
-    _md['scan']['type'] = 'PEAKUP'
-    # _md['scan']['detectors'] = [det.name for det in detectors]
-    _md['scan']['motors'] = [motor.name]
-    _md['scan']['plan_args'] = {
-                         'start': start,
-                         'min_step': min_step,
-                         'max_step': max_step,
-                         }
-    _md.update(md or {})
-    get_det_md(_md, list(detectors))
+    md = get_stock_md(md)
+    md['plan_name'] = 'smart_peakup'
+    md['hints'] = {}
+    md['scan']['type'] = 'PEAKUP'
+    md['scan']['motors'] = [motor.name]
+    md['scan']['plan_args'] = {'start' : start,
+                               'min_step' : min_step,
+                               'max_step' : max_step}
+    get_det_md(md, list(detectors))
+
+    # # Add metadata
+    # _md = {'plan_name': 'smart_peakup',
+    #        'hints': {},
+    #        }
+    # _md = get_stock_md(_md)
+    # _md['scan']['type'] = 'PEAKUP'
+    # # _md['scan']['detectors'] = [det.name for det in detectors]
+    # _md['scan']['motors'] = [motor.name]
+    # _md['scan']['plan_args'] = {
+    #                      'start': start,
+    #                      'min_step': min_step,
+    #                      'max_step': max_step,
+    #                      }
+    # _md.update(md or {})
+    # get_det_md(_md, list(detectors))
 
     try:
         dimensions = [(motor.hints['fields'], 'primary')]
     except (AttributeError, KeyError):
         pass
     else:
-        _md['hints'].setdefault('dimensions', dimensions)
+        md['hints'].setdefault('dimensions', dimensions)
 
     # Visualization
     livecb = []
@@ -477,7 +488,7 @@ def smart_peakup(start=None,
 
     # Need to add LivePlot, or LiveTable
     @bpp.stage_decorator(list(detectors) + [motor])
-    @bpp.run_decorator(md=_md)
+    @bpp.run_decorator(md=md)
     @bpp.subs_decorator(livecb)
     def smart_max_core(x0):
         # Optimize on a given detector
