@@ -91,19 +91,17 @@ def optimize_scalers(dwell=0.5,
     preamp_combo_nums = list(product(range(3), range(9)))[::-1]
 
     # Add metadata
-    _md = {'detectors' : [sclr1.name],
-           'motors': [preamp.name for preamp in preamps],
-           'plan_args' : {
+    md = get_stock_md(md)
+    md['detectors'] = [sclr1.name],
+    md['motors'] = [preamp.name for preamp in preamps],
+    md['plan_args'] = {
                'dwell' : dwell,
                'upper_target' : upper_targets,
                'lower_target' : lower_targets
-           },
-           'plan_name' : 'optimize_scalers'
            }
-    _md = get_stock_md(_md)
-    _md['scan']['type'] = 'OPTIMIZE_SCALERS'
-    _md['scan']['detectors'] = [sclr1.name]
-    _md.update(md or {})
+    md['plan_name'] = 'optimize_scalers'
+    md['scan']['type'] = 'OPTIMIZE_SCALERS'
+    get_det_md(md, [sclr1])
 
     # Setup dwell stage_sigs
     sclr1.stage_sigs['preset_time'] = dwell
@@ -302,7 +300,7 @@ def optimize_scalers(dwell=0.5,
     # Open and close run, or append to other run
     if RUN_WRAPPER:
         @bpp.stage_decorator([sclr1])
-        @bpp.run_decorator(md = _md)
+        @bpp.run_decorator(md=md)
         @bpp.subs_decorator(livecb)
         def plan():
             yield from optimize_all_preamps()
@@ -317,6 +315,56 @@ def optimize_scalers(dwell=0.5,
     uid = (yield from plan())
     sclr1.stage_sigs.pop('preset_time', None)
     return uid
+
+
+
+def switch_foils(foil_name='auto'):
+
+    if foil_name not in ['auto', 'Cu', 'Ti']:
+        raise ValueError("Only 'auto', 'Cu' and 'Ti' foils are supported.")
+    
+    auto = False
+    if foil_name == 'auto':
+        auto = True
+        E = energy.energy.readback.get()  # keV
+        if E >= 9: # Maybe change this to 10 to avoid significant absorption?
+            foil_name = 'Cu'
+        else:
+            foil_name = 'Ti'
+
+    y = bpm4_pos.y.user_readback.get()  # Cu: y=0, Ti: y=25
+    if np.abs(y - 25) < 5:
+        curr_foil = 'Ti'
+    elif np.abs(y) < 5:
+        curr_foil = 'Cu'
+    else:
+        curr_foil = 'Unknown'
+
+    if foil_name != curr_foil:
+        # Close a-shutter
+        a_open = shut_a.status.get() == 'Open'
+        if a_open: 
+            yield from abs_set(shut_a.request_open, 0, timeout=3)
+        
+        # Change foils
+        if foil_name == 'Ti':
+            # Move foil to Ti
+            yield from mov(bpm4_pos.y, 25, wait=True)
+        elif foil_name == 'Cu':
+            # Move foil to Cu
+            yield from mov(bpm4_pos.y, 0, wait=True)
+        
+        # Open a-shutter
+        if a_open:            
+            yield from abs_set(shut_a.request_open, 1, timeout=3)
+
+    else:
+        if auto:
+            ostr = f'Energy optimized {foil_name} foil already in place.'
+        else:
+            ostr = f"{foil_name} foil already in place."
+        print(ostr)
+
 
 
 ## WIP
