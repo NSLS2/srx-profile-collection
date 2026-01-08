@@ -107,7 +107,7 @@ def scan_and_fly_base(detectors,
                       md=None,
                       snake=False,
                       vlm_snapshot=True, N_dark=10,
-                      override_step_check=False,
+                      step_check=True,
                       verbose=False):
     """Read IO from SIS3820.
     Zebra buffers x(t) points as a flyer.
@@ -182,6 +182,8 @@ def scan_and_fly_base(detectors,
     reasonable_steps = {0, 1, 1.25, 2, 2.5, 3, 4, 5, 6, 7, 7.5, 8, 9}
     step_err = []
     for step, motor in ([xstep, xmotor], [ystep, ymotor]):
+        if verbose:
+            print(f'Step size of {step} {motor.motor_egu.get()} for {motor.name}.')
         if (step not in reasonable_steps
             and np.round(step * 1e-1, 5) not in reasonable_steps
             and np.round(step * 1e-2, 5) not in reasonable_steps
@@ -189,11 +191,11 @@ def scan_and_fly_base(detectors,
             and step * 1e2 not in reasonable_steps):
             step_err.append((f'Calculated step size of {step} {motor.motor_egu.get()} '
                              + f'for motor {motor.name} does not seem reasonable.'))
-    if not override_step_check and len(step_err) > 0:
-        step_err.insert(0, 'Suspected unreasonable step size:')
-        step_err.append(f'Reasonable step sizes are multiples of 10 of:\n\t{reasonable_steps}')
+    if step_check and len(step_err) > 0:
+        step_err.insert(0, 'Suspected unreasonable step size')
+        step_err.append(f'Reasonable step sizes are as follows multiplied by a power of 10:\n\t{reasonable_steps}')
         step_err.append("Adjust number of points to achieve a reasonable step size or"
-                        + " set the 'override_step_check' keyword argument to True.")
+                        + " set the 'step_check' keyword argument to False.")
         raise ValueError('\n'.join(step_err))
     
     # Set xs.mode to fly.
@@ -669,8 +671,8 @@ def scan_and_fly_base(detectors,
     # @monitor_during_decorator([roi_pv])
     @stage_decorator([flying_zebra])  # Below, 'scan' stage ymotor.
     @run_decorator(md=md)
-    @vlm_decorator(vlm_snapshot, after=True, position=(xmotor, (xstop - xstart) / 2,
-                                                       ymotor, (ystop - ystart) / 2))
+    @vlm_decorator(vlm_snapshot, after=True, position=(xmotor, (xstop + xstart) / 2,
+                                                       ymotor, (ystop + ystart) / 2))
     @dark_decorator(detectors, N_dark=N_dark, shutter=shutter)    
     def plan():
         if verbose:
@@ -1027,6 +1029,9 @@ def xrf_map2(xstart, xstop, xnum,
         Number of pixels in the y-direction.
     dwell : float
         Dwell time per pixel in seconds
+    step_check : bool, optional:
+        Flag to determine if the step size is checked to be reasonable.
+        True by defualt.
     coords : {'relative', 'absolute', 'auto'}, optional
         Determing whether input coordinates are absolute or relative.
         'absolute' functions the same way as previous mapping functions.
@@ -1051,7 +1056,8 @@ def xrf_map2(xstart, xstop, xnum,
         fluorescence detectors (e.g., [dexela, merlin, ...]).
         None by default.
     center_scanner : bool, optional
-        Flag to center the scanner stages before and after mapping.
+        Flag to center the scanner stages before and after mapping. Only works
+        when the scanner stages are not used for scanning.
     delta : float, optional
         Offset on the stage start position.  If not given, derive from
         dwell + pixel size
@@ -1088,7 +1094,7 @@ def xrf_map2(xstart, xstop, xnum,
     # Function to make coords relative
     def get_coords(start, stop, motor):
         if 'rel' in coords:
-            pos = motor.user_readback.get()
+            pos = motor.user_setpoint.get() # nominal values
             return start + pos, stop + pos
         elif 'abs' in coords:
             return start, stop
@@ -1096,7 +1102,7 @@ def xrf_map2(xstart, xstop, xnum,
             if motor in [nano_stage.sx, nano_stage.sy]:
                 return start, stop
             else:
-                pos = motor.user_readback.get()
+                pos = motor.user_setpoint.get() # nominal values
                 return start + pos, stop + pos
         else:
             err_str = (f"Unknown coords argument {coords}. "
@@ -1194,10 +1200,10 @@ def xrf_map2(xstart, xstop, xnum,
                                          step_start, step_stop, step_num, dwell,
                                          **kwargs)
 
-    if center_scanner:
+    if center_scanner and resolution == 'coarse':
         yield from move_to_scanner_center(timeout=10)
     yield from inner_map()
-    if center_scanner:
+    if center_scanner and resolution == 'coarse':
         yield from move_to_scanner_center(timeout=10)
 
 
