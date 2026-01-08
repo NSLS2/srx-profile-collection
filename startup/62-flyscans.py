@@ -159,6 +159,8 @@ def scan_and_fly_base(detectors,
     # Check for negative number of points
     if (xnum < 1 or ynum < 1):
         raise ValueError('Number of points must be positive!')
+    if xnum == 1:
+        raise ValueError('Cannot fly through a pixel size of zero!')
 
     # Get the scan speed
     v = ((xstop - xstart) / (xnum - 1)) / dwell  # compute "stage speed"
