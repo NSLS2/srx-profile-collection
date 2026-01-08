@@ -951,7 +951,7 @@ def xrf_map2(xstart, xstop, xnum,
             dwell,
             fly_axis='auto',
             type='auto',
-            coordinates='relative',
+            coords='relative',
             extra_dets=None,
             center_scanner=True,
             **kwargs):
@@ -974,15 +974,18 @@ def xrf_map2(xstart, xstop, xnum,
         Number of pixels in the y-direction.
     dwell : float
         Dwell time per pixel in seconds
-    coordinates : {'auto', 'relative', 'absolute'}, optional
+    coords : {'relative', 'absolute', 'auto'}, optional
         Determing whether input coordinates are absolute or relative.
-        'relative' by default.
+        'absolute' functions the same way as previous mapping functions.
+        'relative' is used by default. 'auto' is still in development, but
+        will currently use the absolute coordinates of the scanner stages and
+        the relative coordinates of the coarse stages.
     type : {'auto', 'nano', 'coarse', 'step'}, optional
         Determine which set of motors to use and how they are controlled. 'auto'
         will automatically chose motors based on scan range. Less than 90 microns
         will use the scanner stages and more than 90 microns will use the coarse
-        motors. 'nano' or 'coarse' values will force these decisions, but the extent
-        will still need to match the appropriate motor extents. 'step' will call a
+        motors. 'nano' or 'coarse' values will force these decisions, but the scan
+        range will still need to match the appropriate motor range. 'step' will call a
         step scan using the scanner stages. 'auto' is used by default.
     fly_axis : {'auto', 'x', 'y'}, optional
         Determine which set of motor is used as the flying axis. 'auto' will 
@@ -1029,9 +1032,29 @@ def xrf_map2(xstart, xstop, xnum,
     x_range = float(np.abs(xstop - xstart))
     y_range = float(np.abs(ystop - ystart))
 
+    # Function to make coords relative
+    def get_coords(start, stop, motor):
+        if 'rel' in coords:
+            pos = motor.user_readback.get()
+            return start + pos, stop + pos
+        elif 'abs' in coords:
+            return start, stop
+        elif 'auto' in coords:
+            if motor in [nano_stage.sx, nano_stage.sy]:
+                return start, stop
+            else:
+                pos = motor.user_readback.get()
+                return start + pos, stop + pos
+        else:
+            err_str = (f"Unknown coords argument {coords}. "
+                       + "Only 'relative', 'absolute', and 'auto' are accepted.")
+            raise ValueError(err_str)
+
     # Determine scan type
     if type == 'step':
         resolution = ''
+        xstart, xstop = get_coords(xstart, xstop, nano_stage.sx)
+        ystart, ystop = get_coords(ystart, ystop, nano_stage.sy)
         def inner_map():
             yield from nano_xrf(xstart, xstop, xnum,
                                 ystart, ystop, ynum,
@@ -1070,6 +1093,8 @@ def xrf_map2(xstart, xstop, xnum,
     # Determine motors for fly scanning
     if resolution == 'nano':
         kwargs.setdefault('flying_zebra', nano_flying_zebra)
+        xstart, xstop = get_coords(xstart, xstop, nano_stage.sx)
+        ystart, ystop = get_coords(ystart, ystop, nano_stage.sy)
         if fly_on_y:
             fly_start, fly_stop, fly_num = ystart, ystop, ynum
             step_start, step_stop, step_num = xstart, xstop, xnum
@@ -1086,6 +1111,8 @@ def xrf_map2(xstart, xstop, xnum,
             yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOVER')
     elif resolution == 'coarse':
         kwargs.setdefault('flying_zebra', nano_flying_zebra_coarse)
+        xstart, xstop = get_coords(xstart, xstop, nano_stage.topx)
+        ystart, ystop = get_coords(ystart, ystop, nano_stage.y)
         if fly_on_y:
             fly_start, fly_stop, fly_num = ystart, ystop, ynum
             step_start, step_stop, step_num = xstart, xstop, xnum
