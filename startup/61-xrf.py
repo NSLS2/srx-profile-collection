@@ -252,8 +252,8 @@ def nano_xrf(xstart, xstop, xnum,
                                   x_positive='right', y_positive='down'))
     
     @run_decorator(md=md)
-    @vlm_decorator(vlm_snapshot, after=True, position=(xmotor, (xstop - xstart) / 2,
-                                                       ymotor, (ystop - ystart) / 2))
+    @vlm_decorator(vlm_snapshot, after=True, position=(xmotor, (xstop + xstart) / 2,
+                                                       ymotor, (ystop + ystart) / 2))
     @dark_decorator(dets, N_dark=N_dark, shutter=shutter)
     def plan():
         yield from mod_grid_scan(dets,
