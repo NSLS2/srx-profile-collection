@@ -272,7 +272,7 @@ def vlm_snapshot(md=None):
     md['plan_args'] = {}
     md['plan_name'] = 'vlm_snapshot'
     md['scan']['type'] = 'VLM_SNAPSHOT'
-    md['scan']['detectors'] = nano_vlm.name
+    md['scan']['detectors'] = [nano_vlm.name]
 
     # Define plan
     @bpp.run_decorator(md=md)
