@@ -179,7 +179,6 @@ def scan_and_fly_base(detectors,
     flying_zebra.detectors = detectors
     # Setup detectors, combine the zebra, sclr, and the just set detector list
     detectors = (flying_zebra.encoder, flying_zebra.sclr) + flying_zebra.detectors
-
     dets_by_name = {d.name : d
                     for d in detectors}
     setup_xrd_dets(detectors, dwell, xnum)
@@ -198,6 +197,34 @@ def scan_and_fly_base(detectors,
     pxsize = (xstop - xstart) / (xnum - 1)
     row_start = xstart - delta - (pxsize / 2)
     row_stop = xstop + delta + (pxsize / 2)
+
+    # Check motor limits
+    limit_err = []
+    xlow, _, xhigh = sorted([row_start, xstart, xstop])
+    ylow, yhigh = sorted([ystart, ystop])
+    if xlow < xmotor.low_limit: # For low to high flying
+        if row_start == xlow:
+            limit_err.append((f'Flying axis motor {xmotor.name} row start value of {row_start} exceed motor limits.'
+                            + f'\nThis value is {xstart - row_start} less than the start value {xstart}.'))
+        else:
+            limit_err.append(f'Flying axis motor {xmotor.name} value of {xlow} exceeds motor limits.')
+    if xhigh > xmotor.high_limit: # For high to low flying
+        if row_start == xhigh:
+            limit_err.append((f'Flying axis motor {xmotor.name} row start value of {row_start} exceed motor limits.'
+                            + f'\nThis value is {row_start - xstart} greater than the start value {xstart}.')) 
+        else:
+            limit_err.append(f'Flying axis motor {xmotor.name} value of {xhigh} exceeds motor limits.')             
+    if ylow < ymotor.low_limit: # Simple comparison
+        limit_err.append(f'Slow axis motor {ymotor.name} value of {ylow} exceeds motor limits.')
+    if yhigh > ymotor.high_limit: # Simple comparison
+        limit_err.append(f'Slow axis motor {ymotor.name} value of {yhigh} exceeds motor limits.')
+
+    if len(limit_err) > 0:
+        limit_err.insert(0, 'Stage Limit Error')
+        limit_err.append('Adjust the scan range to fit within the motor limits.')
+        limit_err.append(f'\t{xmotor.name} limits: ({xmotor.low_limit}, {xmotor.high_limit})')
+        limit_err.append(f'\t{ymotor.name} limits: ({ymotor.low_limit}, {ymotor.high_limit})')
+        raise ValueError('\n'.join(limit_err))
 
     # Scan metadata
     md = get_stock_md(md)
@@ -317,12 +344,12 @@ def scan_and_fly_base(detectors,
                 accel_time += delta_const
 
             st = yield from kickoff(flying_zebra,
-                                   xstart=_row_start,
-                                   xstop=_row_stop,
-                                   xnum=xnum,
-                                   dwell=dwell,
-                                   tacc=accel_time,
-                                   wait=True)
+                                    xstart=_row_start,
+                                    xstop=_row_stop,
+                                    xnum=xnum,
+                                    dwell=dwell,
+                                    tacc=accel_time,
+                                    wait=True)
             st.wait(timeout=10)
         try:
             if verbose:
