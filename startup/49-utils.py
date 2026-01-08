@@ -227,37 +227,29 @@ def custom_one_nd_step(detectors, step, pos_cache):
     yield from trigger_and_read(list(detectors) + list(motors))
 
 
-def append_kwargs_md(**scan_md_kwargs):
+def append_srx_kwargs_md(func):
     """
-    General decorator for adding keywords to a function that will be appended into the scan metadata.
+    Decorator for adding keywords to a function that will be appended into the scan metadata.
+    Currently only adds the sample_name
     """
-
-    def with_metadata(func):
-        @functools.wraps(func)
-        def wrapped(*args,
-                    **kwargs):
-
-            # Because functions may not explicitly have an 'md' keyword argument,
-            # there is no way to check if 'md' will be properly handled
-            if 'md' in kwargs:
-                md = kwargs.pop('md')
-                if md is None:
-                    md = {}
-            else:
+    @functools.wraps(func)
+    def wrapped(*args,
+                sample_name='',
+                **kwargs):
+        if 'md' in kwargs:
+            md = kwargs.pop('md')
+            if md is None:
                 md = {}
-            
-            if 'scan' not in md:
-                md['scan'] = {}
-            md['scan'].update(scan_md_kwargs)
-            kwargs['md'] = md            
+        else:
+            md = {}
 
-            return func(*args, **kwargs)
-        
-        return wrapped
-    return with_metadata
+        if 'scan' not in md:
+            md['scan'] = {}
+        md['scan']['sample_name'] = sample_name
+        kwargs['md'] = md
 
-# Convenience version for adding default kwargs to md
-append_srx_kwargs_md = append_kwargs_md(sample_name='')
+        return func(*args, **kwargs)
+    return wrapped
 
 
 # TODO: TEST ME!
