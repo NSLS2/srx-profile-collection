@@ -54,6 +54,7 @@ def agnostic_run_decorator(run_agnostic, md=None):
 
 
 # Re-write of bluesky count plan without run decorator
+# Modified from Bluesky v1.14.6
 def mod_count(
             detectors: Sequence[Readable],
             num: Optional[int] = 1,
@@ -114,7 +115,7 @@ def mod_count(
     return (yield from inner_count())
 
 
-
+# Modified from Bluesky v1.14.6
 def mod_list_scan(
                 detectors: Sequence[Readable],
                 *args: tuple[Union[Movable, Any], list[Any]],
@@ -195,7 +196,7 @@ def mod_list_scan(
                                    run_agnostic=run_agnostic))
 
 
-
+# Modified from Bluesky v1.14.6
 def mod_scan_nd(
                 detectors: Sequence[Readable],
                 cycler: Cycler,
@@ -323,6 +324,7 @@ def mod_scan_nd(
     return (yield from inner_scan_nd())
 
 
+# Modified from Bluesky v1.14.6
 def mod_grid_scan(
                   detectors: Sequence[Readable],
                   *args,
@@ -483,6 +485,7 @@ def mod_grid_scan(
                                    run_agnostic=run_agnostic))
 
 
+# Modified from Bluesky v1.14.6
 @plan
 def mod_trigger_and_read(devices: Sequence[Readable],
                          name: str = "primary",
