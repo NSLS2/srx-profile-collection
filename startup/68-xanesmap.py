@@ -83,7 +83,7 @@ def xas_slice(start, stop, num,
 
     else:
         kwargs.setdefault('flying_zebra', nano_flying_zebra_coarse)
-        yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOHOR')
+        yield from abs_set(kwargs['flying_zebra'].slow_axis, 'ENERGY')
 
         match fly_motor:
             case nano_stage.x:
