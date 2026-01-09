@@ -9,7 +9,6 @@ import time as ttime
 import matplotlib.pyplot as plt
 
 import bluesky.plans as bp
-from bluesky.plans import list_scan
 import bluesky.plan_stubs as bps
 from bluesky.plan_stubs import mv
 from bluesky.preprocessors import (finalize_wrapper, subs_wrapper)
