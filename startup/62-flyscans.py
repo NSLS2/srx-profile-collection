@@ -43,7 +43,6 @@ from bluesky.preprocessors import (stage_decorator,
 import bluesky.plan_stubs as bps
 from bluesky.plan_stubs import (kickoff, collect,
                                 complete, abs_set, mv, checkpoint)
-from bluesky.plans import (scan, )
 from bluesky.callbacks import CallbackBase, LiveGrid
 
 from hxntools.handlers import register
@@ -228,18 +227,24 @@ def scan_and_fly_base(detectors,
 
     # Check motor limits
     limit_err = []
-    xlow, _, xhigh = sorted([row_start, xstart, xstop])
+    xlow, _, _, xhigh = sorted([row_start, row_stop, xstart, xstop])
     ylow, yhigh = sorted([ystart, ystop])
     if xlow < xmotor.low_limit: # For low to high flying
         if row_start == xlow:
-            limit_err.append((f'Flying axis motor {xmotor.name} row start value of {row_start} exceed motor limits.'
-                            + f'\nThis value is {xstart - row_start} less than the start value {xstart}.'))
+            limit_err.append((f'Flying axis motor {xmotor.name} row start value of {row_start} exceeds motor limits.'
+                            + f'\nDifference with specified start value of {xstart} is {row_start - xstart}.'))
+        elif row_stop == xlow:
+            limit_err.append((f'Flying axis motor {xmotor.name} row stop value of {row_stop} exceeds motor limits.'
+                            + f'\nDifference with specified stop value of {xstop} is {row_stop - xstop}.'))       
         else:
             limit_err.append(f'Flying axis motor {xmotor.name} value of {xlow} exceeds motor limits.')
     if xhigh > xmotor.high_limit: # For high to low flying
         if row_start == xhigh:
-            limit_err.append((f'Flying axis motor {xmotor.name} row start value of {row_start} exceed motor limits.'
-                            + f'\nThis value is {row_start - xstart} greater than the start value {xstart}.')) 
+            limit_err.append((f'Flying axis motor {xmotor.name} row start value of {row_start} exceeds motor limits.'
+                            + f'\nDifference with specified start value of {xstart} is {row_start - xstart}.'))
+        elif row_stop == xhigh:
+            limit_err.append((f'Flying axis motor {xmotor.name} row stop value of {row_stop} exceeds motor limits.'
+                            + f'\nDifference with specified stop value of {xstop} is {row_stop - xstop}.')) 
         else:
             limit_err.append(f'Flying axis motor {xmotor.name} value of {xhigh} exceeds motor limits.')             
     if ylow < ymotor.low_limit: # Simple comparison
@@ -1005,10 +1010,11 @@ def xrf_map2(xstart, xstop, xnum,
             ystart, ystop, ynum, 
             dwell,
             fly_axis='auto',
-            type='auto',
-            coords='relative',
+            scan_type='auto',
+            coords='absolute',
             extra_dets=None,
             center_scanner=True,
+            return_to_start=True,
             **kwargs):
     """
     User-friendly alias for scan_and_fly_base function.
@@ -1035,10 +1041,10 @@ def xrf_map2(xstart, xstop, xnum,
     coords : {'relative', 'absolute', 'auto'}, optional
         Determing whether input coordinates are absolute or relative.
         'absolute' functions the same way as previous mapping functions.
-        'relative' is used by default. 'auto' is still in development, but
+        'absolute' is used by default. 'auto' is still in development, but
         will currently use the absolute coordinates of the scanner stages and
         the relative coordinates of the coarse stages.
-    type : {'auto', 'nano', 'coarse', 'step'}, optional
+    scan_type : {'auto', 'nano', 'coarse', 'step'}, optional
         Determine which set of motors to use and how they are controlled. 'auto'
         will automatically chose motors based on scan range. Less than 90 microns
         will use the scanner stages and more than 90 microns will use the coarse
@@ -1056,8 +1062,9 @@ def xrf_map2(xstart, xstop, xnum,
         fluorescence detectors (e.g., [dexela, merlin, ...]).
         None by default.
     center_scanner : bool, optional
-        Flag to center the scanner stages before and after mapping. Only works
-        when the scanner stages are not used for scanning.
+        Flag to center the scanner stages before and after mapping.
+    return_to_start : bool, optional
+        Return motors used for scanning to starting positions. True by default.
     delta : float, optional
         Offset on the stage start position.  If not given, derive from
         dwell + pixel size
@@ -1083,8 +1090,12 @@ def xrf_map2(xstart, xstop, xnum,
     REASONABLE_SCANNER_STAGE_EXTENT = 90 # in motor units
     REASONABLE_ASPECT_RATIO_FOR_X_FLY = 1.2 # y-range / x-range
 
+    # Record default motors in (x, y)
+    fine_motors = (nano_stage.sx, nano_stage.sy)
+    coarse_motors = (nano_stage.topx, nano_stage.y)
+
     # Parse inputs. Also ensures they are strings
-    type = type.lower()
+    scan_type = scan_type.lower()
     fly_axis = fly_axis.lower()
 
     # Determine scan parameters
@@ -1099,7 +1110,7 @@ def xrf_map2(xstart, xstop, xnum,
         elif 'abs' in coords:
             return start, stop
         elif 'auto' in coords:
-            if motor in [nano_stage.sx, nano_stage.sy]:
+            if motor in fine_motors:
                 return start, stop
             else:
                 pos = motor.user_setpoint.get() # nominal values
@@ -1110,27 +1121,30 @@ def xrf_map2(xstart, xstop, xnum,
             raise ValueError(err_str)
 
     # Determine scan type
-    if type == 'step':
-        resolution = ''
-        xstart, xstop = get_coords(xstart, xstop, nano_stage.sx)
-        ystart, ystop = get_coords(ystart, ystop, nano_stage.sy)
+    if scan_type == 'step':
+        resolution = 'step'
+        xstart, xstop = get_coords(xstart, xstop, fine_motors[0])
+        ystart, ystop = get_coords(ystart, ystop, fine_motors[1])
+        pos_start = [motor.user_setpoint.get() for motor in fine_motors]
         def inner_map():
             yield from nano_xrf(xstart, xstop, xnum,
                                 ystart, ystop, ynum,
                                 dwell,
                                 extra_dets=extra_dets,
+                                xmotor=fine_motors[0],
+                                ymotor=fine_motors[1]
                                 **kwargs)
-    elif type == 'auto':
+    elif scan_type == 'auto':
         if max([x_range, y_range]) < REASONABLE_SCANNER_STAGE_EXTENT:
             resolution = 'nano'
         else:
             resolution == 'coarse'
-    elif type == 'nano':
+    elif scan_type == 'nano':
         resolution = 'nano'
-    elif type == 'coarse':
+    elif scan_type == 'coarse':
         resolution = 'coarse'
     else:
-        err_str = f'Unknown scan type of {type}.'
+        err_str = f'Unknown scan type of {scan_type}.'
         err_str += " Only {'auto', 'nano', 'coarse', 'step'} types are accepted."
         raise ValueError(err_str)
     
@@ -1152,42 +1166,44 @@ def xrf_map2(xstart, xstop, xnum,
     # Determine motors for fly scanning
     if resolution == 'nano':
         kwargs.setdefault('flying_zebra', nano_flying_zebra)
-        xstart, xstop = get_coords(xstart, xstop, nano_stage.sx)
-        ystart, ystop = get_coords(ystart, ystop, nano_stage.sy)
+        xstart, xstop = get_coords(xstart, xstop, fine_motors[0])
+        ystart, ystop = get_coords(ystart, ystop, fine_motors[1])
+        pos_start = [motor.user_setpoint.get() for motor in fine_motors]
         if fly_on_y:
             fly_start, fly_stop, fly_num = ystart, ystop, ynum
             step_start, step_stop, step_num = xstart, xstop, xnum
-            kwargs['xmotor'] = nano_stage.sy
-            kwargs['ymotor'] = nano_stage.sx
+            kwargs['xmotor'] = fine_motors[1]
+            kwargs['ymotor'] = fine_motors[0]
             yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOVER', wait=True)
             yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOHOR')
         else:
             fly_start, fly_stop, fly_num = xstart, xstop, xnum
             step_start, step_stop, step_num = ystart, ystop, ynum
-            kwargs['xmotor'] = nano_stage.sx
-            kwargs['ymotor'] = nano_stage.sy
+            kwargs['xmotor'] = fine_motors[0]
+            kwargs['ymotor'] = fine_motors[1]
             yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR', wait=True)
             yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOVER')
     elif resolution == 'coarse':
         kwargs.setdefault('flying_zebra', nano_flying_zebra_coarse)
-        xstart, xstop = get_coords(xstart, xstop, nano_stage.topx)
-        ystart, ystop = get_coords(ystart, ystop, nano_stage.y)
+        xstart, xstop = get_coords(xstart, xstop, coarse_motors[0])
+        ystart, ystop = get_coords(ystart, ystop, coarse_motors[1])
+        pos_start = [motor.user_setpoint.get() for motor in coarse_motors]
         if fly_on_y:
             fly_start, fly_stop, fly_num = ystart, ystop, ynum
             step_start, step_stop, step_num = xstart, xstop, xnum
-            kwargs['xmotor'] = nano_stage.y
-            kwargs['ymotor'] = nano_stage.topx
+            kwargs['xmotor'] = coarse_motors[1]
+            kwargs['ymotor'] = coarse_motors[0]
             yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOVER')
             yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOHOR')
         else:
             fly_start, fly_stop, fly_num = xstart, xstop, xnum
             step_start, step_stop, step_num = ystart, ystop, ynum
-            kwargs['xmotor'] = nano_stage.topx
-            kwargs['ymotor'] = nano_stage.y
+            kwargs['xmotor'] = coarse_motors[0]
+            kwargs['ymotor'] = coarse_motors[1]
             yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR')
             yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOVER')
     
-    if type != 'step':    
+    if scan_type != 'step':    
         # Determine detectors
         _xs = kwargs.pop('xs', xs)
         if extra_dets is None:
@@ -1201,10 +1217,19 @@ def xrf_map2(xstart, xstop, xnum,
                                          **kwargs)
 
     if center_scanner and resolution == 'coarse':
+    # if center_scanner:
         yield from move_to_scanner_center(timeout=10)
     yield from inner_map()
     if center_scanner and resolution == 'coarse':
+    # if center_scanner:
         yield from move_to_scanner_center(timeout=10)
+
+    # Move motors back to start for repeatability
+    if return_to_start:
+        if resolution in ['step', 'nano']:
+            yield from mv(*zip(fine_motors, pos_start))
+        elif resolution in ['coarse']:
+            yield from mv(*zip(coarse_motors, pos_start))
 
 
 
