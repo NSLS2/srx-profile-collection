@@ -1306,7 +1306,7 @@ def flying_xas(num_passes=1, shutter=True, md=None):
 def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
                         num_scans=1, scan_type='uni', shutter=True, plot=False,
                         flyers=[flyer_id_mono], harmonic=1, roi_num=1,
-                        md=None):
+                        vlm_snapshot=True, md=None):
     """This is a modified version of bp.fly to support multiple passes of the flyer."""
     flyer_id_mono.flying_dev.parameters.first_trigger.put(e_start)
     flyer_id_mono.flying_dev.parameters.last_trigger.put(e_stop)
@@ -1398,39 +1398,76 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
     @subs_decorator(livepopup)
     @ts_monitor_during_decorator([roi_pv])
     def plan():
-        # yield from check_shutters(shutter, 'Open')
-        uid = yield from bps.open_run(md)
-        yield from mv(sclr1.count_mode, 0)
-        yield from mv(energy, e_start)
-        # Wait for scaler to be "done"
-        yield from bps.sleep(2)  # TODO: THIS SHOULD BE SMARTER!
-        yield from bps.mov(sclr1.erase_all, 1)
-        # print(f"Kickoff: {flyers}")
-        for flyer in flyers:
-            # print(f"  Kicking off {flyer}...")
-            flyer.pulse_width = dwell
-            yield from bps.mv(flyer.flying_dev.parameters.num_scans, num_scans)
-            yield from bps.kickoff(flyer, wait=True)
-        for n in range(num_scans):
-            print(f"\n\n*** {print_now()} Iteration #{n+1} ***\n")
-            yield from bps.checkpoint()
-            if shutter is True:
-                yield from abs_set(shut_d.request_open, 1, wait=True, timeout=2)
-            # flyer_id_mono.scaler.erase_start.put(1)
+        # # yield from check_shutters(shutter, 'Open')
+        # uid = yield from bps.open_run(md)
+        # yield from mv(sclr1.count_mode, 0)
+        # yield from mv(energy, e_start)
+        # # Wait for scaler to be "done"
+        # yield from bps.sleep(2)  # TODO: THIS SHOULD BE SMARTER!
+        # yield from bps.mov(sclr1.erase_all, 1)
+        # # print(f"Kickoff: {flyers}")
+        # for flyer in flyers:
+        #     # print(f"  Kicking off {flyer}...")
+        #     flyer.pulse_width = dwell
+        #     yield from bps.mv(flyer.flying_dev.parameters.num_scans, num_scans)
+        #     yield from bps.kickoff(flyer, wait=True)
+        # for n in range(num_scans):
+        #     print(f"\n\n*** {print_now()} Iteration #{n+1} ***\n")
+        #     yield from bps.checkpoint()
+        #     if shutter is True:
+        #         yield from abs_set(shut_d.request_open, 1, wait=True, timeout=2)
+        #     # flyer_id_mono.scaler.erase_start.put(1)
+        #     for flyer in flyers:
+        #         # print(f"  {flyer.name} complete...")
+        #         yield from bps.complete(flyer, wait=True)
+        #     if shutter is True:
+        #         yield from abs_set(shut_d.request_open, 0, wait=False)
+        #     for flyer in flyers:
+        #         # print(f"  {flyer} collect...", end='', flush=True)
+        #         yield from bps.collect(flyer)
+        #         # print("done")
+        #     # This is a work around until the flyer can be rewritten
+        #     yield Msg("nuke_the_cache", flyer_id_mono)
+        # yield from check_shutters(shutter, 'Close')
+        # yield from mv(sclr1.count_mode, 1)
+        # yield from bps.close_run()
+
+        @run_decorator(md=md)
+        @vlm_decorator(vlm_snapshot, after=True)
+        def inner_plan():
+            # yield from check_shutters(shutter, 'Open')
+            yield from mv(sclr1.count_mode, 0)
+            yield from mv(energy, e_start)
+            # Wait for scaler to be "done"
+            yield from bps.sleep(2)  # TODO: THIS SHOULD BE SMARTER!
+            yield from bps.mov(sclr1.erase_all, 1)
+            # print(f"Kickoff: {flyers}")
             for flyer in flyers:
-                # print(f"  {flyer.name} complete...")
-                yield from bps.complete(flyer, wait=True)
-            if shutter is True:
-                yield from abs_set(shut_d.request_open, 0, wait=False)
-            for flyer in flyers:
-                # print(f"  {flyer} collect...", end='', flush=True)
-                yield from bps.collect(flyer)
-                # print("done")
-            # This is a work around until the flyer can be rewritten
-            yield Msg("nuke_the_cache", flyer_id_mono)
-        yield from check_shutters(shutter, 'Close')
-        yield from mv(sclr1.count_mode, 1)
-        yield from bps.close_run()
+                # print(f"  Kicking off {flyer}...")
+                flyer.pulse_width = dwell
+                yield from bps.mv(flyer.flying_dev.parameters.num_scans, num_scans)
+                yield from bps.kickoff(flyer, wait=True)
+            for n in range(num_scans):
+                print(f"\n\n*** {print_now()} Iteration #{n+1} ***\n")
+                yield from bps.checkpoint()
+                if shutter is True:
+                    yield from abs_set(shut_d.request_open, 1, wait=True, timeout=2)
+                # flyer_id_mono.scaler.erase_start.put(1)
+                for flyer in flyers:
+                    # print(f"  {flyer.name} complete...")
+                    yield from bps.complete(flyer, wait=True)
+                if shutter is True:
+                    yield from abs_set(shut_d.request_open, 0, wait=False)
+                for flyer in flyers:
+                    # print(f"  {flyer} collect...", end='', flush=True)
+                    yield from bps.collect(flyer)
+                    # print("done")
+                # This is a work around until the flyer can be rewritten
+                yield Msg("nuke_the_cache", flyer_id_mono)
+            yield from check_shutters(shutter, 'Close')
+            yield from mv(sclr1.count_mode, 1)
+
+        uid = yield from inner_plan()
         for flyer in flyers:
             # yield from bps.mv(flyer.flying_dev.control, "disable")
             st = flyer.flying_dev.control.set("disable")
