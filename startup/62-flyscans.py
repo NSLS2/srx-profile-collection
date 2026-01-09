@@ -431,14 +431,16 @@ def scan_and_fly_base(detectors,
                 if verbose:
                     print("    sleeping for dexela...")
                 state = 0
-                print(f"    [{print_now()}] Dexela is waking up...  ")
+                if verbose:
+                    print(f"    [{print_now()}] Dexela is waking up...  ")
                 while state == 0:
                     yield from bps.sleep(0.1)
                     state = d.cam.detector_state.get()
                     # print(f"    Dexela is idle!")
                 # yield from bps.sleep(0.1)
                 yield from bps.sleep(0.3) # EJM quick fix 20250714
-                print(f"    [{print_now()}] awake!")
+                if verbose:
+                    print(f"    [{print_now()}] awake!")
 
         # Creating one status object to rule them all
         all_st = st_list[0]
