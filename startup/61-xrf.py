@@ -9,7 +9,6 @@ import time as ttime
 import matplotlib.pyplot as plt
 
 import bluesky.plans as bp
-from bluesky.plans import outer_product_scan, scan
 from bluesky.callbacks import LiveGrid
 from bluesky.callbacks.fitting import PeakStats
 from bluesky.preprocessors import subs_wrapper
