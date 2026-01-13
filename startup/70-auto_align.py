@@ -23,6 +23,10 @@ def auto_align(focus=0.5, all_checks=True):
         True by default and checks all upstream optics.
     """
 
+    # Record default motors in (x, y)
+    fine_motors = (nano_stage.sx, nano_stage.sy)
+    coarse_motors = (nano_stage.topx, nano_stage.y)
+
     # Parse focus parameter
     if isinstance(focus, (float, int)):
         focus = (focus, focus)
@@ -208,131 +212,198 @@ def auto_align(focus=0.5, all_checks=True):
         except Exception as e:
             print('Unknown error encountered optimizing scaler pre-amplifier values!')
             raise e
+        
+    # Focusing
+    for direction in ['vertical', 'horizontal']:
+        # Get default values
+        if 'ver' in direction:
+            flag_dir = 'VER'
+            overlay = nano_vlm.over.overlay_1.position_y
+            focus_target = focus[0] # (VxH)              
+            positioner = coarse_motors[0]
+            scanner = fine_motors[1]
+            jj_motor = jjslits.v_trans
+            kb_trans_motor = nanoKB.v_y
+            kb_pitch = nanoKB.v_pitch
+            kb_fine = nanoKB.v_pitch_fine
+            max_iter = 10
 
-    # Check for sample!
-    x0, y0 = nano_stage.topx.user_readback.get(), nano_stage.y.user_readback.get()
-    over_x = nano_vlm.over.overlay_1.position_x.get()
-    over_y = nano_vlm.over.overlay_1.position_y.get()
-    over_dx, over_dy = 0, 0
-    
-    # Initial vertical focus checks
-    print('Checking for vertical knife-edge position and focus...')
-    yield from mov(nano_stage.topx, x0 - 50)
-    try:
+        elif 'hor' in direction:
+            flag_dir = 'HOR'
+            overlay = nano_vlm.over.overlay_1.position_x
+            focus_target = focus[1] # (VxH)         
+            positioner = coarse_motors[1]
+            scanner = fine_motors[0]
+            jj_motor = jjslits.j_trans
+            kb_trans_motor = nanoKB.v_x
+            kb_pitch = nanoKB.h_pitch
+            kb_fine = nanoKB.h_pitch_fine
+            max_iter = 5
+
+        pos0 = positioner.user_setpoint.get()
+        overlay_delta = 0
+
+        # Convenience function to measure and center the beam
+        def measure_and_center():
+            # Fine scan to measure fwhm and better center the stages
+            print(f'Measuring {direction} focus...')
+            cent, fwhm, _ = yield from knife_edge(scanner, -10, 10, 0.1, 0.05)
+            nonlocal overlay_delta
+            overlay_delta += cent
+            print(f'{direction.capitalize()} focus is {fwhm:.4f} um.')
+            print(f'{direction.capitalize()} knife edge found at {cent:.2f} um. Moving and centering stages at this new position!')
+            yield from mov(scanner, cent)
+            yield from bps.sleep(1)
+            yield from center_scanner()
+            yield from bps.sleep(1)
+            return fwhm
+        
+        # Function to protect alignment moves
+        def limited_move_motor(motor,
+                               rel_move,
+                               min_move=0, max_move=np.inf,
+                               staff_support=False):
+            
+            if np.abs(rel_move) < min_move:
+                return False
+            elif np.abs(rel_move) > max_move:
+                err_str = (f'Motor {motor.name} requested move of {rel_move} {motor.motor_egu.get()}'
+                           + f' is greater than the maximum allowed value of {max_move}.'
+                           + '\nStaff support is required!')
+                raise RuntimeError(err_str)
+            elif staff_support:
+                err_str = (f'Motor {motor.name} requested move of {rel_move} {motor.motor_egu.get()}.'
+                           + 'This move requires staff support!')
+                raise RuntimeError(err_str)
+            else:
+                print(f'Moving {motor.name} by {rel_move} {motor.motor_egu.get()}.')
+                yield from mvr(motor, rel_move)
+                return True
+
+        def end_iterations():
+            # Re-center positioner
+            yield from mov(positioner, pos0)
+            # Move overlay 
+
+            # TODO: Check signs and cumulative moves
+            vlm_scale = 0.345 # um/pixel
+            yield from abs_set(overlay,
+                               overlay.get() - int(np.round(vlm_scale / overlay_delta)))    
+
         # Find the feature
-        print('Searching for vertical knife edge...')
-        cent_y, _ = yield from knife_edge(nano_stage.sy, -45, 45, 1, 0.05)
-        over_dy += cent_y
-        print(f'Vertical knife edge found at {cent_y:.2f} um. Moving and centering stages at this new position!')
-        yield from mov(nano_stage.sy, cent_y)
-        yield from bps.sleep(1)
-        yield from center_scanner()
-        yield from bps.sleep(1)
-        y0 = nano_stage.y.user_readback.get() # Not currently used
-
-        # Measure the fwhm
-        print('Measuring vertical focus...')
-        cent_y, fwhm_y = yield from knife_edge(nano_stage.sy, -10, 10, 0.1, 0.05)
-        over_dy += cent_y
-        print(f'Vertical focus is {fwhm_y:.4f} um.')
-        if fwhm_y < focus[0]:
-            print(f'Vertical focus is less than desired {focus[0]} um!')
-        else:
-            print('Vertical focus is larger than desired focus. Manual focusing required.')
-            pass
-
-        # Final re-center scanner
-        print(f'Final vertical knife edge found at {cent_y:.2f} um. Moving and centering stages at this new position!')
-        yield from mov(nano_stage.sy, cent_y)
-        yield from bps.sleep(1)
-        yield from center_scanner()
-        yield from bps.sleep(1)
-
-    except Exception as e:
-        print('Unknown exception encountered when checking the vertical focus!')
-        raise e
-
-    # Initial horizontal focus checks
-    print('Checking for horizontal knife-edge position and focus...')
-    yield from mov(nano_stage.topx, x0,
-                   nano_stage.y, y0 + 50)
-    try:
-        # Find the feature
-        print('Searching for horizontal knife edge...')
-        cent_x, _ = yield from knife_edge(nano_stage.sx, -45, 45, 1, 0.05)
-        over_dx += cent_x
-        print(f'Horizontal knife edge found at {cent_x:.2f} um. Moving and centering stages at this new position!')
-        yield from mov(nano_stage.sx, cent_x)
-        yield from bps.sleep(1)
-        yield from center_scanner()
-        yield from bps.sleep(1)
-        x0 = nano_stage.topx.user_readback.get() # Not currently used
-
-        # Measure the fwhm
-        print('Measuring horizontal focus...')
-        cent_x, fwhm_x = yield from knife_edge(nano_stage.sx, -10, 10, 0.1, 0.05)
-        over_dx += cent_x
-        print(f'Horizontal focus is {fwhm_x:.4f} um.')
-        if fwhm_x < focus[1]:
-            print(f'Horizontal focus is less than desired {focus[1]} um!')
-        else:
-            print('Horizontal focus is larger than desired focus. Manual focusing required.')
-            pass
-
-        # Final re-center scanner
-        print(f'Final horizontal knife edge found at {cent_x:.2f} um. Moving and centering stages at this new position!')
-        yield from mov(nano_stage.sx, cent_x)
+        print(f'Searching for {direction} knife edge...')
+        yield from mov(positioner, pos0 + 50)
+        cent, _, _ = yield from knife_edge(scanner, -45, 45, 1, 0.05, plot=False)
+        overlay_delta += cent
+        print(f'{direction.capitalize()} knife edge found at {cent:.2f} um. Moving and centering stages at this new position!')
+        yield from mov(scanner, cent)
         yield from bps.sleep(1)
         yield from center_scanner()
         yield from bps.sleep(1)
         
-    except Exception as e:
-        print('Unknown exception encountered when checking the horizontal focus!')
-        raise e
+        # Fine scan to measure fwhm and center stages
+        fwhm = yield from measure_and_center()
+        if fwhm < focus_target:
+            print(f'{direction.capitalize()} focus is less than desired {focus[0]} um!')
+            yield from end_iterations()
+            continue
+        else:
+            print(f'{direction.capitalize()} focus is larger than desired focus.')
 
-    # TODO: Check signs and cumulative moves
-    vlm_scale = 0.345 # um/pixel
-    yield from abs_set(nano_vlm.over.overlay_1.position_x,
-                       over_x - int(np.round(vlm_scale / over_dx)))
-    yield from abs_set(nano_vlm.over.overlay_1.position_y,
-                       over_y - int(np.round(vlm_scale / over_dy)))
-
-    # Return to starting location
-    yield from movr(nano_stage.y, -50)
-
-
-
-    # Perform initial knife edges
-
-    # # Slit scan on vertical KB
-    # print('Focusing vertical KB...')
-    # try:
-    #     yield from focusKB('ver')
+        # Initial slit scan for alignment
+        print(f'Initial {direction} slit scan for alignment and focusing...')
+        beam_offset, kb_trans, defocus, pitch = yield from focusKB2(flag_dir)
+        jj_move = yield from limited_move_motor(jj_motor,
+                                                beam_offset,
+                                                min_move=10, max_move=100,
+                                                staff_support=True)
+        if jj_move:
+            kb_trans += beam_offset # Is this correct
+        kb_move = yield from limited_move_motor(kb_trans_motor,
+                                                kb_trans,
+                                                min_move=10, max_move=100,
+                                                staff_support=True)
+        # Move sample position only for vertical
+        if flag_dir == 'VER':
+            z_move = yield from limited_move_motor(nano_stage.z,
+                                                    defocus,
+                                                    min_move=10, max_move=1000)
+            if z_move:
+                yield from limited_move_motor(nano_vlm_stage.z,
+                                                defocus / 1000)
         
-    #     # Move vertical KB mirror!
-
-    # except Exception as e:
-    #     print('Unknown error encountered when focusing vertical KB mirror!')
-    #     raise e
-    
-    # # Slit scan on horizontal KB
-    # print('Focusing horizontal KB...')
-    # try:
-    #     yield from focusKB('hor')
-
-    #     # Move horizontal KB mirror!
-
-    # except Exception as e:
-    #     print('Unknown error encountered when focusing horizontal KB mirror!')
-    #     raise e
-
-    # # Perform final knife edges
-
-    # # Close D-shutter to protect sample and prevent radiation damage
-    # print('Closing D-shutter and wrapping up!')
-    # try:
-    #     yield from check_shutters('Close', True)
-    # except Exception as e:
-    #     print('Unknown error encountered closing the D-shutter!')
-    #     raise e
-
+        # Fine scan to measure results
+        fwhm = yield from measure_and_center()
+        if fwhm < focus_target:
+            print(f'{direction.capitalize()} focus is less than desired {focus[0]} um!')
+            yield from end_iterations()
+            continue
+        else:
+            print(f'{direction.capitalize()} focus is larger than desired focus.')
+            
+        # Re-run slit scan for any drastic moves
+        if any([jj_move, kb_move, z_move]):
+            beam_offset, kb_trans, defocus, pitch = yield from focusKB2(flag_dir)
+        
+        # Unpack pitch values
+        pitch, pitch_fine, pitch_defocus = pitch
+        
+        # Iterative focusing
+        prev_fwhm = fwhm
+        for iter in range(max_iter):
+            # Linear correction
+            if defocus > 100 and flag_dir == 'VER':
+                z_move = yield from limited_move_motor(nano_stage.z,
+                                                       defocus,
+                                                       min_move=10, max_move=1000)
+                if z_move:
+                    yield from limited_move_motor(nano_vlm_stage.z,
+                                                  defocus / 1000)
+            # Quadratic correction
+            else:
+                if pitch_fine < 5:
+                    pitch_move = yield from limited_move_motor(kb_fine,
+                                                               pitch_fine,
+                                                               min_move=0, max_move=5)
+                else:
+                    pitch_move = yield from limited_move_motor(kb_pitch,
+                                                               pitch,
+                                                               min_move=0, max_move=10)
+                # Move to new focal plane for vertical
+                if pitch_move and flag_dir == 'VER':
+                    z_move = yield from limited_move_motor(nano_stage.z,
+                                                           pitch_defocus,
+                                                           min_move=10, max_move=1000)
+                    if z_move:
+                        yield from limited_move_motor(nano_vlm_stage.z,
+                                                      pitch_defocus / 1000)
+            
+            # Check if anything was adjusted and re-measure
+            if not any([pitch_move, z_move]):
+                note_str = (f'Adjustments for focusing in {direction} have become too small!'
+                            + f'Final {direction} focus is {fwhm:.4f} nm.')
+                print(note_str)
+                yield from end_iterations()
+                continue
+            else:
+                fwhm = yield from measure_and_center()
+            
+            # Perform all checks to break the iterations
+            if fwhm < focus_target:
+                print(f'{direction.capitalize()} focus is less than desired {focus[0]} um!')
+                yield from end_iterations()
+                continue
+            elif fwhm > prev_fwhm * 1.2:
+                err_str = (f'{direction.capitalize()} focus has increased from {prev_fwhm} to {fwhm} nm!'
+                        'Some component focused in the wrong direction and staff support is requied!')
+                raise RuntimeError(err_str)
+            elif iter > max_iter:
+                note_str = (f'Maximum number of iterations has been reach for {direction} focusing.'
+                            + f'Final {direction} focus is {fwhm:.4f} um.')
+                print(note_str)
+                yield from end_iterations()
+                continue
+            else:
+                print(f'{direction.capitalize()} focus is larger than desired focus. Continuing iterative focusing!')
+                beam_offset, kb_trans, defocus, pitch = yield from focusKB2(flag_dir)
+                pitch, pitch_fine, pitch_defocus = pitch
