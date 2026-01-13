@@ -176,7 +176,11 @@ def xanes_plan(erange=[], estep=[], acqtime=1.,
             if (doc[0] == "event_page"):
                 if ('seq_num' in doc.keys()):
                     scanrecord.time_remaining.put((doc['time'] - st) / doc['seq_num'] *
-                                              (len(ept) - doc['seq_num']) / 3600)
+                                                  (len(ept) - doc['seq_num']) / 3600)
+                    scan_record.time_rem_str.put(convert_time_str(
+                        ((doc['time'] - st) / doc['seq_num']) * # average time per point
+                        (len(ept) - doc['seq_num']) # remaining number of points
+                    ))
         except Exception:
             pass
 
@@ -212,10 +216,9 @@ def xanes_plan(erange=[], estep=[], acqtime=1.,
 
 
     def at_scan(name, doc):
-        scanrecord.current_scan.put(doc['uid'][:6])
-        scanrecord.current_scan_id.put(str(doc['scan_id']))
-        scanrecord.current_type.put(md['scan']['type'])
-        scanrecord.scanning.put(True)
+        scanrecord.time_rem_str.put(time_rem_convert(
+            len(ept) * (dwell + 2) # Some overhead for estimate
+        ))
 
 
     def finalize_scan():
@@ -227,6 +230,7 @@ def xanes_plan(erange=[], estep=[], acqtime=1.,
         if (detune is not None):
             yield from abs_set(energy.detune, 0)
         scanrecord.scanning.put(False)
+        scanrecord.time_rem_str.put(time_rem_convert(0))
 
 
     energy.move(ept[0])
@@ -245,7 +249,7 @@ def xanes_plan(erange=[], estep=[], acqtime=1.,
     yield from check_shutters(shutter, 'Open')
 
     return (yield from subs_wrapper(myscan, {'all' : livecallbacks,
-                                               'start' : at_scan}))
+                                             'start' : at_scan}))
 
 # Alias
 xas_step = xanes_plan
