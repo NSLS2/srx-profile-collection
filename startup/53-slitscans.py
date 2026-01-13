@@ -188,9 +188,9 @@ def JJ_scan(motor, start, stop, num, shutter=True):
     return ret
 
 def slit_nanoflyscan(scan_motor, scan_start, scan_stop, scan_stepsize, acqtime,
-                    slit_motor, slit_start, slit_stop, slit_stepsize, slitgap_motor, slit_gap,
-                    normalize=False, scan_only=False, shutter=False,
-                    plot=True, plot_guess=False):
+                     slit_motor, slit_start, slit_stop, slit_stepsize, slitgap_motor, slit_gap,
+                     normalize=False, scan_only=False, shutter=False,
+                     plot=True, plot_guess=False):
     """
     scan_motor       motor   motor used for scan
     scan_start       float   starting position
@@ -298,8 +298,9 @@ def slit_nanoflyscan(scan_motor, scan_start, scan_stop, scan_stepsize, acqtime,
     return uid_list
 
 
-def slit_nanoflyscan_cal(scan_id_list=[], interp_range=None, orthogonality=False, plotme=None,
-                         bin_low=934, bin_high=954, normalize=True):
+def slit_nanoflyscan_cal(scan_id_list=[], interp_range=None, orthogonality=False,
+                         bin_low=934, bin_high=954, normalize=True,
+                         plotme=None, plot=True):
    
     """
     This function takes a list of scan_id, process them one by one, then analyzes the optical abberations.
@@ -432,7 +433,6 @@ def slit_nanoflyscan_cal(scan_id_list=[], interp_range=None, orthogonality=False
         print(f"Unknown direction: {flag_dir}")
         raise Exception
 
-
     defocus = -calpoly_fit[0][0] * C_f
     delta_theta = calpoly_fit[0][0] * C_theta
     actuator_move_h = delta_theta * L_h
@@ -469,13 +469,13 @@ def slit_nanoflyscan_cal(scan_id_list=[], interp_range=None, orthogonality=False
     ax.set_xlabel(f'Slit Pos (mm)')
     ax.set_ylabel(f'Line Pos (mm)')
 
-    fname = f'slitscan_{scan_id_list[0]}.png'
-    root = '/home/xf05id1/current_user_data/knife_edge_scans/'
-    try:
-        os.makedirs(root, exist_ok=True)
-        plt.savefig(root + fname, dpi=300)
-    except:
-        print('Could not save plot.')
+    # fname = f'slitscan_{scan_id_list[0]}.png'
+    # root = '/home/xf05id1/current_user_data/knife_edge_scans/'
+    # try:
+    #     os.makedirs(root, exist_ok=True)
+    #     plt.savefig(root + fname, dpi=300)
+    # except:
+    #     print('Could not save plot.')
 
 
 def focusKB(direction, **kwargs):
@@ -675,7 +675,6 @@ def orth_slit_nanoflyscan_cal(scan_id_list=[], slit_range=[], from_RE=[], orthog
         print('quadratic term corresponds to fine pitch move' '{:7.3f}'.format(delta_fine_pitch), 'um.')
         print('quadratic term corresponds to coarse Z ' '{:7.3f}'.format(delta_focal_plane_z), 'um.')
 
-
     fig, ax = plt.subplots()
     ax.plot(slit_range, line_pos_seq/1000, 'ro', slit_range[interp_range], line_plt)
     ax.set_title(f'scan {scan_id}')
@@ -690,3 +689,304 @@ def orth_slit_nanoflyscan_cal(scan_id_list=[], slit_range=[], from_RE=[], orthog
     except:
         print('Could not save plot.')
 
+
+def focusKB2(direction, **kwargs):
+    if 'hor' in direction.lower():
+        kwargs.setdefault('scan_motor', nano_stage.sx)
+        kwargs.setdefault('slit_motor', jjslits.h_trans)
+        slit_range = 0.500 # 500 um range
+        kwargs.setdefault('slit_num', 11) # 50 um step
+        kwargs.setdefault('slitgap_motor', jjslits.h_gap)
+        kwargs.setdefault('slit_gap', 0.05) # 50 um step
+        N = 11
+    elif 'ver' in direction.lower():
+        kwargs.setdefault('scan_motor', nano_stage.sy)
+        kwargs.setdefault('slit_motor', jjslits.v_trans)
+        slit_range = 1.00 # 1000 um range
+        kwargs.setdefault('slit_stepsize', 11) # 100 um step
+        kwargs.setdefault('slitgap_motor', jjslits.v_gap)
+        kwargs.setdefault('slit_gap',  0.10) # 100 um step
+        N = 11
+    else:
+        print("This is for vertical or horizontal scans. Please choose one of these directions\n")
+
+    kwargs.setdefault('scan_start', -8) # in um
+    kwargs.setdefault('scan_stop', 8) # in um
+    kwargs.setdefault('scan_num', 81) # 200 nm step
+    kwargs.setdefault('dwell', 0.200) # 200 ms dwell
+    
+    slit_center = kwargs['slit_motor'].user_readback.get()
+    kwargs.setdefault('slit_start', slit_center - 0.5 * slit_range)
+    kwargs.setdefault('slit_stop', slit_center + 0.5 * slit_range)
+    print(f'Start from slit center: {slit_center}\n')
+
+    uid = yield from slit_nano_scan_map(**kwargs)
+
+    return slit_nano_scan_map_cal(uid)
+
+# Function to use the scan_and_fly_base framework from 62-flyscans for easier data acquisition
+def slit_nano_scan_map(scan_motor, scan_start, scan_stop, scan_num,
+                       slit_motor, slit_start, slit_stop, slit_num,
+                       dwell, slitgap_motor, slit_gap,
+                       roi='Pt',
+                       shutter=True,
+                       plot=True,
+                       md=None,
+                       verbose=False):
+    """
+    scan_motor       motor   motor used for scan
+    scan_start       float   starting position
+    scan_stop        float   stopping position
+    scan_num         int     number of data points
+    slit_motor       motor   slit motor used for scan
+    slit_start       float   starting position
+    slit_stop        float   stopping position
+    slit_num         int     number data points
+    slitgap_motor    int     motor controlling slit gap 
+    slit_gap         float   the gap to close the slit to
+    acqtime          float   counting time per step
+    roi              str     ROI of element
+    """
+
+    # Check for correct motors for scanning
+    if scan_motor == nano_stage.sx:
+        yield from abs_set(nano_flying_zebra.fast_axis, 'NANOHOR', wait=True)
+        yield from abs_set(nano_flying_zebra.slow_axis, 'JJHOR')
+    elif scan_motor == nano_stage.sy:
+        yield from abs_set(nano_flying_zebra.fast_axis, 'NANOVER', wait=True)
+        yield from abs_set(nano_flying_zebra.slow_axis, 'JJVER')
+    else:
+        err_str = 'Please use a supported motor: nano_stage.sx or nano_stage.sy'
+        raise ValueError(err_str)
+
+    # Set the roi
+    setroi(1, roi)
+
+    # Get original slit positions
+    slit_orig_gap = slitgap_motor.user_readback.get()
+    slit_orig_pos = slit_motor.user_readback.get()
+
+    # always move the slit to a more negative position to avoid backlash
+    yield from mov(slitgap_motor, 0)
+    yield from mov(slit_motor, slit_start - 0.2)
+    
+    # close the gap for scan
+    yield from mov(slitgap_motor, slit_gap)
+
+    # Setup the full scan
+    try:
+        uid = yield from scan_and_fly_base(
+                [xs],
+                scan_start, scan_stop, scan_num,
+                slit_start, slit_stop, slit_num,
+                dwell,
+                flying_zebra=nano_flying_zebra,
+                xmotor=scan_motor,
+                ymotor=slit_motor,
+                shutter=shutter,
+                plot=plot,
+                md=md,
+                verbose=verbose,
+                snake=False, vlm_snapshot=False
+            )
+    except (Exception, KeyboardInterrupt) as ex:
+            print('WARNING: Exception encountered during scanning. Restoring slit positions...')
+            # Finish up
+            yield from check_shutters(True, 'Close') 
+            yield from mov(slit_motor, slit_orig_pos)
+            yield from mov(slitgap_motor, slit_orig_gap)
+            raise ex
+
+    # Finish up
+    yield from check_shutters(True, 'Close') 
+    yield from mov(slit_motor, slit_orig_pos)
+    yield from mov(slitgap_motor, slit_orig_gap)
+
+    return uid
+
+
+def slit_nano_scan_map_cal(uid, orthogonality=False,
+                           bin_low=934, bin_high=954, normalize=True,
+                           plot=True, plotme=None):
+   
+    """
+    This function takes a list of scan_id, process them one by one, then analyzes the optical abberations.
+
+    uid              str     UID used to retrieve slit scan data
+    orthogonality    bool    calculate the spherical abb or the astigmatism
+    bin_low          integer the lower limit of ROI (usually Pt or Au), by default it's taking roi1
+    bin_high         integer uppper limit of ROI
+    normalize        bool    whether or not to normalize the data by the ion chamber, I0
+    plot             bool    whether to plot the resulting calibration
+    plotme           axis    matplotlib axis to plot upon
+    """
+
+    # Mirror parameters
+    f_v = 295 * 1e+3  # um
+    f_h = 125 * 1e+3
+    theta_v = 3 # mrad
+    theta_h = 3 # mrad
+    L_h = 100 # mm  Length of horizontal mirror
+#    conversion_factor_orth = np.array([-1.6581375e-4, 5.89e-4]) #unit: p/urad (V x H)
+    conversion_factor_orth = np.array([-0.000165824, 5.89e-4]) #unit: p/urad (V x H)
+    pitch_motion_conversion = np.array([225, 100]) # unit: mm (V x H)
+    delta_fine_pitch = 0.0 # unit: um
+
+    bs_run = c[uid]
+    scan_id = int(bs_run.start['scan_id'])
+    ds = bs_run['stream0']['data']
+    ds_keys = list(ds.keys())
+    fluor_key = 'xs_fluor'
+
+    if 'jj' not in bs_run.start['scan']['slow_axis']['motor_name'].lower():
+        err_str = 'JJ-slits not used in this scan.'
+        raise RuntimeError(err_str)
+
+    if 'nano_stage_sx' in bs_run.start['scan']['fast_axis']['motor_name']:
+        flag_dir = 'HOR'
+        pos_key = 'enc1'
+        jj_key = 'enc2'
+    elif 'nano_stage_sy' in bs_run.start['scan']['fast_axis']['motor_name']:
+        flag_dir = 'VER'
+        pos_key = 'enc2'
+        jj_key = 'enc1'
+    else:
+        err_str = 'Unknown scanning motor encountered.'
+        raise RuntimeError(err_str)
+
+    # Get XRF
+    if bin_low is None:
+        bin_low = xs.channel01.mcaroi01.min_x.get()
+    if bin_high is None:
+        bin_high = xs.channel01.mcaroi01.max_x.get()
+    xrf_map = ds[fluor_key][..., bin_low:bin_high].sum(axis=(-1)).squeeze().astype(np.float64)
+
+    # Get scalers
+    if normalize:
+        if 'i0' in ds_keys:
+            i0 = ds['i0'].read().squeeze()
+        elif 'sclr_i0' in ds_keys:
+            i0 = ds['sclr_i0'].read().squeeze()
+        else:
+            err_str = 'Cannot find i0 for normalization.'
+            raise KeyError(err_str)
+        d /= i0
+    
+        x = ds[pos_key].read().squeeze().astype(np.float64)
+        jj_list = ds[jj_key].read().squeeze().astype(np.float64)
+    
+    # Fit each slit position
+    fit_mask, cent_list, amp_list = [], [], []
+    for idx in xrf_map.shape[1]:
+        y = xrf_map[idx]
+        dydx = np.gradient(y, x)
+
+        # Check for significant features
+        if (np.sum(y) - (np.median(y) * len(y))) < 3 * np.std(y):
+            print(f'Feature not significant for row {idx}.')
+            fit_mask.append(False)
+            cent_list.append(np.nan)
+            amp_list.append(np.max(y))
+            continue
+
+        p0 = [0.5 * np.amax(y),
+              0.500 / 2.3548, # 500 nm fwhm to sigma
+              x[np.argmax(dydx)],
+              0.5 * np.amin(y),
+              -0.5 * np.amax(y),
+              0.500 / 2.3548, # 500 nm fwhm to sigma
+              x[np.argmin(dydx)],
+              0.5 * np.amin(y)]
+        
+        try:
+            popt, _ = curve_fit(f_two_erfs, x, y, p0=p0)
+        except Exception as ex:
+            print(f'Raw fit failed for row {idx}.')
+            popt = p0
+        
+        fit_mask.append(True)
+        cent_list.append((popt[2] + popt[6]) / 2)
+        amp_list.append((popt[0] + popt[4]) / 2)
+    
+    fit_mask = np.asarray(fit_mask)
+    cent_list = np.asarray(cent_list)
+    amp_list = np.asarray(amp_list)
+    
+    # Fit line positions
+    calpoly_fit = np.polyfit(jj_list[fit_mask], cent_list[fit_mask], orthogonality + 1, full=True)
+    p = np.poly1d(calpoly_fit[0])
+    line_plt = p(jj_list[fit_mask])
+    p2v_line_pos = np.max(cent_list[fit_mask]) - np.min(cent_list[fit_mask])
+
+    # Determine proper conversion factors
+    if flag_dir == 'VER':
+        C_f = f_v
+        C_theta = theta_v
+        conversion_factor_orth = conversion_factor_orth[0]
+        pitch_motion_conversion = pitch_motion_conversion[0]
+    elif flag_dir == 'HOR':
+        C_f = f_h
+        C_theta = theta_h
+        conversion_factor_orth = conversion_factor_orth[1]
+        pitch_motion_conversion = pitch_motion_conversion[1] 
+    else:
+        print(f"Unknown direction: {flag_dir}")
+        raise Exception
+
+    defocus = -calpoly_fit[0][0] * C_f
+    delta_theta = calpoly_fit[0][0] * C_theta
+    actuator_move_h = delta_theta * L_h
+    line_move_h = -2 * delta_theta * C_f * 1e-3
+    print(f'Fitting results for {flag_dir} direction:')
+    print(f'\tp is {calpoly_fit[0]}')
+    print(f'\tP2V of line position is {p2v_line_pos:.4f} um')
+    if (flag_dir == 'VER'):
+        print(f'\tDefocus is {defocus:7.3f} um. Vkb correct by this amount.')
+    elif (flag_dir == 'HOR'):
+        print(f'\tDefocus is {defocus:7.3f} um. Hkb correct by this amount.')
+        print(f'\tEquivalent to {delta_theta:7.6f} mrad. Hkb correct by this amount.')
+        print(f'\tActuator should move by {actuator_move_h:7.3f} um.')
+        print(f'\tLine feature should move {line_move_h:7.3f} um for h mirror pitch correction')
+
+    # Always calculate orthoganality for consistent returned values
+    delta_fine_pitch = -1*calpoly_fit[0][0]/conversion_factor_orth*1e-3*pitch_motion_conversion
+    delta_theta_quad = calpoly_fit[0][0]/conversion_factor_orth
+    delta_focal_plane_z = delta_theta_quad*1e-3/C_theta*C_f    
+    if orthogonality == 1:
+        print('\nOrthagonality correction:')
+        print(f'\tQuadratic term corresponds to pitch angle {delta_theta_quad:7.3f} urad.')
+        print(f'\tQuadratic term corresponds to fine pitch move {delta_fine_pitch:7.3f} um.')
+        print(f'\tQuadratic term corresponds to coarse Z {delta_focal_plane_z:7.3f} um.')
+    
+    # Fit bright spot
+    # bright_cent = np.average(jj_list[fit_mask], weigths=amp_list[fit_mask])
+    p0 = [np.max(amp_list[fit_mask]),
+          100,
+          jj_list[fit_mask][np.argmax(amp_list[fit_mask])]]
+    try:
+        popt, _ = curve_fit(jj_list[fit_mask], amp_list[fit_mask], gaussian, p0=p0)
+    except:
+        print('Beam brightness profile fit failed')
+        popt = p0
+    # Relative difference to fitted center
+    bright_cent = np.mean(jj_list) - popt[2]
+
+    # Relative difference of significant reflection to center
+    kb_trans = np.mean(jj_list[fit_mask]) - popt[2]
+
+    if plot:
+        if (plotme is None):
+            fig, ax = plt.subplots()
+        else:
+            ax = plotme.ax
+        ax.plot(jj_list, cent_list/1000, 'ro', jj_list[fit_mask], line_plt)
+        ax.set_title(f'Scan {scan_id}')
+        ax.set_xlabel(f'Slit Pos (mm)')
+        ax.set_ylabel(f'Line Pos (mm)')
+
+    return (bright_cent, # Amount to shift center of jj-slits
+            kb_trans, # Amount to translated KB mirror
+            defocus, # Amount to translate sample focus
+            (delta_theta_quad, # Amount to change overall pitch angle
+             delta_fine_pitch, # Amount to change fine pitch actuator  
+            delta_focal_plane_z)) # Amount to translate sample focus to compensate pitch angle change
