@@ -149,6 +149,7 @@ def smart_peakup(start=None,
     @bpp.run_decorator(md=md)
     @bpp.subs_decorator(livecb)
     def smart_max_core(x0):
+        yield from abs_set(scanrecord.time_rem_str, time_rem_convert(59), timeout=10)
         # Optimize on a given detector
         def optimize_on_det(target_field, x0):
             past_pos = x0
@@ -210,6 +211,7 @@ def smart_peakup(start=None,
             if verbose:
                 print(f'Optimizing on detector {target_field}')
             x0 = yield from optimize_on_det(target_field, x0)
+        yield from abs_set(scanrecord.time_rem_str, time_rem_convert(0), timeout=10)
 
     return (yield from smart_max_core(start))
 
@@ -370,6 +372,8 @@ def optimize_scalers(dwell=0.5,
     # @bpp.subs_decorator(livecb)
     def optimize_all_preamps():
         settle_time = 0.1
+
+        yield from abs_set(scanrecord.time_rem_str, time_rem_convert(59), timeout=10)
 
         ### Optimize sensitivity ###
         # Turn off offset correction
@@ -547,6 +551,8 @@ def optimize_scalers(dwell=0.5,
             if shut_b.status.get() == 'Not Open':
                 print('Opening B-hutch shutter..')
                 yield from abs_set(shut_b, "Open", wait=True)
+        
+        yield from abs_set(scanrecord.time_rem_str, time_rem_convert(0), timeout=10)
 
     # Open and close run, or append to other run
     if RUN_WRAPPER:
