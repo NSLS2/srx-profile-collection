@@ -5,8 +5,8 @@ import time as ttime
 
 # Run a knife-edge scan
 def nano_knife_edge(motor, start, stop, stepsize, acqtime,
-                    roi="Pt", normalize=True, use_trans=False,
-                    scan_only=False, shutter=True, plot=True, plot_guess=False):
+                    roi="Pt", shutter=True, plot=True,
+                    normalize=True, use_trans=False, plot_guess=False):
     """
     motor       motor   motor used for scan
     start       float   starting position
@@ -99,9 +99,13 @@ def nano_knife_edge(motor, start, stop, stepsize, acqtime,
         print(f'{motor.name} is not implemented in this scan.')
         return
 
-    # Do not do fitting, only do the scan
-    if (not scan_only):
-        return plot_knife_edge(scanid=db[-1].start['scan_id'], plot_guess=False, plotme=plotme)
+    # Always return parameters
+    return fit_knife_edge(scanid=db[-1].start['scan_id'],
+                          plot=plot,
+                          plotme=plotme,
+                          normalize=normalize,
+                          use_trans=use_trans,
+                          plot_guess=plot_guess)
 
 
 # Make nice alias
@@ -109,15 +113,16 @@ knife_edge = nano_knife_edge
 
 
 # Written quickly
-def plot_knife_edge(scanid=-1, fluor_key='xs_fluor', use_trans=False, normalize=True, plot_guess=False,
-                    bin_low=None, bin_high=None, plotme=None):
+def fit_knife_edge(scanid=-1, fluor_key='xs_fluor', use_trans=False, normalize=True,
+                   plot=True, plot_guess=False, plotme=None,
+                   bin_low=None, bin_high=None):
     # Get the scanid
     bs_run = c[int(scanid)]
     id_str = bs_run.start['scan_id']
-    if 'FLY' in bs_run.start['scan']['type']:
-        fly = True
-    else:
-        fly = False
+    # if 'FLY' in bs_run.start['scan']['type']:
+    #     fly = True
+    # else:
+    #     fly = False
 
     fast_axis = bs_run.start['scan']['fast_axis']['motor_name']
 
@@ -156,15 +161,15 @@ def plot_knife_edge(scanid=-1, fluor_key='xs_fluor', use_trans=False, normalize=
     x = ds[pos].read().squeeze().astype(np.float64)
     dydx = np.gradient(y, x)
 
-    # EJM better guess
-    p_guess = [0.5*np.amax(y),
+    # EJM better guess. Assumes scanning from low to high!
+    p_guess = [0.5 * np.amax(y),
                0.500 / 2.3548, # 500 nm fwhm to sigma
                x[np.argmax(dydx)],
-               np.amin(y),
-               -0.5*np.amax(y),
+               0.5 * np.amin(y),
+               -0.5 * np.amax(y),
                0.500 / 2.3548, # 500 nm fwhm to sigma
                x[np.argmin(dydx)],
-               np.amin(y)]
+               0.5 * np.amin(y)]
 
     try:
         # popt, _ = curve_fit(f_offset_erf, x, y, p0=p_guess)
@@ -174,7 +179,7 @@ def plot_knife_edge(scanid=-1, fluor_key='xs_fluor', use_trans=False, normalize=
         popt = p_guess
 
     C = 2 * np.sqrt(2 * np.log(2))
-    cent_position = (popt[2]+popt[6])/2
+    cent_position = (popt[2] + popt[6]) / 2
     feature_size = np.abs(popt[2] - popt[6])
     print(f'The beam size is {C * popt[1]:.4f} um')
     print(f'The beam size is {C * popt[5]:.4f} um')
@@ -190,23 +195,32 @@ def plot_knife_edge(scanid=-1, fluor_key='xs_fluor', use_trans=False, normalize=
     # y_plot = f_offset_erf(x_plot, *popt)
     dydx_plot = np.gradient(y_plot, x_plot)
 
-    # Display fit of raw data
-    if (plotme is None):
-        fig, ax = plt.subplots()
-    else:
-        ax = plotme.ax
+    if plot:
+        # Display fit of raw data
+        if (plotme is None):
+            fig, ax = plt.subplots()
+        else:
+            ax = plotme.ax
 
-    ax.cla()
-    ax.plot(x, y, '*', label='Raw Data')
-    if (plot_guess):
-        ax.plot(x_plot, f_two_erfs(x_plot, *p_guess), '--', label='Guess fit')
-    ax.plot(x_plot, y_plot, '-', label='Final fit')
-    ax.set_title(f'Scan {id_str}')
-    ax.set_xlabel(fast_axis)
-    if (normalize):
-        ax.set_ylabel('Normalized ROI Counts')
-    else:
-        ax.set_ylabel('ROI Counts')
-    ax.legend()
+        ax.cla()
+        ax.plot(x, y, '*', label='Raw Data')
+        if (plot_guess):
+            ax.plot(x_plot, f_two_erfs(x_plot, *p_guess), '--', label='Guess fit')
+        ax.plot(x_plot, y_plot, '-', label='Final fit')
+        ax.set_title(f'Scan {id_str}')
+        ax.set_xlabel(fast_axis)
+        if (normalize):
+            ax.set_ylabel('Normalized ROI Counts')
+        else:
+            ax.set_ylabel('ROI Counts')
+        ax.legend()
 
-    return cent_position, C * np.mean([popt[1], popt[5]])
+    # return cent_position, C * np.mean([popt[1], popt[5]])
+
+    return (
+        cent_position,                      # Center of feature
+        C * np.mean([popt[1], popt[5]]),    # Average fwhm
+        np.mean([popt[0], popt[4]])         # Average intensity
+    )
+
+    
