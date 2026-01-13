@@ -275,7 +275,7 @@ def vlm_snapshot(md=None):
 
 
 # Converts time in seconds to user-friendly string
-def convert_time(time_in_sec):
+def time_rem_convert(time_in_sec):
 
     time_in_min = time_in_sec / 60
     time_in_hr = time_in_sec / 3600
@@ -288,11 +288,16 @@ def convert_time(time_in_sec):
         part_min = int(np.floor(time_in_min))
         part_sec = int(np.round(60 * (time_in_min - part_min), 0))
         time_str = f'{part_min} min and {part_sec} sec'
-    elif time_in_sec >= 30:
-        time_str = f'{int(time_in_sec)} sec'
-    elif time_in_sec > 0:
-        time_str = '<30 sec'
+    elif time_in_min < 1:
+        time_str = '<1 min'
     else:
-        time_str = '0 sec'
+        time_str = '0 min'
+    
+    # elif time_in_sec >= 30:
+    #     time_str = f'{int(time_in_sec)} sec'
+    # elif time_in_sec > 0:
+    #     time_str = '<30 sec'
+    # else:
+    #     time_str = '0 sec'
 
     return time_str
