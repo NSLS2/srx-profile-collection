@@ -625,16 +625,14 @@ def scan_and_fly_base(detectors,
             toc(0, str='timing unstage', log_file=log_file)
 
     def at_scan(name, doc):
-        scanrecord.current_scan.put(doc['uid'][:6])
-        scanrecord.current_scan_id.put(str(doc['scan_id']))
-        scanrecord.current_type.put(md['scan']['type'])
-        scanrecord.scanning.put(True)
-        scanrecord.time_remaining.put((dwell*xnum + 3.8)/3600)
+        scanrecord.time_remaining.put((dwell * xnum + 3.8)/3600)
+        scanrecord.time_rem_str.put(time_rem_convert(dwell * xnum + 3.8))
 
     def finalize_scan(name, doc):
         # logscan_detailed('XRF_FLY')
         scanrecord.scanning.put(False)
         scanrecord.time_remaining.put(0)
+        scanrecord.time_rem_str.put(time_rem_convert(0))
 
 
     # TODO remove this eventually?
@@ -704,6 +702,8 @@ def scan_and_fly_base(detectors,
             yield from abs_set(scanrecord.time_remaining,
                                (ynum - ystep) * ( dwell * xnum + 3.8 ) / 3600.,
                                timeout=10)
+            yield from abs_set(scanrecord.time_rem_str, time_rem_convert(
+                               (ynum - ystep) * (dwell * xnum + 3.8)), timeout=10)
             # 'arm' the all of the detectors for outputting fly data
             for d in flying_zebra.detectors:
                 yield from bps.mov(d.fly_next, True)
