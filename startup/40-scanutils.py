@@ -129,6 +129,7 @@ class SRXScanRecord(Device):
     current_type = Cpt(EpicsSignal, 'Scan:TYPE')
     time_remaining = Cpt(EpicsSignal, 'Scan:REMTIME')
     scanning = Cpt(EpicsSignal, 'Scan:ENA')
+    time_rem_str = Cpt(EpicsSignal, 'Scan:REMTIMESTR')
 
     proposal_num = Cpt(EpicsSignal, 'PROPOSAL_NUM')
     # If len(string) > 40 characters, then it needs to be a waveform on the IOC
