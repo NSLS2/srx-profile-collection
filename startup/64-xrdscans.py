@@ -207,8 +207,26 @@ def energy_rocking_curve(e_low,
         md_dets = md_dets + [nano_vlm]
     get_det_md(md, md_dets)
 
+    def at_scan(name, doc):
+        scanrecord.time_rem_str.put(time_rem_convert(
+            len(e_range) * (dwell + 4.25) # Some overhead for estimate
+        ))
+
+    def finalize_scan(name, doc):
+        scanrecord.scanning.put(False)
+        scanrecord.time_rem_str.put(time_rem_convert(0))
+
+    def time_per_point(name, doc, st=ttime.time()):
+        if (doc[0] == "event_page"):
+            if ('seq_num' in doc.keys()):
+                scan_record.time_rem_str.put(convert_time_str(
+                    ((doc['time'] - st) / doc['seq_num']) * # average time per point
+                    (len(e_range) - doc['seq_num']) # remaining number of points
+                ))
+
     # Live Callbacks
-    livecallbacks = [LiveTable(['energy_energy', 'dexela_stats2_total'])]
+    livecallbacks = [LiveTable(['energy_energy', 'dexela_stats2_total']),
+                     time_per_point]
     
     if plotme:
         livecallbacks.append(LivePlot('dexela_stats2_total', x='energy_energy'))
@@ -228,16 +246,11 @@ def energy_rocking_curve(e_low,
         yield from mod_list_scan(dets, energy, e_range, run_agnostic=True)
         if shutter: # Conditional check ot avoid banner
             yield from check_shutters(shutter, 'Close')
-    
-    # Plan with failed dark_field and default behavior
-    # def plan():
-    #     yield from check_shutter(shutter, 'Open')
-    #     yield from list_scan(dets, energy, e_range, md=md)
-    #     if shutter: # Conditional check ot avoid banner
-    #         yield from check_shutters(shutter, 'Close')
 
     # Plan must be called to return the generators
-    yield from subs_wrapper(plan(), {'all' : livecallbacks})
+    plan = finalize_wrapper(plan(), finalize_scan)
+    yield from subs_wrapper(plan, {'all' : livecallbacks,
+                                   'start' : at_scan})
 
     # Reset xs and sclr1
     for obj, key, value in original_sigs:
@@ -336,6 +349,7 @@ def continuous_energy_rocking_curve(e_low,
                                     peakup_flag=True,
                                     plotme=False,
                                     return_to_start=True):
+    raise NotImplementedError()
     
     start_energy = energy.energy.position
 
@@ -468,8 +482,26 @@ def angle_rocking_curve(th_low,
         md_dets = md_dets + [nano_vlm]
     get_det_md(md, md_dets)
 
+    def at_scan(name, doc):
+        scanrecord.time_rem_str.put(time_rem_convert(
+            len(th_range) * (dwell + 4.25) # Some overhead for estimate
+        ))
+
+    def finalize_scan(name, doc):
+        scanrecord.scanning.put(False)
+        scanrecord.time_rem_str.put(time_rem_convert(0))
+
+    def time_per_point(name, doc, st=ttime.time()):
+        if (doc[0] == "event_page"):
+            if ('seq_num' in doc.keys()):
+                scan_record.time_rem_str.put(convert_time_str(
+                    ((doc['time'] - st) / doc['seq_num']) * # average time per point
+                    (len(th_range) - doc['seq_num']) # remaining number of points
+                ))
+
     # Live Callbacks
-    livecallbacks = [LiveTable(['nano_stage_th_user_setpoint', 'dexela_stats2_total'])]
+    livecallbacks = [LiveTable(['nano_stage_th_user_setpoint', 'dexela_stats2_total']),
+                     time_per_point]
     
     if plotme:
         livecallbacks.append(LivePlot('dexela_stats2_total', x='nano_stage_th_user_setpoint'))
@@ -483,16 +515,11 @@ def angle_rocking_curve(th_low,
         yield from mod_list_scan(dets, nano_stage.th, th_range, run_agnostic=True)
         if shutter: # Conditional check ot avoid banner
             yield from check_shutters(shutter, 'Close')
-    
-    # Plan with failed dark_field and default behavior
-    # def plan():
-    #     yield from check_shutter(shutter, 'Open')
-    #     yield from list_scan(dets, nano_stage.th, th_range, md=md)
-    #     if shutter: # Conditional check ot avoid banner
-    #         yield from check_shutters(shutter, 'Close')
 
     # Plan must be called to return the generators
-    yield from subs_wrapper(plan(), {'all' : livecallbacks})
+    plan = finalize_wrapper(plan(), finalize_scan)
+    yield from subs_wrapper(plan, {'all' : livecallbacks,
+                                   'start' : at_scan})
 
     # Reset xs and sclr1
     for obj, key, value in original_sigs:
@@ -621,6 +648,13 @@ def static_xrd(num,
         md_dets = md_dets + [nano_vlm]
     get_det_md(md, md_dets)
 
+    def at_scan(name, doc):
+        scanrecord.time_rem_str.put(time_rem_convert(30))
+
+    def finalize_scan(name, doc):
+        scanrecord.scanning.put(False)
+        scanrecord.time_rem_str.put(time_rem_convert(0))
+
     # Live Callbacks
     livecallbacks = [LiveTable(['dexela_stats2_total'])]
     
@@ -637,14 +671,10 @@ def static_xrd(num,
         if shutter: # Conditional check to avoid banner
             yield from check_shutters(shutter, 'Close')
     
-    # Plan with failed dark_field and default behavior
-    # def plan():
-    #     yield from check_shutter(shutter, 'Open')
-    #     yield from count(dets, num, md=md)
-    #     if shutter: # Conditional check to avoid banner
-    #         yield from check_shutters(shutter, 'Close')
-
-    yield from subs_wrapper(plan(), {'all' : livecallbacks})
+    # Plan must be called to return the generators
+    plan = finalize_wrapper(plan(), finalize_scan)
+    yield from subs_wrapper(plan, {'all' : livecallbacks,
+                                   'start' : at_scan})
 
     # Reset xs and sclr1
     for obj, key, value in original_sigs:
