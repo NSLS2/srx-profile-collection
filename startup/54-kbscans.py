@@ -220,7 +220,7 @@ def fit_knife_edge(scanid=-1, fluor_key='xs_fluor', use_trans=False, normalize=T
     return (
         cent_position,                      # Center of feature
         C * np.mean([popt[1], popt[5]]),    # Average fwhm
-        np.mean([popt[0], popt[4]])         # Average intensity
+        np.mean([popt[0], popt[4]]) * 2     # Average intensity
     )
 
     
