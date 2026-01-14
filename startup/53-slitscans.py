@@ -882,7 +882,7 @@ def slit_nano_scan_map_cal(uid, orthogonality=False,
         dydx = np.gradient(y, x)
 
         # Check for significant features
-        if (np.sum(y) - (np.median(y) * len(y))) < 3 * np.std(y):
+        if (np.sum(y) - (np.median(y) * len(y))) < 3 * np.std(y): # Rose criterion
             print(f'Feature not significant for row {idx}.')
             fit_mask.append(False)
             cent_list.append(np.nan)
@@ -912,6 +912,7 @@ def slit_nano_scan_map_cal(uid, orthogonality=False,
     cent_list = np.asarray(cent_list)
     amp_list = np.asarray(amp_list)
     
+    # THIS IS FROM PREVIOUS CALIBRATION FITTING
     # Fit line positions
     calpoly_fit = np.polyfit(jj_list[fit_mask], cent_list[fit_mask], orthogonality + 1, full=True)
     p = np.poly1d(calpoly_fit[0])
@@ -958,21 +959,22 @@ def slit_nano_scan_map_cal(uid, orthogonality=False,
         print(f'\tQuadratic term corresponds to fine pitch move {delta_fine_pitch:7.3f} um.')
         print(f'\tQuadratic term corresponds to coarse Z {delta_focal_plane_z:7.3f} um.')
     
+    # THIS IS NEW!
     # Fit bright spot
-    # bright_cent = np.average(jj_list[fit_mask], weigths=amp_list[fit_mask])
-    p0 = [np.max(amp_list[fit_mask]),
-          100,
-          jj_list[fit_mask][np.argmax(amp_list[fit_mask])]]
-    try:
-        popt, _ = curve_fit(jj_list[fit_mask], amp_list[fit_mask], gaussian, p0=p0)
-    except:
-        print('Beam brightness profile fit failed')
-        popt = p0
-    # Relative difference to fitted center
-    bright_cent = np.mean(jj_list) - popt[2]
+    bright_cent = np.mean(jj_list) - np.average(jj_list[fit_mask], weigths=amp_list[fit_mask])
+    # p0 = [np.max(amp_list[fit_mask]),
+    #       100,
+    #       jj_list[fit_mask][np.argmax(amp_list[fit_mask])]]
+    # try:
+    #     popt, _ = curve_fit(jj_list[fit_mask], amp_list[fit_mask], gaussian, p0=p0)
+    # except:
+    #     print('Beam brightness profile fit failed')
+    #     popt = p0
+    # # Relative difference to fitted center
+    # bright_cent = np.mean(jj_list) - popt[2]
 
     # Relative difference of significant reflection to center
-    kb_trans = np.mean(jj_list[fit_mask]) - popt[2]
+    kb_trans = np.mean(jj_list) - np.mean(jj_list[fit_mask])
 
     if plot:
         if (plotme is None):
