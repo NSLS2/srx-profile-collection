@@ -259,7 +259,7 @@ def auto_align(focus=0.5, all_checks=True):
             return fwhm
         
         # Function to protect alignment moves
-        def limited_move_motor(motor,
+        def limited_motor_move(motor,
                                rel_move,
                                min_move=0, max_move=np.inf,
                                staff_support=False):
@@ -270,15 +270,27 @@ def auto_align(focus=0.5, all_checks=True):
                 err_str = (f'Motor {motor.name} requested move of {rel_move} {motor.motor_egu.get()}'
                            + f' is greater than the maximum allowed value of {max_move}.'
                            + '\nStaff support is required!')
-                raise RuntimeError(err_str)
+                print(err_str)
+                res = input("Should this motor be moved? ['y', 'n', or 'quit'] ")
             elif staff_support:
                 err_str = (f'Motor {motor.name} requested move of {rel_move} {motor.motor_egu.get()}.'
-                           + 'This move requires staff support!')
-                raise RuntimeError(err_str)
+                           + '\nThis move requires staff support!')
+                print(err_str)
+                res = input("Should this motor be moved? ['y', 'n', or 'quit'] ")
             else:
                 print(f'Moving {motor.name} by {rel_move} {motor.motor_egu.get()}.')
-                yield from mvr(motor, rel_move)
+                yield from mvr(motor, rel_move, timeout=10)
                 return True
+
+            # Check input values
+            if res.lower() == 'y':
+                print(f'Moving {motor.name} by {rel_move} {motor.motor_egu.get()}.')
+                yield from mvr(motor, rel_move, timeout=10)
+                return True
+            elif res.lower() == 'n':
+                return False
+            else:
+                raise RuntimeError(err_str)
 
         def end_iterations():
             # Re-center positioner
@@ -286,7 +298,7 @@ def auto_align(focus=0.5, all_checks=True):
             # Move overlay 
 
             # TODO: Check signs and cumulative moves
-            vlm_scale = 0.345 # um/pixel
+            vlm_scale = 0.5 # um/pixel
             yield from abs_set(overlay,
                                overlay.get() - int(np.round(vlm_scale / overlay_delta)))    
 
@@ -313,69 +325,69 @@ def auto_align(focus=0.5, all_checks=True):
         # Initial slit scan for alignment
         print(f'Initial {direction} slit scan for alignment and focusing...')
         beam_offset, kb_trans, defocus, pitch = yield from focusKB2(flag_dir)
-        jj_move = yield from limited_move_motor(jj_motor,
+        jj_move = yield from limited_motor_move(jj_motor,
                                                 beam_offset,
-                                                min_move=10, max_move=100,
+                                                min_move=0.025, max_move=0.5,
                                                 staff_support=True)
         if jj_move:
             kb_trans += beam_offset # Is this correct
-        kb_move = yield from limited_move_motor(kb_trans_motor,
+        kb_move = yield from limited_motor_move(kb_trans_motor,
                                                 kb_trans,
-                                                min_move=10, max_move=100,
+                                                min_move=0.025, max_move=0.5,
                                                 staff_support=True)
         # Move sample position only for vertical
         if flag_dir == 'VER':
-            z_move = yield from limited_move_motor(nano_stage.z,
-                                                    defocus,
-                                                    min_move=10, max_move=1000)
+            z_move = yield from limited_motor_move(nano_stage.z,
+                                                   defocus,
+                                                   min_move=100, max_move=1000)
             if z_move:
-                yield from limited_move_motor(nano_vlm_stage.z,
-                                                defocus / 1000)
+                yield from limited_motor_move(nano_vlm_stage.z,
+                                              defocus / 1000)
+                
+        # Re-run slit scan for any moves
+        if any([jj_move, kb_move, z_move]):        
+            # Fine scan to measure results
+            fwhm = yield from measure_and_center()
+            if fwhm < focus_target:
+                print(f'{direction.capitalize()} focus is less than desired {focus[0]} um!')
+                yield from end_iterations()
+                continue
+            else:
+                print(f'{direction.capitalize()} focus is larger than desired focus.')
         
-        # Fine scan to measure results
-        fwhm = yield from measure_and_center()
-        if fwhm < focus_target:
-            print(f'{direction.capitalize()} focus is less than desired {focus[0]} um!')
-            yield from end_iterations()
-            continue
-        else:
-            print(f'{direction.capitalize()} focus is larger than desired focus.')
-            
-        # Re-run slit scan for any drastic moves
-        if any([jj_move, kb_move, z_move]):
             beam_offset, kb_trans, defocus, pitch = yield from focusKB2(flag_dir)
         
         # Unpack pitch values
-        pitch, pitch_fine, pitch_defocus = pitch
+        pitch_angle, pitch_fine, pitch_defocus = pitch
         
         # Iterative focusing
         prev_fwhm = fwhm
         for iter in range(max_iter):
             # Linear correction
             if defocus > 100 and flag_dir == 'VER':
-                z_move = yield from limited_move_motor(nano_stage.z,
+                z_move = yield from limited_motor_move(nano_stage.z,
                                                        defocus,
-                                                       min_move=10, max_move=1000)
+                                                       min_move=100, max_move=1000)
                 if z_move:
-                    yield from limited_move_motor(nano_vlm_stage.z,
+                    yield from limited_motor_move(nano_vlm_stage.z,
                                                   defocus / 1000)
             # Quadratic correction
             else:
-                if pitch_fine < 5:
-                    pitch_move = yield from limited_move_motor(kb_fine,
+                if pitch_fine < 2:
+                    pitch_move = yield from limited_motor_move(kb_fine,
                                                                pitch_fine,
-                                                               min_move=0, max_move=5)
+                                                               min_move=0.05, max_move=2)
                 else:
-                    pitch_move = yield from limited_move_motor(kb_pitch,
-                                                               pitch,
-                                                               min_move=0, max_move=10)
+                    pitch_move = yield from limited_motor_move(kb_pitch,
+                                                               pitch_angle,
+                                                               min_move=0.005, max_move=0.05)
                 # Move to new focal plane for vertical
                 if pitch_move and flag_dir == 'VER':
-                    z_move = yield from limited_move_motor(nano_stage.z,
+                    z_move = yield from limited_motor_move(nano_stage.z,
                                                            pitch_defocus,
-                                                           min_move=10, max_move=1000)
+                                                           min_move=100, max_move=1000)
                     if z_move:
-                        yield from limited_move_motor(nano_vlm_stage.z,
+                        yield from limited_motor_move(nano_vlm_stage.z,
                                                       pitch_defocus / 1000)
             
             # Check if anything was adjusted and re-measure
@@ -393,12 +405,12 @@ def auto_align(focus=0.5, all_checks=True):
                 print(f'{direction.capitalize()} focus is less than desired {focus[0]} um!')
                 yield from end_iterations()
                 continue
-            elif fwhm > prev_fwhm * 1.2:
+            elif fwhm > prev_fwhm * 1.5:
                 err_str = (f'{direction.capitalize()} focus has increased from {prev_fwhm} to {fwhm} nm!'
-                        'Some component focused in the wrong direction and staff support is requied!')
+                           'Some component focused in the wrong direction and staff support is requied!')
                 raise RuntimeError(err_str)
             elif iter > max_iter:
-                note_str = (f'Maximum number of iterations has been reach for {direction} focusing.'
+                note_str = (f'Maximum number of iterations has been reached for {direction} focusing.'
                             + f'Final {direction} focus is {fwhm:.4f} um.')
                 print(note_str)
                 yield from end_iterations()
@@ -406,4 +418,19 @@ def auto_align(focus=0.5, all_checks=True):
             else:
                 print(f'{direction.capitalize()} focus is larger than desired focus. Continuing iterative focusing!')
                 beam_offset, kb_trans, defocus, pitch = yield from focusKB2(flag_dir)
-                pitch, pitch_fine, pitch_defocus = pitch
+                pitch_angle, pitch_fine, pitch_defocus = pitch
+
+    # Final measurements
+    print(f'Fine vertical focus measurement...')
+    pos0 = positioner.user_setpoint.get()
+    yield from mov(coarse_motors[0], pos0 + 50)
+    _, fwhm, _ = yield from knife_edge(fine_motors[1], -10, 10, 0.1, 0.05)
+    print(f'Final vertical focus is {fwhm:.4f} um.')
+    yield from mov(coarse_motors[0], pos0)
+
+    print(f'Fine horizontal focus measurement...')
+    pos0 = positioner.user_setpoint.get()
+    yield from mov(coarse_motors[1], pos0 + 50)
+    _, fwhm, _ = yield from knife_edge(fine_motors[0], -10, 10, 0.1, 0.05)
+    print(f'Final horizontal focus is {fwhm:.4f} um.')
+    yield from mov(coarse_motors[1], pos0)
