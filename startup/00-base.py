@@ -91,12 +91,20 @@ else:
 # EpicsSignalBase.set_default_timeout(timeout=timeout, connection_timeout=timeout)  # old style
 EpicsSignalBase.set_defaults(timeout=timeout, connection_timeout=timeout)  # new style
 
+with open("/etc/bluesky/redis.secret", "r") as f:
+    redis_secret = f.read().strip()
+    os.environ["REDIS_PASSWORD"] = redis_secret
+
+
 
 ip = get_ipython()
 nslsii.configure_base(
     ip.user_ns,
     "srx",
     publish_documents_with_kafka=True,
+    redis_url="xf05id2-srx-redis1.nsls2.bnl.gov",
+    redis_port=6380,
+    redis_ssl=True,
 )
 
 # This is a workaround until the flyer can be rewritten
@@ -204,7 +212,7 @@ bec.disable_table()
 # Disable BestEffortCallback to plot ring current
 bec.disable_plots()
 
-RE.md = RedisJSONDict(redis.Redis("info.srx.nsls2.bnl.gov"), prefix="")
+# RE.md = RedisJSONDict(redis.Redis("info.srx.nsls2.bnl.gov"), prefix="")
 
 # Optional: set any metadata that rarely changes.
 # RE.md["beamline_id"] = "SRX"
