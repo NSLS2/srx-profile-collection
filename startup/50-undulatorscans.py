@@ -122,7 +122,7 @@ def max_Ugap(set_offset=True, shutter=True):
 
     yield from check_shutters(shutter, 'Open')
 
-    if "xbpm2_sumX" in xbpm2.read_attrs:
+    if "sumX" in xbpm2.read_attrs:
         key = "xbpm2_sumX"
     elif "total_current" in xbpm2.read_attrs:
         key = "xbpm2_total_current"
