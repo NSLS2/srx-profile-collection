@@ -155,7 +155,7 @@ def JJ_scan(motor, start, stop, num, shutter=True):
     # Setup LiveCallbacks
     liveplotfig1 = plt.figure()
     liveplotx = motor.name
-    liveploty = im.name
+    liveploty = i0.name
     livetableitem = [motor.name, im.name, i0.name]
     livecallbacks = [LiveTable(livetableitem),
                      LivePlot(liveploty, x=liveplotx, fig=liveplotfig1)]

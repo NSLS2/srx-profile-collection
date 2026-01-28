@@ -189,14 +189,14 @@ def auto_align(focus=0.5, all_checks=True):
             raise e
 
     # Check for sample!
-    x0, y0 = nano_stage.topx.user_readback.get(), nano_stage.y.user_readback.get()
+    x0, y0 = nano_stage.x.user_readback.get(), nano_stage.y.user_readback.get()
     over_x = nano_vlm.over.overlay_1.position_x.get()
     over_y = nano_vlm.over.overlay_1.position_y.get()
     over_dx, over_dy = 0, 0
     
     # Initial vertical focus checks
     print('Checking for vertical knife-edge position and focus...')
-    yield from mov(nano_stage.topx, x0 - 50)
+    yield from mov(nano_stage.x, x0 - 50)
     try:
         # Find the feature
         print('Searching for vertical knife edge...')
@@ -233,7 +233,7 @@ def auto_align(focus=0.5, all_checks=True):
 
     # Initial horizontal focus checks
     print('Checking for horizontal knife-edge position and focus...')
-    yield from mov(nano_stage.topx, x0,
+    yield from mov(nano_stage.x, x0,
                    nano_stage.y, y0 + 50)
     try:
         # Find the feature
@@ -245,7 +245,7 @@ def auto_align(focus=0.5, all_checks=True):
         yield from bps.sleep(1)
         yield from center_scanner()
         yield from bps.sleep(1)
-        x0 = nano_stage.topx.user_readback.get() # Not currently used
+        x0 = nano_stage.x.user_readback.get() # Not currently used
 
         # Measure the fwhm
         print('Measuring horizontal focus...')

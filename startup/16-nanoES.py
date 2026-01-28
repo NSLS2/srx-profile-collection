@@ -48,14 +48,14 @@ nanoKB = SRXNanoKB('XF:05IDD-ES:1{nKB:', name='nanoKB')
 
 # High flux sample stages
 class SRXNanoStage(Device):
-    # x = Cpt(EpicsMotor, 'sx}Mtr')  # XF:05IDD-ES:1{nKB:Smpl-Ax:sx}Mtr.RBV
+    x = Cpt(EpicsMotor, 'sx}Mtr')  # XF:05IDD-ES:1{nKB:Smpl-Ax:sx}Mtr.RBV
     y = Cpt(EpicsMotor, 'sy}Mtr')  # XF:05IDD-ES:1{nKB:Smpl-Ax:sy}Mtr.RBV
     z = Cpt(EpicsMotor, 'sz}Mtr')  # XF:05IDD-ES:1{nKB:Smpl-Ax:sz}Mtr.RBV
     sx = Cpt(EpicsMotor, 'ssx}Mtr')  # XF:05IDD-ES:1{nKB:Smpl-Ax:ssx}Mtr.RBV
     sy = Cpt(EpicsMotor, 'ssy}Mtr')  # XF:05IDD-ES:1{nKB:Smpl-Ax:ssy}Mtr.RBV
     sz = Cpt(EpicsMotor, 'ssz}Mtr')  # XF:05IDD-ES:1{nKB:Smpl-Ax:ssz}Mtr.RBV
     th = Cpt(EpicsMotor, 'th}Mtr')  # XF:05IDD-ES:1{nKB:Smpl-Ax:th}Mtr.RBV
-    topx = Cpt(EpicsMotor, 'xth}Mtr')  # XF:05IDD-ES:1{nKB:Smpl-Ax:xth}Mtr.RBV
+    # topx = Cpt(EpicsMotor, 'xth}Mtr')  # XF:05IDD-ES:1{nKB:Smpl-Ax:xth}Mtr.RBV
     # topz = Cpt(EpicsMotor, 'zth}Mtr')  # XF:05IDD-ES:1{nKB:Smpl-Ax:zth}Mtr.RBV
 
 
@@ -140,7 +140,7 @@ def reset_scanner_velocity():
     """
     Reset the scanner stages to their nominal speeds
     """
-    for d in [nano_stage.topx, nano_stage.y, nano_stage.z]:
+    for d in [nano_stage.x, nano_stage.y, nano_stage.z]:
         d.velocity.set(500)  # um/s
     for d in [nano_stage.sx, nano_stage.sy, nano_stage.sz]:
         d.velocity.set(100)  # um/s
@@ -157,7 +157,7 @@ def center_scanner():
     del_sz = nano_stage.sz.user_readback.get()
 
     yield from mv(nano_stage.sx, 0)
-    yield from mvr(nano_stage.topx, del_sx)
+    yield from mvr(nano_stage.x, del_sx)
 
     yield from mv(nano_stage.sy, 0)
     yield from mvr(nano_stage.y, del_sy)
@@ -187,7 +187,7 @@ def mv_along_axis(z_end):
     delta_y = ratio_yz * delta_z
     print(f'Move y by {delta_y}')
 
-    yield from mvr(nano_stage.topx, delta_x)
+    yield from mvr(nano_stage.x, delta_x)
     yield from mvr(nano_stage.y, delta_y)
     yield from mv(nano_stage.z, z_end)
 
