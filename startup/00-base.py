@@ -91,12 +91,6 @@ else:
 # EpicsSignalBase.set_default_timeout(timeout=timeout, connection_timeout=timeout)  # old style
 EpicsSignalBase.set_defaults(timeout=timeout, connection_timeout=timeout)  # new style
 
-with open("/etc/bluesky/redis.secret", "r") as f:
-    redis_secret = f.read().strip()
-    os.environ["REDIS_PASSWORD"] = redis_secret
-
-
-
 ip = get_ipython()
 nslsii.configure_base(
     ip.user_ns,
