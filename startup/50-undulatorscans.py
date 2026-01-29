@@ -59,7 +59,7 @@ def undulator_calibration(
     bragg_scanpoint = (np.floor((2 * bragg_scanwidth) / (energy_res)) + 1).astype('int')
 
     energy.harmonic.put(harmonic)
-    energy._low = 4.2
+    energy._low = 4.1
 
     # Generate lookup table by scanning Bragg at each undulator gap set point
     for u_gap_setpoint in np.arange(u_gap_start,
@@ -76,6 +76,19 @@ def undulator_calibration(
         # energy.move_c2_x.put(False)
         yield from mov(energy.move_u_gap, True)
         yield from mov(energy, energy_setpoint)
+        # Check that the gap actually moved
+        _, _, desired_gap = energy.energy_to_positions(energy_setpoint, harmonic, 0)
+        MAX_TRIES = 3
+        for i in range(MAX_TRIES):
+            if np.abs(desired_gap - energy.u_gap.read()["energy_u_gap"]["value"]) > 10:
+                yield from mov(energy, energy_setpoint)
+                yield from bps.sleep(1)
+            else:
+                break
+        else:
+            print()
+            banner("Warning! Undulator gap did not move to desired position!")
+
         yield from mov(energy.move_u_gap, False)
 
         yield from peakup(target_fields=['bpm4_total_current'])
@@ -115,6 +128,7 @@ def undulator_calibration(
     # Return moving u_gap
     yield from mov(energy.move_u_gap, True)
     energy._low = 4.4
+
 
 def max_Ugap(set_offset=True, shutter=True):
     # Assuming current gap is the calculated gap
