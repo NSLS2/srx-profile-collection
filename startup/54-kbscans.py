@@ -22,7 +22,7 @@ def nano_knife_edge(motor, start, stop, stepsize, acqtime,
     num = np.round((stop - start) / stepsize) + 1
 
     # Set the roi
-    setroi(1, roi)
+    # setroi(1, roi)
 
     # Run the scan
     if (motor.name == 'nano_stage_sx'):
@@ -214,8 +214,6 @@ def fit_knife_edge(scanid=-1, fluor_key='xs_fluor', use_trans=False, normalize=T
         else:
             ax.set_ylabel('ROI Counts')
         ax.legend()
-
-    # return cent_position, C * np.mean([popt[1], popt[5]])
 
     return (
         cent_position,                      # Center of feature
