@@ -14,7 +14,7 @@ def ssa_hcen_scan(start, stop, num,
         ax.cla()
         return fig, ax
 
-    if "xbpm2_sumX" in xbpm2.read_attrs:
+    if "sumX" in xbpm2.read_attrs:
         key = "xbpm2_sumX"
     elif "total_current" in xbpm2.read_attrs:
         key = "xbpm2_total_current"
@@ -67,7 +67,7 @@ def ssa_hcen_scan_fit_data(scanuid,
     id_str = c[uid].start['scan_id']
     tbl = c[uid]["primary"]["data"]
 
-    if "xbpm2_sumX" in xbpm2.read_attrs:
+    if "sumX" in xbpm2.read_attrs:
         key = "xbpm2_sumX"
     elif "total_current" in xbpm2.read_attrs:
         key = "xbpm2_total_current"
@@ -124,7 +124,7 @@ def measure_SSA_FWHM():
     # TODO: Make the plots correctly
     # Currently, it will make the plot, but non-interactive
     # Also, try to fit intersection of 0.5 and normalized data, dd
-    if "xbpm2_sumX" in xbpm2.read_attrs:
+    if "sumX" in xbpm2.read_attrs:
         key = "xbpm2_sumX"
     elif "total_current" in xbpm2.read_attrs:
         key = "xbpm2_total_current"
@@ -155,7 +155,7 @@ def JJ_scan(motor, start, stop, num, shutter=True):
     # Setup LiveCallbacks
     liveplotfig1 = plt.figure()
     liveplotx = motor.name
-    liveploty = im.name
+    liveploty = i0.name
     livetableitem = [motor.name, im.name, i0.name]
     livecallbacks = [LiveTable(livetableitem),
                      LivePlot(liveploty, x=liveplotx, fig=liveplotfig1)]

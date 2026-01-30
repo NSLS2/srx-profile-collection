@@ -301,3 +301,56 @@ def time_rem_convert(time_in_sec):
     #     time_str = '0 sec'
 
     return time_str
+
+
+def preserve_positions(*positioners):
+    """
+    Decorator for returning positioners to their values before
+    a Bluesky run.
+    
+    Positioners with user_setpoints or all components will be 
+    recorded prior to the decorated plan and returned to theise
+    values at the end of the plan, or if there is an interruption
+    or exception.
+
+    Parameters
+    ----------
+    positioners : Ophyd positioners
+        Arguments are given as ophyd positioners with user_setpoint
+        attributes or with components that have user_setpoint attributes.
+    """
+
+    positioners = list(positioners)
+    tracked = []
+    orig_pos = []
+    for pos in positioners:
+        if 'user_setpoint' in pos.component_names:
+            if pos not in tracked:
+                tracked.append(pos)
+                orig_pos.append(pos.user_setpoint.get())
+            else:
+                warn_str = f'WARNING: {pos.name} positions should not be given more than once!'
+                print(warn_str)
+        elif len(pos.component_names) > 0:
+            positioners.extend([getattr(pos, cpt) for cpt in pos.component_names])
+        else:
+            warn_str = f'WARNING: {pos.name} does not have any settable positions!'
+            print(warn_str)
+    
+    tracked_pos = [v for p in zip(tracked, orig_pos) for v in p]
+
+    def inner_decorator(func):
+        @functools.wraps(func)
+        def wrapped(*args, **kwargs):
+
+            # Run function
+            try:
+                output = yield from func(*args, **kwargs)
+            except (Exception, KeyboardInterrupt) as e:
+                yield from bps.mv(*tracked_pos, timeout=20)
+                print(e)
+                raise e
+
+            return output
+        return wrapped
+    return inner_decorator

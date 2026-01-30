@@ -21,11 +21,11 @@ def calc_com(run_start_uid, roi=None):
     print('Centering sample using center of mass...')
 
     # Get the header
-    h = db[run_start_uid]
-    scan_doc = h.start['scan']
+    h = c[run_start_uid]
+    scan_doc = h.start["scan"]
     
     # Get scan parameters
-    [x0, x1, nx, y0, y1, ny, dt] = scan_doc['scan_input']
+    [x0, x1, nx, y0, y1, ny, dt] = scan_doc["scan_input"]
 
     # Get the data
     flag_get_data = True
@@ -33,10 +33,12 @@ def calc_com(run_start_uid, roi=None):
     TMAX = 120  # wait a maximum of 60 seconds
     while flag_get_data:
         try:
-            d = list(h.data('fluor', stream_name='stream0', fill=True))
-            d = np.array(d)
-            d_I0 = list(h.data('i0', stream_name='stream0', fill=True))
-            d_I0 = np.array(d_I0)
+            # d = list(h.data('fluor', stream_name='stream0', fill=True))
+            # d = np.array(d)
+            d = h["stream0"]["data"]["xs_fluor"].read()
+            # d_I0 = list(h.data('i0', stream_name='stream0', fill=True))
+            # d_I0 = np.array(d_I0)
+            d_I0 = h["stream0"]["data"]["i0"].read()
             flag_get_data = False
         except:
             # yield from bps.sleep(1)
@@ -48,8 +50,8 @@ def calc_com(run_start_uid, roi=None):
     # this would eventually clear, however on this system the maximum
     # number of open files is 1024 so we fail from resource exaustion before
     # we evict anything.
-    db._catalog._entries.cache_clear()
-    gc.collect()
+    # db._catalog._entries.cache_clear()
+    # gc.collect()
 
     # Setup ROI
     if (roi is None):
@@ -94,11 +96,12 @@ def calc_com(run_start_uid, roi=None):
         new_center = old_center
     else:
         new_center = com_x 
+    new_center = np.round(new_center, 3)
     x0 = new_center - 0.5 * extentX
     x1 = new_center + 0.5 * extentX
-    print(f'Old center: {old_center:.4f}')
-    print(f'New center: {new_center:.4f}')
-    print(f'  Difference: {dx:.4f}')
+    print(f'Old center: {old_center:.3f}')
+    print(f'New center: {new_center:.3f}')
+    print(f'  Difference: {dx:.3f}')
 
     THRESHOLD = 0.50 * extentY
     if np.isfinite(com_y) is False:
@@ -109,11 +112,12 @@ def calc_com(run_start_uid, roi=None):
         new_center_y = old_center_y
     else:
         new_center_y = com_y 
+    new_center_y = np.round(new_center_y, 3)
     y0 = new_center_y - 0.5 * extentY
     y1 = new_center_y + 0.5 * extentY
-    print(f'Old center: {old_center_y:.4f}')
-    print(f'New center: {new_center_y:.4f}')
-    print(f'  Difference: {dy:.4f}')
+    print(f'Old center: {old_center_y:.3f}')
+    print(f'New center: {new_center_y:.3f}')
+    print(f'  Difference: {dy:.3f}')
 
     return x0, x1, y0, y1
 
@@ -209,3 +213,64 @@ def nano_Etomo(x0, x1, nx, y0, y1, ny, ct, th=None, energy_list=None,
         # Close figures
         if close_figs:
             plt.close('all')
+
+# Define a function to call from the RunEngine
+def scan_coarsez(x0, x1, nx, y0, y1, ny, ct, z_list, 
+              centering_method='none',
+              roi=None,
+              fly_in_Y=False,
+              extra_dets=[],
+              shutter=True):
+    # x0 = x starting point
+    # x1 = x finish point
+    # nx = number of points in x
+    # y0 = y starting point
+    # y1 = y finish point
+    # ny = number of points in y
+    # th = angles to scan at in degrees
+    # th_offset = offset value to relate to rotation stage
+    # th_ind_start = index of the angle to start at (zero-based)
+    # centering_method = method used to account for sample motion and center
+    #                    the sample
+    #                    'none' = no correction
+    #                    'com'  = center of mass
+    # roi = [bin_low, bin_high] or None
+    #       if [bin_low, bin_high], this will look at this ROI
+    #       if None, this will grab the ROI bins from channel1 ROI 1
+
+    # Define callback for center of mass correction
+    def cb_calc_com(name, doc):
+        nonlocal x0, x1, y0, y1
+        run_start_uid = doc['run_start']
+        x0, x1, y0, y1 = calc_com(run_start_uid, roi=roi)
+
+    # Open the shutter
+    yield from check_shutters(shutter, 'Open')
+
+    # Run the scan
+    for z in z_list:
+        banner(f'Scanning at: {z:.3f} um')
+
+        if z < -2500:
+            raise ValueError('Coarse z limit reached as safety!')
+
+        # Rotate the sample
+        yield from mv(nano_stage.z, z)
+        yield from bps.sleep(1)  # Give 1 second sleep to allow sample to settle
+        
+        # Run the scan/projection
+        if fly_in_Y is False:
+            myscan = nano_scan_and_fly(x0, x1, nx, y0, y1, ny, ct, extra_dets=extra_dets, shutter=False, vlm_snapshot=False)
+        else:
+            myscan = nano_y_scan_and_fly(x0, x1, nx, y0, y1, ny, ct, extra_dets=extra_dets, shutter=False, vlm_snapshot=False)
+
+        if (centering_method == 'com'):
+            myscan = subs_wrapper(myscan, {'stop' : cb_calc_com})
+        yield from myscan
+
+    # Close the shutter
+    yield from check_shutters(shutter, 'Close')
+
+    # Return to zero angle
+    yield from mov(nano_stage.th, 0)
+

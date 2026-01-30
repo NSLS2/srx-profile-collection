@@ -31,43 +31,6 @@ class SRXAttenuators(Device):
 attenuators = SRXAttenuators('XF:05IDD-ES{IO:4}DO:', name='attenuators')
 
 
-# High flux sample stages
-class HFSampleStage(Device):
-    x = Cpt(EpicsMotor, '{Stg:Smpl2-Ax:X}Mtr')
-    y = Cpt(EpicsMotor, '{Stg:Smpl2-Ax:Y}Mtr')
-    z = Cpt(EpicsMotor, '{Stg:Smpl1-Ax:Z}Mtr')
-    th = Cpt(EpicsMotor, '{Smpl:1-Ax:Rot}Mtr')
-    topx = Cpt(EpicsMotor, '{Smpl:1-Ax:XF}Mtr')
-    topz = Cpt(EpicsMotor, '{Smpl:1-Ax:ZF}Mtr')
-
-    RETRY_DEADBAND_X = Cpt(EpicsSignal,
-                           'XF:05IDD-ES:1{Stg:Smpl2-Ax:X}Mtr.RDBD',
-                           add_prefix=())
-    RETRY_DEADBAND_Y = Cpt(EpicsSignal,
-                           'XF:05IDD-ES:1{Stg:Smpl2-Ax:Y}Mtr.RDBD',
-                           add_prefix=())
-    _RETRY_DEADBAND_DEFAULT = 0.0001
-
-    BACKLASH_SPEED_X = Cpt(EpicsSignal,
-                           'XF:05IDD-ES:1{Stg:Smpl2-Ax:X}Mtr.BVEL',
-                           add_prefix=())
-    BACKLASH_SPEED_Y = Cpt(EpicsSignal,
-                           'XF:05IDD-ES:1{Stg:Smpl2-Ax:Y}Mtr.BVEL',
-                           add_prefix=())
-    _BACKLASH_SPEED_DEFAULT = 0.1
-
-    def reset_stage_defaults(self):
-        yield from mv(self.RETRY_DEADBAND_X, self._RETRY_DEADBAND_DEFAULT,
-                      self.RETRY_DEADBAND_Y, self._RETRY_DEADBAND_DEFAULT,
-                      self.BACKLASH_SPEED_X, self._BACKLASH_SPEED_DEFAULT,
-                      self.BACKLASH_SPEED_Y, self._BACKLASH_SPEED_DEFAULT)
-
-
-hf_stage = HFSampleStage('XF:05IDD-ES:1', name='hf_stage')
-if 'velocity' not in hf_stage.x.configuration_attrs:
-    hf_stage.x.configuration_attrs.append('velocity')
-
-
 # PCOEdge detector motion
 class SRXDownStreamGantry(Device):
     x = Cpt(EpicsMotor, 'X}Mtr')

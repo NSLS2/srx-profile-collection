@@ -846,7 +846,7 @@ def nano_z_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
 
 
 def coarse_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
-    kwargs.setdefault('xmotor', nano_stage.topx)
+    kwargs.setdefault('xmotor', nano_stage.x)
     kwargs.setdefault('ymotor', nano_stage.y)
     kwargs.setdefault('vlm_snapshot', True)
     kwargs.setdefault('flying_zebra', nano_flying_zebra_coarse)
@@ -874,7 +874,7 @@ def coarse_y_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
     '''
 
     kwargs.setdefault('xmotor', nano_stage.y)
-    kwargs.setdefault('ymotor', nano_stage.topx)
+    kwargs.setdefault('ymotor', nano_stage.x)
     kwargs.setdefault('vlm_snapshot', True)
     kwargs.setdefault('flying_zebra', nano_flying_zebra_coarse)
     yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOVER')
@@ -980,13 +980,13 @@ def xrf_map(xstart, xstop, xnum,
             fly_start, fly_stop, fly_num = ystart, ystop, ynum
             step_start, step_stop, step_num = xstart, xstop, xnum
             kwargs['xmotor'] = nano_stage.y
-            kwargs['ymotor'] = nano_stage.topx
+            kwargs['ymotor'] = nano_stage.x
             yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOVER')
             yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOHOR')
         else:
             fly_start, fly_stop, fly_num = xstart, xstop, xnum
             step_start, step_stop, step_num = ystart, ystop, ynum
-            kwargs['xmotor'] = nano_stage.topx
+            kwargs['xmotor'] = nano_stage.x
             kwargs['ymotor'] = nano_stage.y
             yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR')
             yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOVER')

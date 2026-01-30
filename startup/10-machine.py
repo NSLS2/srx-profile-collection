@@ -376,16 +376,16 @@ class Energy(PseudoPositioner):
         self.move(self.energy.get()[0])
 
 
-cal_data_2025cycle3 = {
-    "d_111": 3.1286911960950756,
-    "delta_bragg": 0.22737194251017273,
+cal_data_2026cycle1 = {
+    "d_111": 3.1287376855419042,
+    "delta_bragg": 0.2344128292644697,
     "C2Xcal": 3.6,
     "T2cal": 15.0347755916,
     "xoffset": 24.65,
 }
 
 # print('Connecting to energy PVs...')
-energy = Energy(prefix="", name="energy", **cal_data_2025cycle3)
+energy = Energy(prefix="", name="energy", **cal_data_2026cycle1)
 try:
     energy.wait_for_connection()
 except TimeoutError as e:
