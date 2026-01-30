@@ -601,19 +601,21 @@ def switch_foils(foil_name='auto'):
         # Close a-shutter
         a_open = shut_a.status.get() == 'Open'
         if a_open: 
-            yield from abs_set(shut_a.request_open, 0, timeout=3)
+            yield from abs_set(shut_a, 'Close', wait=True)
+            yield from bps.sleep(3)
         
         # Change foils
         if foil_name == 'Ti':
             # Move foil to Ti
-            yield from mov(bpm4_pos.y, 25, wait=True)
+            yield from mov(bpm4_pos.y, 25, timeout=600)
         elif foil_name == 'Cu':
             # Move foil to Cu
-            yield from mov(bpm4_pos.y, 0, wait=True)
+            yield from mov(bpm4_pos.y, 0, timeout=600)
         
         # Open a-shutter
         if a_open:            
-            yield from abs_set(shut_a.request_open, 1, timeout=3)
+            yield from abs_set(shut_a, 'Open', wait=True)
+            yield from bps.sleep(3)
 
     else:
         if auto:
