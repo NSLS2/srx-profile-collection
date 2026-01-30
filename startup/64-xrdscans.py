@@ -166,7 +166,7 @@ def energy_rocking_curve(e_low,
                          plotme=False,
                          return_to_start=True):
 
-    start_energy = energy.energy.position
+    start_energy = energy.energy.readback.get()
 
     # Convert to keV
     if e_low > 1000:
@@ -267,7 +267,7 @@ def relative_energy_rocking_curve(e_range,
                                   peakup_flag=False, # rewrite default
                                   **kwargs):
     
-    en_current = energy.energy.position
+    en_current = energy.energy.readback.get()
 
     # Convert to keV. Not as straightforward as endpoint inputs
     if en_range > 5:
@@ -276,7 +276,7 @@ def relative_energy_rocking_curve(e_range,
         print(warn_str)
         en_range /= 1000
     
-    # Ensure energy.energy.positiion is reading correctly
+    # Ensure energy.energy.readback.get() is reading correctly
     if en_current > 1000:
         en_current /= 1000
 
@@ -351,7 +351,7 @@ def continuous_energy_rocking_curve(e_low,
                                     return_to_start=True):
     raise NotImplementedError()
     
-    start_energy = energy.energy.position
+    start_energy = energy.energy.readback.get()
 
     # Convert to kev
     if e_low > 1000:
