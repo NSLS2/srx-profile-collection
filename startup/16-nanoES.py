@@ -170,13 +170,14 @@ def mv_along_axis(z_end):
     """
     Move the sample along the focused beam axis
     """
-    cur_x = nano_stage.topx.user_readback.get()
+    cur_x = nano_stage.x.user_readback.get()
     cur_y = nano_stage.y.user_readback.get()
     cur_z = nano_stage.z.user_readback.get()
     print(f'Current locations are: {cur_x}, {cur_y}, {cur_z}')
 
-    ratio_xz = 0.004875
-    ratio_yz = 0.0067874
+    # Measured 20260130 by EJM
+    ratio_xz = 0.006285
+    ratio_yz = 0.006254
 
     delta_z = z_end - cur_z
     print(f'Move z to {z_end}')
