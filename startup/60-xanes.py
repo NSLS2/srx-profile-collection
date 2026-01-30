@@ -31,7 +31,7 @@ from ophyd.sim import NullStatus
         "det_xs": {"default": "'xs'"},
     }
 })
-def xanes_plan(erange=[], estep=[], acqtime=1.,
+def xanes_plan(erange=[], estep=[], dwell=1.,
                md=None,
                det_xs=xs,
                harmonic=1,
@@ -46,7 +46,7 @@ def xanes_plan(erange=[], estep=[], acqtime=1.,
     '''
     erange (list of floats): energy ranges for XANES in eV, e.g. erange = [7112-50, 7112-20, 7112+50, 7112+120]
     estep  (list of floats): energy step size for each energy range in eV, e.g. estep = [2, 1, 5]
-    acqtime (float): acqusition time to be set for both xspress3 and preamplifier
+    dwell (float): acqusition time to be set for both xspress3 and preamplifier
     samplename (string): sample name to be saved in the scan metadata
 
     det_xs (xs3 detector): the xs3 detector used for the measurement
@@ -102,7 +102,7 @@ def xanes_plan(erange=[], estep=[], acqtime=1.,
     det = [ring_current, sclr1, det_xs]
     # Setup xspress3
     yield from abs_set(det_xs.external_trig, False)
-    yield from abs_set(get_me_the_cam(det_xs).acquire_time, acqtime)
+    yield from abs_set(get_me_the_cam(det_xs).acquire_time, dwell)
     yield from abs_set(det_xs.total_points, len(ept))
 
     # Record relevant meta data in the Start document, defined in 90-usersetup.py
@@ -110,7 +110,7 @@ def xanes_plan(erange=[], estep=[], acqtime=1.,
     md = get_stock_md(md)
     md['scan']['type'] = 'XAS_STEP'
     md['scan']['ROI'] = roinum
-    md['scan']['dwell'] = acqtime
+    md['scan']['dwell'] = dwell
     md['scan']['scan_input'] = str(np.around(erange, 2)) + ', ' + str(np.around(estep, 2))
     md_dets = list(det)
     if vlm_snapshot:
@@ -125,7 +125,7 @@ def xanes_plan(erange=[], estep=[], acqtime=1.,
     # This will get the desired result but is there a time when
     # using stage_sigs is correct/better
     sclr1.stage_sigs.pop('preset_time', None)
-    yield from abs_set(sclr1.preset_time, acqtime)
+    yield from abs_set(sclr1.preset_time, dwell)
 
     # Setup DCM/energy options
     if (harmonic != 1):
@@ -255,7 +255,7 @@ def xanes_plan(erange=[], estep=[], acqtime=1.,
 xas_step = xanes_plan
 
 
-def xanes_batch_plan(xypos=[], erange=[], estep=[], acqtime=1.0,
+def xanes_batch_plan(xypos=[], erange=[], estep=[], dwell=1.0,
                      repeat_point=1, waittime=10, peakup_N=2, peakup_E=None):
     """
     Setup a batch XANES scan at multiple points.
@@ -269,7 +269,7 @@ def xanes_batch_plan(xypos=[], erange=[], estep=[], acqtime=1.0,
                         similar to a typical xanes_plan
     estep       <list>  A list of energy steps to send to the XANES plan
                         similar to a typical xanes_plan
-    acqtime     <float> Acquisition time for each data point.
+    dwell     <float> Acquisition time for each data point.
     repeat_point<int>   Repeat a particular point N times
     peakup_N    <int>   Run a peakup every peakup_N scans. Default is no peakup
     peakup_E    <float> The energy to run peakup at. Default is current energy
@@ -317,7 +317,7 @@ def xanes_batch_plan(xypos=[], erange=[], estep=[], acqtime=1.0,
         # Run the energy scan
         for j in range(repeat_point):
             print(f"Scan {i+1}/{repeat_point}...")
-            yield from xanes_plan(erange=erange, estep=estep, acqtime=acqtime)
+            yield from xanes_plan(erange=erange, estep=estep, dwell=dwell)
 
         # Wait
         if (i != (N-1)):
@@ -325,7 +325,7 @@ def xanes_batch_plan(xypos=[], erange=[], estep=[], acqtime=1.0,
             yield from bps.sleep(waittime)
 
 
-def hfxanes_ioc(erange=[], estep=[], acqtime=1.0, samplename='', filename='',
+def hfxanes_ioc(erange=[], estep=[], dwell=1.0, samplename='', filename='',
                 harmonic=1, detune=0, align=False, align_at=None,
                 roinum=1, shutter=True, per_step=None, waittime=0):
     '''
@@ -358,9 +358,9 @@ def hfxanes_ioc(erange=[], estep=[], acqtime=1.0, samplename='', filename='',
             # Move stages to the next point
             yield from mv(hf_stage.x, xstart,
                           hf_stage.y, ystart)
-            acqtime = thisscan.acq.get()
+            dwell = thisscan.acq.get()
 
-            hfxanes_gen = yield from xanes_plan(erange=erange, estep=estep, acqtime=thisscan.acq.get(),
+            hfxanes_gen = yield from xanes_plan(erange=erange, estep=estep, dwell=thisscan.acq.get(),
                                                 samplename=thisscan.sampname.get(), filename=thisscan.filename.get(),
                                                 roinum=int(thisscan.roi.get()), detune=thisscan.detune.get(), shutter=shutter)
             if (len(scanlist) != 0):
