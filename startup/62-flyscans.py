@@ -195,7 +195,8 @@ def scan_and_fly_base(detectors,
         step_err.append(f'Reasonable step sizes are as follows multiplied by a power of 10:\n\t{reasonable_steps}')
         step_err.append("Adjust number of points to achieve a reasonable step size or"
                         + " set the 'step_check' keyword argument to False.")
-        raise ValueError('\n'.join(step_err))
+        # raise ValueError('\n'.join(step_err))
+        print('\n'.join(step_err))
     
     # Set xs.mode to fly.
     for det in detectors:
@@ -232,19 +233,19 @@ def scan_and_fly_base(detectors,
     if xlow < xmotor.low_limit: # For low to high flying
         if row_start == xlow:
             limit_err.append((f'Flying axis motor {xmotor.name} row start value of {row_start} exceeds motor limits.'
-                            + f'\nDifference with specified start value of {xstart} is {row_start - xstart}.'))
+                            + f'\nDifference with specified start value of {xstart} is {row_start - xstart:.3f}.'))
         elif row_stop == xlow:
             limit_err.append((f'Flying axis motor {xmotor.name} row stop value of {row_stop} exceeds motor limits.'
-                            + f'\nDifference with specified stop value of {xstop} is {row_stop - xstop}.'))       
+                            + f'\nDifference with specified stop value of {xstop} is {row_stop - xstop:.3f}.'))       
         else:
             limit_err.append(f'Flying axis motor {xmotor.name} value of {xlow} exceeds motor limits.')
     if xhigh > xmotor.high_limit: # For high to low flying
         if row_start == xhigh:
             limit_err.append((f'Flying axis motor {xmotor.name} row start value of {row_start} exceeds motor limits.'
-                            + f'\nDifference with specified start value of {xstart} is {row_start - xstart}.'))
+                            + f'\nDifference with specified start value of {xstart} is {row_start - xstart:.3f}.'))
         elif row_stop == xhigh:
             limit_err.append((f'Flying axis motor {xmotor.name} row stop value of {row_stop} exceeds motor limits.'
-                            + f'\nDifference with specified stop value of {xstop} is {row_stop - xstop}.')) 
+                            + f'\nDifference with specified stop value of {xstop} is {row_stop - xstop:.3f}.')) 
         else:
             limit_err.append(f'Flying axis motor {xmotor.name} value of {xhigh} exceeds motor limits.')             
     if ylow < ymotor.low_limit: # Simple comparison
