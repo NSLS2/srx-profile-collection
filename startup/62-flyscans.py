@@ -27,6 +27,8 @@ from tqdm import tqdm
 import os
 import uuid
 import h5py
+import sys
+import inspect
 import numpy as np
 import time as ttime
 import matplotlib.pyplot as plt
@@ -92,6 +94,19 @@ def toc(t0, str='', log_file=None):
         with open(log_file, 'a') as f:
             f.write(s)
 
+
+# Define functions where step_checks will raise an error and cancel a plan
+# _fly_scan_funcs = [fname for fname, func in inspect.getmembers(sys.modules[__name__], inspect.isfunction)]
+_step_check_funcs = ['scan_and_fly_base',
+                     'nano_scan_and_fly',
+                     'nano_y_scan_and_fly',
+                     'coarse_scan_and_fly',
+                     'coarse_y_scan_and_fly',
+                     'xrf_map',
+                     'xrf_map2',
+                     'nano_knife_edge',
+                     'flying_angle_rocking_curve',
+                     'relative_flying_angle_rocking_curve']
 
 
 # changed the flyer device to be aware of fast vs slow axis in a 2D scan
@@ -186,17 +201,20 @@ def scan_and_fly_base(detectors,
         if (step not in reasonable_steps
             and np.round(step * 1e-1, 5) not in reasonable_steps
             and np.round(step * 1e-2, 5) not in reasonable_steps
-            and step * 1e1 not in reasonable_steps
-            and step * 1e2 not in reasonable_steps):
-            step_err.append((f'Calculated step size of {step} {motor.motor_egu.get()} '
+            and np.round(step * 1e1, 5) not in reasonable_steps
+            and np.round(step * 1e2, 5) not in reasonable_steps):
+            step_err.append((f'Calculated step size of {step:.5f} {motor.motor_egu.get()} '
                              + f'for motor {motor.name} does not seem reasonable.'))
     if step_check and len(step_err) > 0:
         step_err.insert(0, 'Suspected unreasonable step size')
         step_err.append(f'Reasonable step sizes are as follows multiplied by a power of 10:\n\t{reasonable_steps}')
         step_err.append("Adjust number of points to achieve a reasonable step size or"
                         + " set the 'step_check' keyword argument to False.")
-        # raise ValueError('\n'.join(step_err))
-        print('\n'.join(step_err))
+        # There may be more robust ways of finding the highest level plan name
+        if RE._plan.__name__ in _step_check_funcs:
+            raise ValueError('\n'.join(step_err))
+        else:
+            print('\n'.join(step_err))
     
     # Set xs.mode to fly.
     for det in detectors:
@@ -1006,7 +1024,6 @@ def xrf_map(xstart, xstop, xnum,
                                  **kwargs)
     if center:
         yield from move_to_scanner_center(timeout=10)
-
 
 # New alias
 def xrf_map2(xstart, xstop, xnum,
