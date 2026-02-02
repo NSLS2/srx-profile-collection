@@ -2,7 +2,6 @@ print(f'Loading {__file__}...')
 
 
 import os
-import lmfit
 import numpy as np
 import pandas as pd
 from scipy.optimize import curve_fit
