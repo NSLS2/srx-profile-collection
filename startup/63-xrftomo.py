@@ -251,9 +251,6 @@ def scan_coarsez(x0, x1, nx, y0, y1, ny, ct, z_list,
     for z in z_list:
         banner(f'Scanning at: {z:.3f} um')
 
-        if z < -2500:
-            raise ValueError('Coarse z limit reached as safety!')
-
         # Rotate the sample
         yield from mv(nano_stage.z, z)
         yield from bps.sleep(1)  # Give 1 second sleep to allow sample to settle
