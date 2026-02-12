@@ -104,6 +104,7 @@ _step_check_funcs = ['scan_and_fly_base',
                      'coarse_y_scan_and_fly',
                      'xrf_map',
                      'xrf_map2',
+                     'rel_xrf_map2',
                      'nano_knife_edge',
                      'flying_angle_rocking_curve',
                      'relative_flying_angle_rocking_curve']
@@ -537,10 +538,10 @@ def scan_and_fly_base(detectors,
             # t0_st_xs = ttime.time()
             # st_xs.wait(timeout=xnum*dwell + 20)
             # print(f"{ttime.time()-t0_st_xs}")
-            # print('Waiting for all_st...', end="")
+            print('Waiting for all_st...', end="")
             t0_st_xs = ttime.time()
             all_st.wait(timeout=xnum*dwell + 20)
-            # print(f"{ttime.time()-t0_st_xs}")
+            print(f"{ttime.time()-t0_st_xs}")
             # xs.hdf5.capture.set("Done")
             # while True:
             #     # print("in while loop!")
@@ -647,13 +648,6 @@ def scan_and_fly_base(detectors,
         scanrecord.time_remaining.put((dwell * xnum + 3.8)/3600)
         scanrecord.time_rem_str.put(time_rem_convert(dwell * xnum + 3.8))
 
-    def finalize_scan(name, doc):
-        # logscan_detailed('XRF_FLY')
-        scanrecord.scanning.put(False)
-        scanrecord.time_remaining.put(0)
-        scanrecord.time_rem_str.put(time_rem_convert(0))
-
-
     # TODO remove this eventually?
     # xs = dets_by_name['xs']
     # xs = dets_by_name['xs2']
@@ -690,7 +684,6 @@ def scan_and_fly_base(detectors,
 
     @subs_decorator(livepopup)
     @subs_decorator({'start': at_scan})
-    @subs_decorator({'stop': finalize_scan})
     @ts_monitor_during_decorator([roi_pv])
     # @monitor_during_decorator([roi_pv])
     @stage_decorator([flying_zebra])  # Below, 'scan' stage ymotor.
@@ -772,17 +765,20 @@ def scan_and_fly_base(detectors,
                            ion.count_mode, 1)
         if xs2 in flying_zebra.detectors:
             yield from bps.mov(xs2.external_trig, False)
+    
+    # Safe finalize plan
+    def finalize_plan():
+        if shutter:
+            yield from check_shutters(shutter, 'Close')
+        scanrecord.scanning.put(False)
+        scanrecord.time_remaining.put(0)
+        scanrecord.time_rem_str.put(time_rem_convert(0))
 
     # Setup the final scan plan
-    if shutter:
-        if verbose:
-            final_plan = finalize_wrapper(plan(),
-                                          timer_wrapper(check_shutters, shutter, 'Close', log_file=log_file))
-        else:
-            final_plan = finalize_wrapper(plan(),
-                                          check_shutters(shutter, 'Close'))
+    if verbose:
+        final_plan = finalize_wrapper(plan(), timer_wrapper(finalize_plan, log_file=log_file))
     else:
-        final_plan = plan()
+        final_plan = finalize_wrapper(plan(), finalize_plan())
 
     if verbose:
         toc(t_setup, str='Setup time', log_file=log_file)
@@ -1031,7 +1027,7 @@ def xrf_map2(xstart, xstop, xnum,
             dwell,
             fly_axis='auto',
             scan_type='auto',
-            coords='absolute',
+            coords='auto',
             extra_dets=None,
             center_scanner=True,
             return_to_start=True,
@@ -1107,12 +1103,12 @@ def xrf_map2(xstart, xstop, xnum,
     """
 
     # Staff parameters for determining 'auto' response
-    REASONABLE_SCANNER_STAGE_EXTENT = 90 # in motor units
+    REASONABLE_SCANNER_STAGE_EXTENT = 91 # in motor units
     REASONABLE_ASPECT_RATIO_FOR_X_FLY = 1.2 # y-range / x-range
 
     # Record default motors in (x, y)
     fine_motors = (nano_stage.sx, nano_stage.sy)
-    coarse_motors = (nano_stage.topx, nano_stage.y)
+    coarse_motors = (nano_stage.x, nano_stage.y)
 
     # Parse inputs. Also ensures they are strings
     scan_type = scan_type.lower()
@@ -1155,10 +1151,10 @@ def xrf_map2(xstart, xstop, xnum,
                                 ymotor=fine_motors[1]
                                 **kwargs)
     elif scan_type == 'auto':
-        if max([x_range, y_range]) < REASONABLE_SCANNER_STAGE_EXTENT:
+        if max([x_range, y_range]) <= REASONABLE_SCANNER_STAGE_EXTENT:
             resolution = 'nano'
         else:
-            resolution == 'coarse'
+            resolution = 'coarse'
     elif scan_type == 'nano':
         resolution = 'nano'
     elif scan_type == 'coarse':
@@ -1170,7 +1166,7 @@ def xrf_map2(xstart, xstop, xnum,
     
     # Determine flying axis
     if fly_axis == 'auto':
-        if y_range / x_range > REASONABLE_ASPECT_RATIO_FOR_X_FLY:
+        if x_range == 0 or y_range / x_range > REASONABLE_ASPECT_RATIO_FOR_X_FLY:
             fly_on_y = True
         else:
             fly_on_y = False
@@ -1235,22 +1231,35 @@ def xrf_map2(xstart, xstop, xnum,
                                          fly_start, fly_stop, fly_num,
                                          step_start, step_stop, step_num, dwell,
                                          **kwargs)
+            
+    def centered_map():
+        if center_scanner and resolution == 'coarse':
+        # if center_scanner:
+            yield from move_to_scanner_center(timeout=10)
+        yield from inner_map()
+        if center_scanner and resolution == 'coarse':
+        # if center_scanner:
+            yield from move_to_scanner_center(timeout=10)
+    
+    def move_to_start():
+        # Move motors back to start for repeatability
+        if return_to_start:
+            if resolution in ['step', 'nano']:
+                # yield from mv(*zip(fine_motors, pos_start))
+                yield from mv(*[m for p in zip(fine_motors, pos_start) for m in p], timeout=10)
+            elif resolution in ['coarse']:
+                # yield from mv(*zip(coarse_motors, pos_start))
+                yield from mv(*[m for p in zip(coarse_motors, pos_start) for m in p], timeout=10)
+    
+    final_plan = finalize_wrapper(centered_map(),
+                                  move_to_start())
 
-    if center_scanner and resolution == 'coarse':
-    # if center_scanner:
-        yield from move_to_scanner_center(timeout=10)
-    yield from inner_map()
-    if center_scanner and resolution == 'coarse':
-    # if center_scanner:
-        yield from move_to_scanner_center(timeout=10)
+    return (yield from final_plan)
 
-    # Move motors back to start for repeatability
-    if return_to_start:
-        if resolution in ['step', 'nano']:
-            yield from mv(*zip(fine_motors, pos_start))
-        elif resolution in ['coarse']:
-            yield from mv(*zip(coarse_motors, pos_start))
 
+def rel_xrf_map2(*args, **kwargs):
+    kwargs.setdefault('coords', 'relative')
+    yield from xrf_map2(*args, **kwargs)
 
 
 # This class is not used in this file
