@@ -134,6 +134,9 @@ def get_det_md(scan_md, dets):
         elif name == 'dexela':
             det_dict['binning_mode'] = det.cam.binning_mode.get(as_string=True) # Detector binning
             det_dict['full_well_mode'] = det.cam.full_well_mode.get(as_string=True) # Full well mode
+        elif name == 'eiger':
+            det_dict['photon_energy'] = det.cam.photon_energy.get()
+            det_dict['threshold_energy'] = det.cam.threshold_energy.get()
         elif name == 'nano_vlm':
             det_dict['cross_position_x'] = det.over.overlay_1.position_x.get() # Crosshair position x
             det_dict['cross_position_y'] = det.over.overlay_1.position_y.get() # Crosshair position x
