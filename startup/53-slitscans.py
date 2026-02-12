@@ -695,18 +695,25 @@ def focusKB2(direction, **kwargs):
         kwargs.setdefault('scan_motor', nano_stage.sx)
         kwargs.setdefault('slit_motor', jjslits.h_trans)
         slit_range = 0.500 # 500 um range
-        kwargs.setdefault('slit_num', 11) # 50 um step
+        # kwargs.setdefault('slit_num', 11) # 50 um step
+        # kwargs.setdefault('slitgap_motor', jjslits.h_gap)
+        # kwargs.setdefault('slit_gap', 0.05) # 50 um step
+        kwargs.setdefault('slit_num', 21) # 25 um step
         kwargs.setdefault('slitgap_motor', jjslits.h_gap)
         kwargs.setdefault('slit_gap', 0.05) # 50 um step
-        N = 11
+
     elif 'ver' in direction.lower():
         kwargs.setdefault('scan_motor', nano_stage.sy)
         kwargs.setdefault('slit_motor', jjslits.v_trans)
         slit_range = 1.00 # 1000 um range
-        kwargs.setdefault('slit_stepsize', 11) # 100 um step
+        # kwargs.setdefault('slit_num', 11) # 100 um step
+        # kwargs.setdefault('slitgap_motor', jjslits.v_gap)
+        # kwargs.setdefault('slit_gap',  0.10) # 100 um step
+        kwargs.setdefault('slit_num', 21) # 50 um step
         kwargs.setdefault('slitgap_motor', jjslits.v_gap)
-        kwargs.setdefault('slit_gap',  0.10) # 100 um step
-        N = 11
+        kwargs.setdefault('slit_gap',  0.1) # 100 um gap
+
+
     else:
         print("This is for vertical or horizontal scans. Please choose one of these directions\n")
 
@@ -714,6 +721,10 @@ def focusKB2(direction, **kwargs):
     kwargs.setdefault('scan_stop', 8) # in um
     kwargs.setdefault('scan_num', 81) # 200 nm step
     kwargs.setdefault('dwell', 0.200) # 200 ms dwell
+    # kwargs.setdefault('scan_start', -5) # in um
+    # kwargs.setdefault('scan_stop', 5) # in um
+    # kwargs.setdefault('scan_num', 101) # 100 nm step
+    # kwargs.setdefault('dwell', 0.100) # 100 ms dwell
     
     slit_center = kwargs['slit_motor'].user_readback.get()
     kwargs.setdefault('slit_start', slit_center - 0.5 * slit_range)
@@ -773,36 +784,32 @@ def slit_nano_scan_map(scan_motor, scan_start, scan_stop, scan_num,
     # close the gap for scan
     yield from mov(slitgap_motor, slit_gap)
 
-    # Setup the full scan
-    try:
-        uid = yield from scan_and_fly_base(
-                [xs],
-                scan_start, scan_stop, scan_num,
-                slit_start, slit_stop, slit_num,
-                dwell,
-                flying_zebra=nano_flying_zebra,
-                xmotor=scan_motor,
-                ymotor=slit_motor,
-                shutter=shutter,
-                plot=plot,
-                md=md,
-                verbose=verbose,
-                snake=False, vlm_snapshot=False
-            )
-    except (Exception, KeyboardInterrupt) as ex:
-            print('WARNING: Exception encountered during scanning. Restoring slit positions...')
-            # Finish up
-            yield from check_shutters(True, 'Close') 
+
+    def plan():
+        return (yield from scan_and_fly_base(
+                    [xs],
+                    scan_start, scan_stop, scan_num,
+                    slit_start, slit_stop, slit_num,
+                    dwell,
+                    flying_zebra=nano_flying_zebra,
+                    xmotor=scan_motor,
+                    ymotor=slit_motor,
+                    shutter=shutter,
+                    plot=plot,
+                    md=md,
+                    verbose=verbose,
+                    snake=False, vlm_snapshot=False
+                    ))
+    
+    def finish_up(): 
             yield from mov(slit_motor, slit_orig_pos)
             yield from mov(slitgap_motor, slit_orig_gap)
-            raise ex
+            yield from move_to_scanner_center(timeout=10)
 
-    # Finish up
-    yield from check_shutters(True, 'Close') 
-    yield from mov(slit_motor, slit_orig_pos)
-    yield from mov(slitgap_motor, slit_orig_gap)
+    final_plan = finalize_wrapper(plan(),
+                                  finish_up())
 
-    return uid
+    return (yield from final_plan)
 
 
 def slit_nano_scan_map_cal(uid, orthogonality=False,
@@ -845,11 +852,11 @@ def slit_nano_scan_map_cal(uid, orthogonality=False,
     if 'nano_stage_sx' in bs_run.start['scan']['fast_axis']['motor_name']:
         flag_dir = 'HOR'
         pos_key = 'enc1'
-        jj_key = 'enc2'
+        jj_key = 'jjslits_h_trans'
     elif 'nano_stage_sy' in bs_run.start['scan']['fast_axis']['motor_name']:
         flag_dir = 'VER'
         pos_key = 'enc2'
-        jj_key = 'enc1'
+        jj_key = 'jjslits_v_trans'
     else:
         err_str = 'Unknown scanning motor encountered.'
         raise RuntimeError(err_str)
@@ -859,31 +866,43 @@ def slit_nano_scan_map_cal(uid, orthogonality=False,
         bin_low = xs.channel01.mcaroi01.min_x.get()
     if bin_high is None:
         bin_high = xs.channel01.mcaroi01.max_x.get()
-    xrf_map = ds[fluor_key][..., bin_low:bin_high].sum(axis=(-1)).squeeze().astype(np.float64)
+    xrf = ds[fluor_key][..., bin_low:bin_high].sum(axis=(2, 3)).squeeze().astype(float)
 
     # Get scalers
     if normalize:
         if 'i0' in ds_keys:
-            i0 = ds['i0'].read().squeeze()
+            i0 = ds['i0'].read().squeeze().astype(float)
         elif 'sclr_i0' in ds_keys:
-            i0 = ds['sclr_i0'].read().squeeze()
+            i0 = ds['sclr_i0'].read().squeeze().astype(float)
         else:
             err_str = 'Cannot find i0 for normalization.'
             raise KeyError(err_str)
-        d /= i0
+        xrf /= i0
     
-        x = ds[pos_key].read().squeeze().astype(np.float64)
-        jj_list = ds[jj_key].read().squeeze().astype(np.float64)
+    x_arr = ds[pos_key].read().squeeze().astype(float)
+    jj_list = bs_run['primary']['data'][jj_key].read().squeeze().astype(float)
     
+    if plot:
+        fig, ax = plt.subplots()
+        ax.set_xlabel(bs_run.start['scan']['fast_axis']['motor_name'])
+        ax.set_ylabel('Normalized XRF')
+        ax.set_title(f'Scan {bs_run.start['scan_id']}')
+
     # Fit each slit position
-    fit_mask, cent_list, amp_list = [], [], []
-    for idx in xrf_map.shape[1]:
-        y = xrf_map[idx]
+    fit_mask, cent_list, amp_list, count_list = [], [], [], []
+    for idx in range(xrf.shape[0]):
+        y = xrf[idx]
+        x = x_arr[idx]
         dydx = np.gradient(y, x)
+        count_list.append(np.sum(y))
+        
+        if plot:
+            ax.plot(x, y, label=np.round(jj_list[idx], 3))
 
         # Check for significant features
-        if (np.sum(y) - (np.median(y) * len(y))) < 3 * np.std(y): # Rose criterion
-            print(f'Feature not significant for row {idx}.')
+        if (np.sum(y > 0) < (0.99 * len(y))
+            or np.sum(iterative_background(y, multiplier=6)) == 0):
+            # print(f'Feature not significant for row {idx}.')
             fit_mask.append(False)
             cent_list.append(np.nan)
             amp_list.append(np.max(y))
@@ -907,14 +926,20 @@ def slit_nano_scan_map_cal(uid, orthogonality=False,
         fit_mask.append(True)
         cent_list.append((popt[2] + popt[6]) / 2)
         amp_list.append((popt[0] + popt[4]) / 2)
+        # print(f'Line center is {cent_list[-1]:.4f} um.')
+    
+    if plot:
+        ax.legend()
+        fig.show()
     
     fit_mask = np.asarray(fit_mask)
     cent_list = np.asarray(cent_list)
     amp_list = np.asarray(amp_list)
+    count_list = np.asarray(count_list)
     
     # THIS IS FROM PREVIOUS CALIBRATION FITTING
     # Fit line positions
-    calpoly_fit = np.polyfit(jj_list[fit_mask], cent_list[fit_mask], orthogonality + 1, full=True)
+    calpoly_fit = np.polyfit(jj_list[fit_mask], cent_list[fit_mask] / 1000, orthogonality + 1, full=True)
     p = np.poly1d(calpoly_fit[0])
     line_plt = p(jj_list[fit_mask])
     p2v_line_pos = np.max(cent_list[fit_mask]) - np.min(cent_list[fit_mask])
@@ -950,41 +975,36 @@ def slit_nano_scan_map_cal(uid, orthogonality=False,
         print(f'\tLine feature should move {line_move_h:7.3f} um for h mirror pitch correction')
 
     # Always calculate orthoganality for consistent returned values
-    delta_fine_pitch = -1*calpoly_fit[0][0]/conversion_factor_orth*1e-3*pitch_motion_conversion
-    delta_theta_quad = calpoly_fit[0][0]/conversion_factor_orth
-    delta_focal_plane_z = delta_theta_quad*1e-3/C_theta*C_f    
+    delta_fine_pitch = -1 * calpoly_fit[0][0] / conversion_factor_orth * 1e-3 * pitch_motion_conversion
+    delta_theta_quad = calpoly_fit[0][0] / conversion_factor_orth
+    delta_focal_plane_z = delta_theta_quad * 1e-3 / C_theta * C_f    
     if orthogonality == 1:
         print('\nOrthagonality correction:')
         print(f'\tQuadratic term corresponds to pitch angle {delta_theta_quad:7.3f} urad.')
         print(f'\tQuadratic term corresponds to fine pitch move {delta_fine_pitch:7.3f} um.')
         print(f'\tQuadratic term corresponds to coarse Z {delta_focal_plane_z:7.3f} um.')
     
-    # THIS IS NEW!
     # Fit bright spot
-    bright_cent = np.mean(jj_list) - np.average(jj_list[fit_mask], weigths=amp_list[fit_mask])
-    # p0 = [np.max(amp_list[fit_mask]),
-    #       100,
-    #       jj_list[fit_mask][np.argmax(amp_list[fit_mask])]]
-    # try:
-    #     popt, _ = curve_fit(jj_list[fit_mask], amp_list[fit_mask], gaussian, p0=p0)
-    # except:
-    #     print('Beam brightness profile fit failed')
-    #     popt = p0
-    # # Relative difference to fitted center
-    # bright_cent = np.mean(jj_list) - popt[2]
+    bright_cent = np.average(jj_list, weights=np.sum(i0, axis=1)) - np.mean(jj_list)
 
     # Relative difference of significant reflection to center
-    kb_trans = np.mean(jj_list) - np.mean(jj_list[fit_mask])
+    kb_trans = np.mean(jj_list[fit_mask]) - np.mean(jj_list)
 
     if plot:
         if (plotme is None):
             fig, ax = plt.subplots()
         else:
             ax = plotme.ax
-        ax.plot(jj_list, cent_list/1000, 'ro', jj_list[fit_mask], line_plt)
+
+        ax.plot(jj_list[~fit_mask], np.zeros(np.sum([~fit_mask])), 'kx')
+        ax.plot(jj_list[fit_mask], cent_list[fit_mask] / 1000, 'ro')
+        ax.plot(jj_list[fit_mask], line_plt)
+        # ax.plot(jj_list, cent_list/1000, 'ro', jj_list[fit_mask], line_plt)
         ax.set_title(f'Scan {scan_id}')
         ax.set_xlabel(f'Slit Pos (mm)')
         ax.set_ylabel(f'Line Pos (mm)')
+    
+    # return jj_list, cent_list, fit_mask, line_plt, amp_list, count_list
 
     return (bright_cent, # Amount to shift center of jj-slits
             kb_trans, # Amount to translated KB mirror
@@ -992,3 +1012,32 @@ def slit_nano_scan_map_cal(uid, orthogonality=False,
             (delta_theta_quad, # Amount to change overall pitch angle
              delta_fine_pitch, # Amount to change fine pitch actuator  
             delta_focal_plane_z)) # Amount to translate sample focus to compensate pitch angle change
+
+
+
+def iterative_background(data, multiplier=3, max_iter=100):
+
+    # Half mask
+    old_mask = data > np.median(data)
+
+    counter = 0
+    while True:
+        # print(f'{counter=}')
+        # Nothing is above the noise
+        if not np.any(old_mask):
+            return old_mask           
+        
+        # Rose criterion
+        mask = data - np.mean(data[~old_mask]) > multiplier * np.std(data[~old_mask])
+        # print(f'Cutoff: {multiplier * np.std(data[~old_mask])}')
+
+        # The masks have converged
+        if np.all(mask == old_mask):
+            return mask
+        # Max iterations have been reached
+        elif counter >= max_iter:
+            return mask
+        # Iterate again
+        else:
+            old_mask = mask
+            counter += 1
