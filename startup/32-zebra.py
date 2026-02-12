@@ -491,7 +491,7 @@ class SRXFlyer1Axis(Device):
         read_path = formatter(f'{self.root_path}{self.read_path_template}')
         return filename, read_path, write_path
 
-    KNOWN_DETS = {"xs", "xs2", "xs4", "merlin", "dexela"}
+    KNOWN_DETS = {"xs", "xs2", "xs4", "merlin", "dexela", "eiger"}
     fast_axis = Cpt(Signal, value="HOR", kind="config")
     slow_axis = Cpt(Signal, value="VER", kind="config")
     mode = Cpt(Signal, value='position', kind='config')
@@ -779,6 +779,7 @@ class SRXFlyer1Axis(Device):
             if decrement < 1e-5:
                 print('Warning: Changing the pulse width!')
                 decrement = 1e-5
+        # Units in seconds
         elif mode == 'time':
             if 'dexela' in [d.name for d in self.detectors]:
                 decrement = 0.001
