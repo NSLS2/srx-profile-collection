@@ -22,7 +22,7 @@ def nano_knife_edge(motor, start, stop, stepsize, acqtime,
     num = np.round((stop - start) / stepsize) + 1
 
     # Set the roi
-    # setroi(1, roi)
+    setroi(1, roi)
 
     # Run the scan
     if (motor.name == 'nano_stage_sx'):
