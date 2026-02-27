@@ -6,7 +6,7 @@ import time as ttime
 # Run a knife-edge scan
 def nano_knife_edge(motor, start, stop, stepsize, acqtime,
                     roi="Pt", shutter=True, plot=True,
-                    normalize=True, use_trans=False, plot_guess=False):
+                    normalize=True, use_trans=False, plot_guess=False, **kwargs):
     """
     motor       motor   motor used for scan
     start       float   starting position
@@ -35,7 +35,7 @@ def nano_knife_edge(motor, start, stop, stepsize, acqtime,
         def _plan():
             yield from nano_scan_and_fly(start, stop, num,
                                          y0, y0, 1, acqtime,
-                                         shutter=shutter, vlm_snapshot=False)
+                                         shutter=shutter, vlm_snapshot=False, **kwargs)
         yield from _plan()
     elif (motor.name == 'nano_stage_sy'):
         fly = True
@@ -47,7 +47,7 @@ def nano_knife_edge(motor, start, stop, stepsize, acqtime,
         def _plan():
             yield from nano_y_scan_and_fly(start, stop, num,
                                            x0, x0, 1, acqtime,
-                                           shutter=shutter, vlm_snapshot=False)
+                                           shutter=shutter, vlm_snapshot=False, **kwargs)
         yield from _plan()
     elif (motor.name == 'nano_stage_x'):
         fly = False

@@ -181,7 +181,8 @@ def xanes_plan(erange=[], estep=[], dwell=1.,
                         ((doc['time'] - st) / doc['seq_num']) * # average time per point
                         (len(ept) - doc['seq_num']) # remaining number of points
                     ))
-        except Exception:
+        except Exception as e:
+            # print(f'Exception encountered in time_per_point function.\n{e}')
             pass
 
     livetableitem.append(roi_key[0])
