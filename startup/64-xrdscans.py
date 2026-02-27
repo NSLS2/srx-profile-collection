@@ -42,6 +42,27 @@ def setup_xrd_dets(dets,
         xrd.hdf5.stage_sigs['num_capture'] = N_images
         del xrd
 
+    # Setup eiger
+    if 'eiger' in dets_by_name:
+        xrd = dets_by_name['eiger']
+        xrd.cam.acquire.set(0)
+        xrd.stage_sigs['total_points'] = N_images
+        xrd.cam.stage_sigs['num_triggers'] = N_images
+        xrd.hdf5.stage_sigs['num_capture'] = N_images
+
+        print('New Eiger stage sigs')
+        # Sets bit-depth for fly-mode, otherwise actual time
+        xrd.cam.stage_sigs['acquire_time'] = dwell - 0.010 # 10 ms is a lot, but dropping too many frames
+        xrd.cam.stage_sigs['acquire_period'] = dwell
+
+        # Update energy thresholds
+        # Should do this for merlin too...
+        xrd.cam.stage_sigs['photon_energy'] = 1e3 * np.round(energy.energy.setpoint.get())
+        xrd.cam.stage_sigs['threshold_energy'] = 1e3 * 0.5 * np.round(energy.energy.setpoint.get())
+        del xrd
+
+
+
 
 # Assumes detector stage sigs are already set
 # Treat like a plan stub and use within a run decorator
@@ -152,20 +173,21 @@ def dark_decorator(dets, N_dark=10, shutter=True):
     return inner_decorator
 
 
+@append_srx_kwargs_md
 def energy_rocking_curve(e_low,
                          e_high,
                          e_num,
                          dwell,
                          xrd_dets,
+                         md=None,
                          N_dark=10,
-                         vlm_snapshot=False,
-                         snapshot_after=False,
+                         vlm_snapshot=True,
                          shutter=True,
                          peakup_flag=True,
                          plotme=False,
                          return_to_start=True):
 
-    start_energy = energy.energy.position
+    start_energy = energy.energy.readback.get()
 
     # Convert to keV
     if e_low > 1000:
@@ -196,8 +218,7 @@ def energy_rocking_curve(e_low,
         yield from abs_set(getattr(obj, key), value)
 
     # Defining scan metadata
-    md = {}
-    get_stock_md(md)
+    md = get_stock_md(md)
     md['scan']['type'] = 'ENERGY_RC'
     md['scan']['scan_input'] = [e_low, e_high, e_num, dwell]
     md['scan']['dwell'] = dwell
@@ -207,8 +228,26 @@ def energy_rocking_curve(e_low,
         md_dets = md_dets + [nano_vlm]
     get_det_md(md, md_dets)
 
+    def at_scan(name, doc):
+        scanrecord.time_rem_str.put(time_rem_convert(
+            len(e_range) * (dwell + 4.25) # Some overhead for estimate
+        ))
+
+    def finalize_scan(name, doc):
+        scanrecord.scanning.put(False)
+        scanrecord.time_rem_str.put(time_rem_convert(0))
+
+    def time_per_point(name, doc, st=ttime.time()):
+        if (doc[0] == "event_page"):
+            if ('seq_num' in doc.keys()):
+                scan_record.time_rem_str.put(convert_time_str(
+                    ((doc['time'] - st) / doc['seq_num']) * # average time per point
+                    (len(e_range) - doc['seq_num']) # remaining number of points
+                ))
+
     # Live Callbacks
-    livecallbacks = [LiveTable(['energy_energy', 'dexela_stats2_total'])]
+    livecallbacks = [LiveTable(['energy_energy', 'dexela_stats2_total']),
+                     time_per_point]
     
     if plotme:
         livecallbacks.append(LivePlot('dexela_stats2_total', x='energy_energy'))
@@ -220,7 +259,7 @@ def energy_rocking_curve(e_low,
         yield from peakup(shutter=shutter)
     
     @run_decorator(md=md)
-    @vlm_decorator(vlm_snapshot, after=snapshot_after)
+    @vlm_decorator(vlm_snapshot, after=True)
     @dark_decorator(dets, N_dark=N_dark, shutter=shutter) 
     def plan():
         # Always check shutters to print banner
@@ -228,16 +267,11 @@ def energy_rocking_curve(e_low,
         yield from mod_list_scan(dets, energy, e_range, run_agnostic=True)
         if shutter: # Conditional check ot avoid banner
             yield from check_shutters(shutter, 'Close')
-    
-    # Plan with failed dark_field and default behavior
-    # def plan():
-    #     yield from check_shutter(shutter, 'Open')
-    #     yield from list_scan(dets, energy, e_range, md=md)
-    #     if shutter: # Conditional check ot avoid banner
-    #         yield from check_shutters(shutter, 'Close')
 
     # Plan must be called to return the generators
-    yield from subs_wrapper(plan(), {'all' : livecallbacks})
+    plan = finalize_wrapper(plan(), finalize_scan)
+    yield from subs_wrapper(plan, {'all' : livecallbacks,
+                                   'start' : at_scan})
 
     # Reset xs and sclr1
     for obj, key, value in original_sigs:
@@ -254,7 +288,7 @@ def relative_energy_rocking_curve(e_range,
                                   peakup_flag=False, # rewrite default
                                   **kwargs):
     
-    en_current = energy.energy.position
+    en_current = energy.energy.readback.get()
 
     # Convert to keV. Not as straightforward as endpoint inputs
     if en_range > 5:
@@ -263,7 +297,7 @@ def relative_energy_rocking_curve(e_range,
         print(warn_str)
         en_range /= 1000
     
-    # Ensure energy.energy.positiion is reading correctly
+    # Ensure energy.energy.readback.get() is reading correctly
     if en_current > 1000:
         en_current /= 1000
 
@@ -320,22 +354,25 @@ def extended_energy_rocking_curve(e_low,
                                         return_to_start=False)
 
 
+# WIP
 # Re-write to encompass a single scan ID with intelligent vlm and dark-field support
 # TODO: livecallbacks may fail switching back and forth...
+@append_srx_kwargs_md
 def continuous_energy_rocking_curve(e_low,
                                     e_high,
                                     e_num,
                                     dwell,
                                     xrd_dets,
+                                    md=None,
                                     N_dark=0,
-                                    vlm_snapshot=False,
-                                    snapshot_after=False,
+                                    vlm_snapshot=True,
                                     shutter=True,
                                     peakup_flag=True,
                                     plotme=False,
                                     return_to_start=True):
+    raise NotImplementedError()
     
-    start_energy = energy.energy.position
+    start_energy = energy.energy.readback.get()
 
     # Convert to kev
     if e_low > 1000:
@@ -371,8 +408,7 @@ def continuous_energy_rocking_curve(e_low,
         yield from abs_set(getattr(obj, key), value)
 
     # Defining scan metadata
-    md = {}
-    get_stock_md(md)
+    md = get_stock_md(md)
     md['scan']['type'] = 'ENERGY_RC'
     md['scan']['scan_input'] = [e_low, e_high, e_num, dwell]
     md['scan']['dwell'] = dwell
@@ -389,7 +425,7 @@ def continuous_energy_rocking_curve(e_low,
         livecallbacks.append(LivePlot('dexela_stats2_total', x='energy_energy'))
 
     @run_decorator(md=md)
-    @vlm_decorator(vlm_snapshot, after=snapshot_after)
+    @vlm_decorator(vlm_snapshot, after=True)
     @dark_decorator(dets, N_dark=N_dark, shutter=shutter)
     def plan():
         for iteration, e_rc in enumerate(e_rcs):
@@ -418,14 +454,15 @@ def continuous_energy_rocking_curve(e_low,
         yield from mov(energy, start_energy)
 
 
+@append_srx_kwargs_md
 def angle_rocking_curve(th_low,
                         th_high,
                         th_num,
                         dwell,
                         xrd_dets,
+                        md=None,
                         N_dark=10,
-                        vlm_snapshot=False,
-                        snapshot_after=False,
+                        vlm_snapshot=True,
                         shutter=True,
                         plotme=False,
                         return_to_start=True):
@@ -456,8 +493,7 @@ def angle_rocking_curve(th_low,
         yield from abs_set(getattr(obj, key), value)
 
     # Defining scan metadata
-    md = {}
-    get_stock_md(md)
+    md = get_stock_md(md)
     md['scan']['type'] = 'ANGLE_RC'
     md['scan']['scan_input'] = [th_low, th_high, th_num, dwell]
     md['scan']['dwell'] = dwell
@@ -467,14 +503,32 @@ def angle_rocking_curve(th_low,
         md_dets = md_dets + [nano_vlm]
     get_det_md(md, md_dets)
 
+    def at_scan(name, doc):
+        scanrecord.time_rem_str.put(time_rem_convert(
+            len(th_range) * (dwell + 4.25) # Some overhead for estimate
+        ))
+
+    def finalize_scan(name, doc):
+        scanrecord.scanning.put(False)
+        scanrecord.time_rem_str.put(time_rem_convert(0))
+
+    def time_per_point(name, doc, st=ttime.time()):
+        if (doc[0] == "event_page"):
+            if ('seq_num' in doc.keys()):
+                scan_record.time_rem_str.put(convert_time_str(
+                    ((doc['time'] - st) / doc['seq_num']) * # average time per point
+                    (len(th_range) - doc['seq_num']) # remaining number of points
+                ))
+
     # Live Callbacks
-    livecallbacks = [LiveTable(['nano_stage_th_user_setpoint', 'dexela_stats2_total'])]
+    livecallbacks = [LiveTable(['nano_stage_th_user_setpoint', 'dexela_stats2_total']),
+                     time_per_point]
     
     if plotme:
         livecallbacks.append(LivePlot('dexela_stats2_total', x='nano_stage_th_user_setpoint'))
 
     @run_decorator(md=md)
-    @vlm_decorator(vlm_snapshot, after=snapshot_after)
+    @vlm_decorator(vlm_snapshot, after=True, position=(nano_stage.th, (th_high - th_low) / 2))
     @dark_decorator(dets, N_dark=N_dark, shutter=shutter) 
     def plan():
         # Always check shutters to print banner
@@ -482,16 +536,11 @@ def angle_rocking_curve(th_low,
         yield from mod_list_scan(dets, nano_stage.th, th_range, run_agnostic=True)
         if shutter: # Conditional check ot avoid banner
             yield from check_shutters(shutter, 'Close')
-    
-    # Plan with failed dark_field and default behavior
-    # def plan():
-    #     yield from check_shutter(shutter, 'Open')
-    #     yield from list_scan(dets, nano_stage.th, th_range, md=md)
-    #     if shutter: # Conditional check ot avoid banner
-    #         yield from check_shutters(shutter, 'Close')
 
     # Plan must be called to return the generators
-    yield from subs_wrapper(plan(), {'all' : livecallbacks})
+    plan = finalize_wrapper(plan(), finalize_scan)
+    yield from subs_wrapper(plan, {'all' : livecallbacks,
+                                   'start' : at_scan})
 
     # Reset xs and sclr1
     for obj, key, value in original_sigs:
@@ -539,6 +588,13 @@ def flying_angle_rocking_curve(th_low,
 
     dets = [xs] + xrd_dets
 
+    # Modify md
+    if 'md' in kwargs:
+        md = kwargs.pop('md')
+    md = get_stock_md(md)
+    md['scan']['type'] = 'FLY_ANGLE_RC'
+    kwargs['md'] = md
+
     yield from scan_and_fly_base(dets,
                                  th_low,
                                  th_high,
@@ -573,12 +629,13 @@ def relative_flying_angle_rocking_curve(th_range,
 
 
 # A static xrd measurement without changing energy or moving stages
+@append_srx_kwargs_md
 def static_xrd(num,
                dwell,
                xrd_dets,
+               md=None,
                N_dark=10,
                vlm_snapshot=False,
-               snapshot_after=False,
                shutter=True,
                plotme=False):
 
@@ -601,8 +658,7 @@ def static_xrd(num,
         yield from abs_set(getattr(obj, key), value)
 
     # Defining scan metadata
-    md = {}
-    get_stock_md(md)
+    md = get_stock_md(md)
     md['scan']['type'] = 'STATIC_XRD'
     md['scan']['scan_input'] = [num, dwell]
     md['scan']['dwell'] = dwell                               
@@ -613,6 +669,13 @@ def static_xrd(num,
         md_dets = md_dets + [nano_vlm]
     get_det_md(md, md_dets)
 
+    def at_scan(name, doc):
+        scanrecord.time_rem_str.put(time_rem_convert(30))
+
+    def finalize_scan(name, doc):
+        scanrecord.scanning.put(False)
+        scanrecord.time_rem_str.put(time_rem_convert(0))
+
     # Live Callbacks
     livecallbacks = [LiveTable(['dexela_stats2_total'])]
     
@@ -620,7 +683,7 @@ def static_xrd(num,
         livecallbacks.append(LivePlot('dexela_stats2_total'))
 
     @run_decorator(md=md)
-    @vlm_decorator(vlm_snapshot, after=snapshot_after)
+    @vlm_decorator(vlm_snapshot, after=True)
     @dark_decorator(dets, N_dark=N_dark, shutter=shutter)  
     def plan():
         # Always check shutters to print banner
@@ -629,14 +692,10 @@ def static_xrd(num,
         if shutter: # Conditional check to avoid banner
             yield from check_shutters(shutter, 'Close')
     
-    # Plan with failed dark_field and default behavior
-    # def plan():
-    #     yield from check_shutter(shutter, 'Open')
-    #     yield from count(dets, num, md=md)
-    #     if shutter: # Conditional check to avoid banner
-    #         yield from check_shutters(shutter, 'Close')
-
-    yield from subs_wrapper(plan(), {'all' : livecallbacks})
+    # Plan must be called to return the generators
+    plan = finalize_wrapper(plan(), finalize_scan)
+    yield from subs_wrapper(plan, {'all' : livecallbacks,
+                                   'start' : at_scan})
 
     # Reset xs and sclr1
     for obj, key, value in original_sigs:

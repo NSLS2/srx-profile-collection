@@ -129,6 +129,7 @@ class SRXScanRecord(Device):
     current_type = Cpt(EpicsSignal, 'Scan:TYPE')
     time_remaining = Cpt(EpicsSignal, 'Scan:REMTIME')
     scanning = Cpt(EpicsSignal, 'Scan:ENA')
+    time_rem_str = Cpt(EpicsSignal, 'Scan:REMTIMESTR')
 
     proposal_num = Cpt(EpicsSignal, 'PROPOSAL_NUM')
     # If len(string) > 40 characters, then it needs to be a waveform on the IOC
@@ -150,5 +151,10 @@ try:
     scanrecord.scan0.p2stp.put(3)
     scanrecord.scan0.ena.put(1)
     scanrecord.scan0.acq.put(1)
+    
+    # Clean up and weird states
+    scanrecord.scanning.put(False)
+    scanrecord.time_remaining.put(0)
+    scanrecord.time_rem_str.put('0 min')
 except:
     print('\nError connecting to scanrecord...\n')

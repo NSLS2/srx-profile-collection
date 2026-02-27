@@ -15,9 +15,12 @@ from ophyd.areadetector.filestore_mixins import (FileStoreIterativeWrite,
 from ophyd.areadetector.trigger_mixins import SingleTrigger
 from ophyd.areadetector.cam import AreaDetectorCam
 from ophyd.device import Component as Cpt
+# from ophyd.status import WaitTimeoutError
 
 from ophyd.areadetector.plugins import (ImagePlugin_V33, TIFFPlugin_V33,
                                         ROIPlugin_V33, StatsPlugin_V33)
+
+from bluesky.run_engine import WaitForTimeoutError
 
 
 class SRXTIFFPlugin(TIFFPlugin,
@@ -123,8 +126,18 @@ def _camera_snapshot(cameras=[nano_vlm]):
         
         # Snapshot!
         # Should even work with different dwell times
-        yield from bps.trigger_and_read(cameras, name='camera_snapshot')
-        
+        # yield from bps.trigger_and_read(cameras, name='camera_snapshot')
+        try:
+            yield from mod_trigger_and_read(cameras,
+                                            name='camera_snapshot',
+                                            timeout=10) # 10 seconds
+        except WaitForTimeoutError:
+            warn_str = "WARNING: Camera snapshot failed to trigger in designated time. Continuing without..."
+            print(warn_str)
+        except Exception as e:
+            print(e)
+            raise(e)
+
         # Precautionary unstaging
         for staged, cam in zip(staging_list, cameras):
             yield from bps.unstage(cam)
@@ -137,14 +150,54 @@ def _camera_snapshot(cameras=[nano_vlm]):
 
 
 # Decorator version of vlm snapshot. Must happen within open runs.
-def vlm_decorator(vlm_snapshot=True, after=True):
+def vlm_decorator(vlm_snapshot=True, after=True, position=None):
+    """
+    Decorator to wrap Bluesky plans with a VLM snapshots. This
+    decorator must be called within an already open run.
+
+    Parameters
+    ----------
+    vlm_snapshot : bool, optional
+        Flag to enable the VLM snapshots before and after a
+        Bluesky plan. True by default.
+    after : bool, optional
+        Flag to enable the VLM snapshot after a Bluesky plan.
+        True by default.
+    position : iterable : optional
+        Iterable of motors and positions used to align the
+        sample for each snapshot. Example: (xmotor, xposition,
+        ymotor, yposition, ...). None by default and the 
+        snapshot will occur without any moves.
+
+    Example
+    -------
+    >>> def custom_plan(detector,
+    >>>                 vlm_snapshot=True):    
+
+    >>>    @stage_decorator([detector])
+    >>>    @run_decorator(md={})
+    >>>    @vlm_decorator(vlm_snapshot,
+    >>>                   after=True,
+    >>>                   position=(high_res_stage.x, 0,
+    >>>                             high_res_stage.y, 0))
+    >>>    def plan():
+    >>>        yield from bps.trigger_and_read(detector)
+
+    >>>    return (yield from plan())
+
+    """
     def inner_decorator(func):
         @functools.wraps(func)
         def func_with_snapshot(*args, **kwargs):
             if vlm_snapshot:
+                if position is not None:
+                    yield from mv(*position)
+
                 yield from _camera_snapshot([nano_vlm])
                 yield from func(*args, **kwargs)
                 if after:
+                    if position is not None:
+                        yield from mv(*position)
                     yield from _camera_snapshot([nano_vlm])
             else:
                 yield from func(*args, **kwargs)

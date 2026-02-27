@@ -271,7 +271,6 @@ class ZebraPulse(Device):
                          read_attrs=read_attrs, parent=parent, **kwargs)
 
 
-
 class SRXZebra(Zebra):
     """
     SRX Zebra device.
@@ -492,7 +491,7 @@ class SRXFlyer1Axis(Device):
         read_path = formatter(f'{self.root_path}{self.read_path_template}')
         return filename, read_path, write_path
 
-    KNOWN_DETS = {"xs", "xs2", "xs4", "merlin", "dexela"}
+    KNOWN_DETS = {"xs", "xs2", "xs4", "merlin", "dexela", "eiger"}
     fast_axis = Cpt(Signal, value="HOR", kind="config")
     slow_axis = Cpt(Signal, value="VER", kind="config")
     mode = Cpt(Signal, value='position', kind='config')
@@ -767,9 +766,11 @@ class SRXFlyer1Axis(Device):
         v = pxsize / dwell
 
         if mode == 'position':
-            if 'dexela' in [d.name for d in self.detectors]:
+            if ('dexela' in [d.name for d in self.detectors]
+                or 'eiger' in [d.name for d in self.detectors]):
                 decrement = (pxsize / dwell) * 0.001
-                decrement = np.max([decrement, 0.001])
+                decrement = np.max([decrement, 0.01])
+                print(f'position decrement {decrement}')
             else:
                 if dwell > 0.099:
                     decrement = (pxsize / dwell) * 0.001
@@ -780,9 +781,12 @@ class SRXFlyer1Axis(Device):
             if decrement < 1e-5:
                 print('Warning: Changing the pulse width!')
                 decrement = 1e-5
+        # Units in seconds
         elif mode == 'time':
-            if 'dexela' in [d.name for d in self.detectors]:
-                decrement = 0.001
+            if ('dexela' in [d.name for d in self.detectors]
+                or 'eiger' in [d.name for d in self.detectors]):
+                decrement = 0.01
+                # print(f'time decrement {decrement}')
             else:
                 decrement = 0.0002
             # decrement = 0.0002

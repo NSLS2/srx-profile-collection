@@ -27,6 +27,8 @@ from tqdm import tqdm
 import os
 import uuid
 import h5py
+import sys
+import inspect
 import numpy as np
 import time as ttime
 import matplotlib.pyplot as plt
@@ -43,7 +45,6 @@ from bluesky.preprocessors import (stage_decorator,
 import bluesky.plan_stubs as bps
 from bluesky.plan_stubs import (kickoff, collect,
                                 complete, abs_set, mv, checkpoint)
-from bluesky.plans import (scan, )
 from bluesky.callbacks import CallbackBase, LiveGrid
 
 from hxntools.handlers import register
@@ -94,15 +95,35 @@ def toc(t0, str='', log_file=None):
             f.write(s)
 
 
+# Define functions where step_checks will raise an error and cancel a plan
+# _fly_scan_funcs = [fname for fname, func in inspect.getmembers(sys.modules[__name__], inspect.isfunction)]
+_step_check_funcs = ['scan_and_fly_base',
+                     'nano_scan_and_fly',
+                     'nano_y_scan_and_fly',
+                     'coarse_scan_and_fly',
+                     'coarse_y_scan_and_fly',
+                     'xrf_map',
+                     'xrf_map2',
+                     'rel_xrf_map2',
+                     'nano_knife_edge',
+                     'flying_angle_rocking_curve',
+                     'relative_flying_angle_rocking_curve']
+
 
 # changed the flyer device to be aware of fast vs slow axis in a 2D scan
 # should abstract this method to use fast and slow axes, rather than x and y
-def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell, *,
+@append_srx_kwargs_md
+def scan_and_fly_base(detectors,
+                      xstart, xstop, xnum,
+                      ystart, ystop, ynum,
+                      dwell, *,
                       flying_zebra, xmotor, ymotor,
                       delta=None, shutter=True, plot=True,
-                      md=None, snake=False,
-                      vlm_snapshot=False, snapshot_after=False,
-                      N_dark=10, verbose=False):
+                      md=None,
+                      snake=False,
+                      vlm_snapshot=True, N_dark=10,
+                      step_check=True,
+                      verbose=False):
     """Read IO from SIS3820.
     Zebra buffers x(t) points as a flyer.
     Xpress3 is our detector.
@@ -153,6 +174,8 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
     # Check for negative number of points
     if (xnum < 1 or ynum < 1):
         raise ValueError('Number of points must be positive!')
+    if xnum == 1:
+        raise ValueError('Cannot fly through a pixel size of zero!')
 
     # Get the scan speed
     v = ((xstop - xstart) / (xnum - 1)) / dwell  # compute "stage speed"
@@ -165,11 +188,35 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
     else:
         xmotor.stage_sigs[xmotor.velocity] = v
 
-    # Set metadata
-    if md is None:
-        md = {}
-    md = get_stock_md(md)
-
+    # Check for reasonable step sizes
+    xstep, ystep = 0, 0
+    if xnum != 1:
+        xstep = np.abs((xstop - xstart) / (xnum - 1))
+    if ynum != 1:
+        ystep = np.abs((ystop - ystart) / (ynum - 1))
+    reasonable_steps = {0, 1, 1.25, 2, 2.5, 3, 4, 5, 6, 7, 7.5, 8, 9}
+    step_err = []
+    for step, motor in ([xstep, xmotor], [ystep, ymotor]):
+        if verbose:
+            print(f'Step size of {step} {motor.motor_egu.get()} for {motor.name}.')
+        if (step not in reasonable_steps
+            and np.round(step * 1e-1, 5) not in reasonable_steps
+            and np.round(step * 1e-2, 5) not in reasonable_steps
+            and np.round(step * 1e1, 5) not in reasonable_steps
+            and np.round(step * 1e2, 5) not in reasonable_steps):
+            step_err.append((f'Calculated step size of {step:.5f} {motor.motor_egu.get()} '
+                             + f'for motor {motor.name} does not seem reasonable.'))
+    if step_check and len(step_err) > 0:
+        step_err.insert(0, 'Suspected unreasonable step size')
+        step_err.append(f'Reasonable step sizes are as follows multiplied by a power of 10:\n\t{reasonable_steps}')
+        step_err.append("Adjust number of points to achieve a reasonable step size or"
+                        + " set the 'step_check' keyword argument to False.")
+        # There may be more robust ways of finding the highest level plan name
+        if RE._plan.__name__ in _step_check_funcs:
+            raise ValueError('\n'.join(step_err))
+        else:
+            print('\n'.join(step_err))
+    
     # Set xs.mode to fly.
     for det in detectors:
         if isinstance(det, CommunitySrxXspress3Detector):
@@ -179,7 +226,6 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
     flying_zebra.detectors = detectors
     # Setup detectors, combine the zebra, sclr, and the just set detector list
     detectors = (flying_zebra.encoder, flying_zebra.sclr) + flying_zebra.detectors
-
     dets_by_name = {d.name : d
                     for d in detectors}
     setup_xrd_dets(detectors, dwell, xnum)
@@ -199,10 +245,45 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
     row_start = xstart - delta - (pxsize / 2)
     row_stop = xstop + delta + (pxsize / 2)
 
+    # Check motor limits
+    limit_err = []
+    xlow, _, _, xhigh = sorted([row_start, row_stop, xstart, xstop])
+    ylow, yhigh = sorted([ystart, ystop])
+    if xlow < xmotor.low_limit: # For low to high flying
+        if row_start == xlow:
+            limit_err.append((f'Flying axis motor {xmotor.name} row start value of {row_start} exceeds motor limits.'
+                            + f'\nDifference with specified start value of {xstart} is {row_start - xstart:.3f}.'))
+        elif row_stop == xlow:
+            limit_err.append((f'Flying axis motor {xmotor.name} row stop value of {row_stop} exceeds motor limits.'
+                            + f'\nDifference with specified stop value of {xstop} is {row_stop - xstop:.3f}.'))       
+        else:
+            limit_err.append(f'Flying axis motor {xmotor.name} value of {xlow} exceeds motor limits.')
+    if xhigh > xmotor.high_limit: # For high to low flying
+        if row_start == xhigh:
+            limit_err.append((f'Flying axis motor {xmotor.name} row start value of {row_start} exceeds motor limits.'
+                            + f'\nDifference with specified start value of {xstart} is {row_start - xstart:.3f}.'))
+        elif row_stop == xhigh:
+            limit_err.append((f'Flying axis motor {xmotor.name} row stop value of {row_stop} exceeds motor limits.'
+                            + f'\nDifference with specified stop value of {xstop} is {row_stop - xstop:.3f}.')) 
+        else:
+            limit_err.append(f'Flying axis motor {xmotor.name} value of {xhigh} exceeds motor limits.')             
+    if ylow < ymotor.low_limit: # Simple comparison
+        limit_err.append(f'Slow axis motor {ymotor.name} value of {ylow} exceeds motor limits.')
+    if yhigh > ymotor.high_limit: # Simple comparison
+        limit_err.append(f'Slow axis motor {ymotor.name} value of {yhigh} exceeds motor limits.')
+
+    if len(limit_err) > 0:
+        limit_err.insert(0, 'Stage Limit Error')
+        limit_err.append('Adjust the scan range to fit within the motor limits.')
+        limit_err.append(f'\t{xmotor.name} limits: ({xmotor.low_limit}, {xmotor.high_limit})')
+        limit_err.append(f'\t{ymotor.name} limits: ({ymotor.low_limit}, {ymotor.high_limit})')
+        raise ValueError('\n'.join(limit_err))
+
     # Scan metadata
-    md['scan']['type'] = 'XRF_FLY'
+    md = get_stock_md(md)
+    if 'type' not in md['scan']:
+        md['scan']['type'] = 'XRF_FLY'
     md['scan']['scan_input'] = [xstart, xstop, xnum, ystart, ystop, ynum, dwell]
-    md['scan']['sample_name'] = ''
     # md['scan']['detectors'] = [d.name for d in detectors]
     md['scan']['dwell'] = dwell
     md['scan']['fast_axis'] = {'motor_name' : xmotor.name,
@@ -316,12 +397,12 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
                 accel_time += delta_const
 
             st = yield from kickoff(flying_zebra,
-                                   xstart=_row_start,
-                                   xstop=_row_stop,
-                                   xnum=xnum,
-                                   dwell=dwell,
-                                   tacc=accel_time,
-                                   wait=True)
+                                    xstart=_row_start,
+                                    xstop=_row_stop,
+                                    xnum=xnum,
+                                    dwell=dwell,
+                                    tacc=accel_time,
+                                    wait=True)
             st.wait(timeout=10)
         try:
             if verbose:
@@ -366,18 +447,19 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
                                   log_file=log_file)
                                 )
             ## TODO: Make sure we trigger and wait for dexela first, and then trigger the zebra last
-            if d.name == 'dexela':
-                if verbose:
-                    print("    sleeping for dexela...")
+            if d.name == 'dexela' or d.name == "eiger":
                 state = 0
-                print(f"    [{print_now()}] Dexela is waking up...  ")
+                if verbose:
+                    print(f"    [{print_now()}] {d.name} is waking up...  ")
                 while state == 0:
                     yield from bps.sleep(0.1)
                     state = d.cam.detector_state.get()
                     # print(f"    Dexela is idle!")
-                # yield from bps.sleep(0.1)
-                yield from bps.sleep(0.3) # EJM quick fix 20250714
-                print(f"    [{print_now()}] awake!")
+                yield from bps.sleep(0.1)
+                # yield from bps.sleep(0.3) # EJM quick fix 20250714
+                if verbose:
+                    print(f"    [{print_now()}] awake!")
+        yield from bps.sleep(0.1)
 
         # Creating one status object to rule them all
         all_st = st_list[0]
@@ -455,10 +537,10 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
             # t0_st_xs = ttime.time()
             # st_xs.wait(timeout=xnum*dwell + 20)
             # print(f"{ttime.time()-t0_st_xs}")
-            # print('Waiting for all_st...', end="")
+            print('Waiting for all_st...', end="")
             t0_st_xs = ttime.time()
             all_st.wait(timeout=xnum*dwell + 20)
-            # print(f"{ttime.time()-t0_st_xs}")
+            print(f"{ttime.time()-t0_st_xs}")
             # xs.hdf5.capture.set("Done")
             # while True:
             #     # print("in while loop!")
@@ -562,17 +644,8 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
             toc(0, str='timing unstage', log_file=log_file)
 
     def at_scan(name, doc):
-        scanrecord.current_scan.put(doc['uid'][:6])
-        scanrecord.current_scan_id.put(str(doc['scan_id']))
-        scanrecord.current_type.put(md['scan']['type'])
-        scanrecord.scanning.put(True)
-        scanrecord.time_remaining.put((dwell*xnum + 3.8)/3600)
-
-    def finalize_scan(name, doc):
-        # logscan_detailed('XRF_FLY')
-        scanrecord.scanning.put(False)
-        scanrecord.time_remaining.put(0)
-
+        scanrecord.time_remaining.put((dwell * xnum + 3.8)/3600)
+        scanrecord.time_rem_str.put(time_rem_convert(dwell * xnum + 3.8))
 
     # TODO remove this eventually?
     # xs = dets_by_name['xs']
@@ -581,7 +654,8 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
     # xs could be xs, xs2, xs4 ...
     xs = dets_by_name[flying_zebra.detectors[0].name]
 
-    yield from mv(get_me_the_cam(xs).erase, 0)  # Changed to use helper function
+    yield from mov(get_me_the_cam(xs).erase, 0)  # Changed to use helper function
+    yield from mov(eiger.cam.array_counter, 0)
 
     if plot:
         if (ynum == 1):
@@ -610,12 +684,12 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
 
     @subs_decorator(livepopup)
     @subs_decorator({'start': at_scan})
-    @subs_decorator({'stop': finalize_scan})
     @ts_monitor_during_decorator([roi_pv])
     # @monitor_during_decorator([roi_pv])
     @stage_decorator([flying_zebra])  # Below, 'scan' stage ymotor.
     @run_decorator(md=md)
-    @vlm_decorator(vlm_snapshot, after=snapshot_after)
+    @vlm_decorator(vlm_snapshot, after=True, position=(xmotor, (xstop + xstart) / 2,
+                                                       ymotor, (ystop + ystart) / 2))
     @dark_decorator(detectors, N_dark=N_dark, shutter=shutter)    
     def plan():
         if verbose:
@@ -640,6 +714,8 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
             yield from abs_set(scanrecord.time_remaining,
                                (ynum - ystep) * ( dwell * xnum + 3.8 ) / 3600.,
                                timeout=10)
+            yield from abs_set(scanrecord.time_rem_str, time_rem_convert(
+                               (ynum - ystep) * (dwell * xnum + 3.8)), timeout=10)
             # 'arm' the all of the detectors for outputting fly data
             for d in flying_zebra.detectors:
                 yield from bps.mov(d.fly_next, True)
@@ -689,18 +765,20 @@ def scan_and_fly_base(detectors, xstart, xstop, xnum, ystart, ystop, ynum, dwell
                            ion.count_mode, 1)
         if xs2 in flying_zebra.detectors:
             yield from bps.mov(xs2.external_trig, False)
-        # yield from mv(nano_stage.sx, 0, nano_stage.sy, 0, nano_stage.sz, 0)
+    
+    # Safe finalize plan
+    def finalize_plan():
+        if shutter:
+            yield from check_shutters(shutter, 'Close')
+        scanrecord.scanning.put(False)
+        scanrecord.time_remaining.put(0)
+        scanrecord.time_rem_str.put(time_rem_convert(0))
 
     # Setup the final scan plan
-    if shutter:
-        if verbose:
-            final_plan = finalize_wrapper(plan(),
-                                          timer_wrapper(check_shutters, shutter, 'Close', log_file=log_file))
-        else:
-            final_plan = finalize_wrapper(plan(),
-                                          check_shutters(shutter, 'Close'))
+    if verbose:
+        final_plan = finalize_wrapper(plan(), timer_wrapper(finalize_plan, log_file=log_file))
     else:
-        final_plan = plan()
+        final_plan = finalize_wrapper(plan(), finalize_plan())
 
     if verbose:
         toc(t_setup, str='Setup time', log_file=log_file)
@@ -833,7 +911,11 @@ def coarse_y_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
 def xrf_map(xstart, xstop, xnum,
             ystart, ystop, ynum, 
             dwell,
-            fly_on_y=False, resolution='nano', extra_dets=None, center=True, **kwargs):
+            fly_on_y=False,
+            resolution='nano',
+            extra_dets=None,
+            center=True,
+            **kwargs):
     """
     User-friendly alias for scan_and_fly_base function.
 
@@ -939,6 +1021,249 @@ def xrf_map(xstart, xstop, xnum,
     if center:
         yield from move_to_scanner_center(timeout=10)
 
+# New alias
+def xrf_map2(xstart, xstop, xnum,
+            ystart, ystop, ynum, 
+            dwell,
+            fly_axis='auto',
+            scan_type='auto',
+            coords='relative',
+            extra_dets=None,
+            center_scanner=True,
+            return_to_start=True,
+            **kwargs):
+    """
+    User-friendly alias for scan_and_fly_base function.
+
+    Parameters
+    ----------
+    xstart : float
+        Start position of the x-motor in motor units.
+    xstop : float
+        Stop position of the x-motor in motor units.
+    xnum : int
+        Number of pixels in the x-direction.
+    ystart : float
+        Start position of the y-motor in motor units.
+    ystop : float
+        Stop position of the y-motor in motor units.
+    ynum : int
+        Number of pixels in the y-direction.
+    dwell : float
+        Dwell time per pixel in seconds
+    step_check : bool, optional:
+        Flag to determine if the step size is checked to be reasonable.
+        True by defualt.
+    coords : {'relative', 'absolute', 'auto'}, optional
+        Determing whether input coordinates are absolute or relative.
+        'absolute' functions the same way as previous mapping functions.
+        'absolute' is used by default. 'auto' is still in development, but
+        will currently use the absolute coordinates of the scanner stages and
+        the relative coordinates of the coarse stages.
+    scan_type : {'auto', 'nano', 'coarse', 'step'}, optional
+        Determine which set of motors to use and how they are controlled. 'auto'
+        will automatically chose motors based on scan range. Less than 90 microns
+        will use the scanner stages and more than 90 microns will use the coarse
+        motors. 'nano' or 'coarse' values will force these decisions, but the scan
+        range will still need to match the appropriate motor range. 'step' will call a
+        step scan using the scanner stages. 'auto' is used by default.
+    fly_axis : {'auto', 'x', 'y'}, optional
+        Determine which set of motor is used as the flying axis. 'auto' will 
+        automatically determine the flying axis with maps of aspect ratios less than 1.2
+        flying along 'x' and greater than 1.2 aspect ratios flying along the 'y' axis.
+        The flying axis can be forced along a certain axis by selecting 'x' or 'y'
+        specifically. 'auto' is used by default.
+    extra_dets : list, optional
+        List of extra detectors to be included in addition to standard scaler and
+        fluorescence detectors (e.g., [dexela, merlin, ...]).
+        None by default.
+    center_scanner : bool, optional
+        Flag to center the scanner stages before and after mapping.
+    return_to_start : bool, optional
+        Return motors used for scanning to starting positions. True by default.
+    delta : float, optional
+        Offset on the stage start position.  If not given, derive from
+        dwell + pixel size
+    shutter : bool, optional
+        Flag to disable shutters. False by default.
+    plot : bool, optional
+        Flag to enable liveplotting. True by default.
+    md : dict, optional
+        Starting metadata for scan. Empty by default.
+    snake : bool, optional
+        Flag to snake the motor motion. False by default.
+    vlm_snapshot : bool, optional
+        Flag to enable VLM snapshots before scanning. If True, snapshot_after
+        will also function. False by default.
+    N_dark : int, optional
+        Number of dark-field images to be acquired by selected detectors if
+        they are included. Only for dexela if included in extra_dets. 10 by default.
+    verbose : bool, optional
+        Flag to control the verbosity of scan_and_fly_base.
+    """
+
+    # Staff parameters for determining 'auto' response
+    REASONABLE_SCANNER_STAGE_EXTENT = 91 # in motor units
+    REASONABLE_ASPECT_RATIO_FOR_X_FLY = 1.2 # y-range / x-range
+
+    # Record default motors in (x, y)
+    fine_motors = (nano_stage.sx, nano_stage.sy)
+    coarse_motors = (nano_stage.x, nano_stage.y)
+
+    # Parse inputs. Also ensures they are strings
+    scan_type = scan_type.lower()
+    fly_axis = fly_axis.lower()
+
+    # Determine scan parameters
+    x_range = float(np.abs(xstop - xstart))
+    y_range = float(np.abs(ystop - ystart))
+
+    if coords == 'coarse' and scan_type == 'auto':
+        raise ValueError("'scan_type' cannot be 'auto' when using coarse coodinates.")
+
+    # Function to make coords relative
+    def get_coords(start, stop, motor):
+        if 'rel' in coords:
+            pos = motor.user_setpoint.get() # nominal values
+            return start + pos, stop + pos
+        elif 'abs' in coords:
+            return start, stop
+        elif 'auto' in coords:
+            if motor in fine_motors:
+                return start, stop
+            else:
+                pos = motor.user_setpoint.get() # nominal values
+                return start + pos, stop + pos
+        else:
+            err_str = (f"Unknown coords argument {coords}. "
+                       + "Only 'relative', 'absolute', and 'auto' are accepted.")
+            raise ValueError(err_str)
+
+    # Determine scan type
+    if scan_type == 'step':
+        resolution = 'step'
+        xstart, xstop = get_coords(xstart, xstop, fine_motors[0])
+        ystart, ystop = get_coords(ystart, ystop, fine_motors[1])
+        pos_start = [motor.user_setpoint.get() for motor in fine_motors]
+        def inner_map():
+            yield from nano_xrf(xstart, xstop, xnum,
+                                ystart, ystop, ynum,
+                                dwell,
+                                extra_dets=extra_dets,
+                                xmotor=fine_motors[0],
+                                ymotor=fine_motors[1]
+                                **kwargs)
+    elif scan_type == 'auto':
+        if max([x_range, y_range]) <= REASONABLE_SCANNER_STAGE_EXTENT:
+            resolution = 'nano'
+        else:
+            # Potential dangers zone with absolute coarse coodinates
+            resolution = 'coarse'
+    elif scan_type == 'nano':
+        resolution = 'nano'
+    elif scan_type == 'coarse':
+        resolution = 'coarse'
+    else:
+        err_str = f'Unknown scan type of {scan_type}.'
+        err_str += " Only {'auto', 'nano', 'coarse', 'step'} types are accepted."
+        raise ValueError(err_str)
+    
+    # Determine flying axis
+    if fly_axis == 'auto':
+        if xnum == 1 or ynum / xnum > REASONABLE_ASPECT_RATIO_FOR_X_FLY:
+            fly_on_y = True
+        else:
+            fly_on_y = False
+    elif fly_axis == 'x':
+        fly_on_y = False
+    elif fly_axis == 'y':
+        fly_on_y = True
+    else:
+        err_str = f'Unknown flying axis of {fly_axis}.'
+        err_str += " Only {'auto', 'x', 'y'} axes are accepted."
+        raise ValueError(err_str)
+
+    # Determine motors for fly scanning
+    if resolution == 'nano':
+        kwargs.setdefault('flying_zebra', nano_flying_zebra)
+        xstart, xstop = get_coords(xstart, xstop, fine_motors[0])
+        ystart, ystop = get_coords(ystart, ystop, fine_motors[1])
+        pos_start = [motor.user_setpoint.get() for motor in fine_motors]
+        if fly_on_y:
+            fly_start, fly_stop, fly_num = ystart, ystop, ynum
+            step_start, step_stop, step_num = xstart, xstop, xnum
+            kwargs['xmotor'] = fine_motors[1]
+            kwargs['ymotor'] = fine_motors[0]
+            yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOVER', wait=True)
+            yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOHOR')
+        else:
+            fly_start, fly_stop, fly_num = xstart, xstop, xnum
+            step_start, step_stop, step_num = ystart, ystop, ynum
+            kwargs['xmotor'] = fine_motors[0]
+            kwargs['ymotor'] = fine_motors[1]
+            yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR', wait=True)
+            yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOVER')
+    elif resolution == 'coarse':
+        kwargs.setdefault('flying_zebra', nano_flying_zebra_coarse)
+        xstart, xstop = get_coords(xstart, xstop, coarse_motors[0])
+        ystart, ystop = get_coords(ystart, ystop, coarse_motors[1])
+        pos_start = [motor.user_setpoint.get() for motor in coarse_motors]
+        if fly_on_y:
+            fly_start, fly_stop, fly_num = ystart, ystop, ynum
+            step_start, step_stop, step_num = xstart, xstop, xnum
+            kwargs['xmotor'] = coarse_motors[1]
+            kwargs['ymotor'] = coarse_motors[0]
+            yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOVER')
+            yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOHOR')
+        else:
+            fly_start, fly_stop, fly_num = xstart, xstop, xnum
+            step_start, step_stop, step_num = ystart, ystop, ynum
+            kwargs['xmotor'] = coarse_motors[0]
+            kwargs['ymotor'] = coarse_motors[1]
+            yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR')
+            yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOVER')
+    
+    if scan_type != 'step':    
+        # Determine detectors
+        _xs = kwargs.pop('xs', xs)
+        if extra_dets is None:
+            extra_dets = []
+        dets = [_xs] + extra_dets
+
+        def inner_map():
+            yield from scan_and_fly_base(dets,
+                                         fly_start, fly_stop, fly_num,
+                                         step_start, step_stop, step_num, dwell,
+                                         **kwargs)
+            
+    def centered_map():
+        if center_scanner and resolution == 'coarse':
+        # if center_scanner:
+            yield from move_to_scanner_center(timeout=10)
+        yield from inner_map()
+        if center_scanner and resolution == 'coarse':
+        # if center_scanner:
+            yield from move_to_scanner_center(timeout=10)
+    
+    def move_to_start():
+        # Move motors back to start for repeatability
+        if return_to_start:
+            if resolution in ['step', 'nano']:
+                # yield from mv(*zip(fine_motors, pos_start))
+                yield from mv(*[m for p in zip(fine_motors, pos_start) for m in p], timeout=10)
+            elif resolution in ['coarse']:
+                # yield from mv(*zip(coarse_motors, pos_start))
+                yield from mv(*[m for p in zip(coarse_motors, pos_start) for m in p], timeout=10)
+    
+    final_plan = finalize_wrapper(centered_map(),
+                                  move_to_start())
+
+    return (yield from final_plan)
+
+
+def rel_xrf_map2(*args, **kwargs):
+    kwargs.setdefault('coords', 'relative')
+    yield from xrf_map2(*args, **kwargs)
 
 
 # This class is not used in this file

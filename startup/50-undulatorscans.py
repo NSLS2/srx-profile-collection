@@ -29,7 +29,7 @@ def bpmAD_exposuretime_adjust():
 def undulator_calibration(
     outfile=None,
     UCalibDir='/home/xf05id1/',
-    u_gap_start=6500,
+    u_gap_start=6400,
     u_gap_end=12000,
     u_gap_step=500,
     harmonic=3,
@@ -68,6 +68,8 @@ def undulator_calibration(
         # Look up the energy from the previous lookup table
         # Right now, the lookup table is in mm, not um!
         # A new lookup table should be created with the correct units
+        if u_gap_setpoint < 6405:
+            u_gap_setpoint = 6405
         energy_setpoint = (float(energy.utoelookup(u_gap_setpoint / 1000))
                            * harmonic)
         print('Move u_gap to:\t', u_gap_setpoint)

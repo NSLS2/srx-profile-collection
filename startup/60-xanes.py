@@ -9,7 +9,6 @@ import time as ttime
 import matplotlib.pyplot as plt
 
 import bluesky.plans as bp
-from bluesky.plans import list_scan
 import bluesky.plan_stubs as bps
 from bluesky.plan_stubs import mv
 from bluesky.preprocessors import (finalize_wrapper, subs_wrapper)
@@ -26,19 +25,28 @@ from ophyd.sim import NullStatus
 # warnings.filterwarnings(action="ignore", message="MSG_SIZE_TOO_LARGE")
 
 
+@append_srx_kwargs_md
 @parameter_annotation_decorator({
     "parameters": {
         "det_xs": {"default": "'xs'"},
     }
 })
-def xanes_plan(erange=[], estep=[], acqtime=1., samplename='',
-               det_xs=xs, harmonic=1, detune=0, align=False, align_at=None,
-               roinum=1, shutter=True, per_step=None, reverse=False,
-               vlm_snapshot=False, snapshot_after=False):
+def xanes_plan(erange=[], estep=[], dwell=1.,
+               md=None,
+               det_xs=xs,
+               harmonic=1,
+               detune=0,
+               align=False,
+               align_at=None,
+               roinum=1,
+               shutter=True,
+               per_step=None,
+               reverse=False,
+               vlm_snapshot=True):
     '''
     erange (list of floats): energy ranges for XANES in eV, e.g. erange = [7112-50, 7112-20, 7112+50, 7112+120]
     estep  (list of floats): energy step size for each energy range in eV, e.g. estep = [2, 1, 5]
-    acqtime (float): acqusition time to be set for both xspress3 and preamplifier
+    dwell (float): acqusition time to be set for both xspress3 and preamplifier
     samplename (string): sample name to be saved in the scan metadata
 
     det_xs (xs3 detector): the xs3 detector used for the measurement
@@ -94,29 +102,22 @@ def xanes_plan(erange=[], estep=[], acqtime=1., samplename='',
     det = [ring_current, sclr1, det_xs]
     # Setup xspress3
     yield from abs_set(det_xs.external_trig, False)
-    yield from abs_set(get_me_the_cam(det_xs).acquire_time, acqtime)
+    yield from abs_set(get_me_the_cam(det_xs).acquire_time, dwell)
     yield from abs_set(det_xs.total_points, len(ept))
 
     # Record relevant meta data in the Start document, defined in 90-usersetup.py
     # Add user meta data
-    scan_md = {}
-    get_stock_md(scan_md)
-    scan_md['scan']['sample_name'] = samplename
-    scan_md['scan']['type'] = 'XAS_STEP'
-    scan_md['scan']['ROI'] = roinum
-    scan_md['scan']['dwell'] = acqtime
-    # scan_md['scaninfo'] = {'type' : 'XANES',
-    #                        'ROI' : roinum,
-    #                        'raster' : False,
-    #                        'dwell' : acqtime}
-    scan_md['scan']['scan_input'] = str(np.around(erange, 2)) + ', ' + str(np.around(estep, 2))
-    # scan_md['scan']['energy'] = ept
+    md = get_stock_md(md)
+    md['scan']['type'] = 'XAS_STEP'
+    md['scan']['ROI'] = roinum
+    md['scan']['dwell'] = dwell
+    md['scan']['scan_input'] = str(np.around(erange, 2)) + ', ' + str(np.around(estep, 2))
     md_dets = list(det)
     if vlm_snapshot:
         md_dets = md_dets + [nano_vlm]
-    get_det_md(scan_md, md_dets)
+    get_det_md(md, md_dets)
     # Fix for the exporter
-    scan_md['detectors'] = [det.name for det in md_dets]
+    md['detectors'] = [det.name for det in md_dets]
 
     # Setup the scaler
     # TODO: Is there a better way to consider this?
@@ -124,7 +125,7 @@ def xanes_plan(erange=[], estep=[], acqtime=1., samplename='',
     # This will get the desired result but is there a time when
     # using stage_sigs is correct/better
     sclr1.stage_sigs.pop('preset_time', None)
-    yield from abs_set(sclr1.preset_time, acqtime)
+    yield from abs_set(sclr1.preset_time, dwell)
 
     # Setup DCM/energy options
     if (harmonic != 1):
@@ -175,8 +176,13 @@ def xanes_plan(erange=[], estep=[], acqtime=1., samplename='',
             if (doc[0] == "event_page"):
                 if ('seq_num' in doc.keys()):
                     scanrecord.time_remaining.put((doc['time'] - st) / doc['seq_num'] *
-                                              (len(ept) - doc['seq_num']) / 3600)
-        except Exception:
+                                                  (len(ept) - doc['seq_num']) / 3600)
+                    scan_record.time_rem_str.put(convert_time_str(
+                        ((doc['time'] - st) / doc['seq_num']) * # average time per point
+                        (len(ept) - doc['seq_num']) # remaining number of points
+                    ))
+        except Exception as e:
+            # print(f'Exception encountered in time_per_point function.\n{e}')
             pass
 
     livetableitem.append(roi_key[0])
@@ -211,10 +217,9 @@ def xanes_plan(erange=[], estep=[], acqtime=1., samplename='',
 
 
     def at_scan(name, doc):
-        scanrecord.current_scan.put(doc['uid'][:6])
-        scanrecord.current_scan_id.put(str(doc['scan_id']))
-        scanrecord.current_type.put(scan_md['scan']['type'])
-        scanrecord.scanning.put(True)
+        scanrecord.time_rem_str.put(time_rem_convert(
+            len(ept) * (dwell + 2) # Some overhead for estimate
+        ))
 
 
     def finalize_scan():
@@ -226,17 +231,18 @@ def xanes_plan(erange=[], estep=[], acqtime=1., samplename='',
         if (detune is not None):
             yield from abs_set(energy.detune, 0)
         scanrecord.scanning.put(False)
+        scanrecord.time_rem_str.put(time_rem_convert(0))
 
 
     energy.move(ept[0])
 
     # Adding vlm options to modified list scan
-    @run_decorator(md=scan_md)
-    @vlm_decorator(vlm_snapshot, after=snapshot_after)
+    @run_decorator(md=md)
+    @vlm_decorator(vlm_snapshot, after=True)
     def myscan():
         yield from mod_list_scan(det, energy, list(ept), per_step=per_step, run_agnostic=True)
 
-    # myscan = mod_list_scan(det, energy, list(ept), per_step=per_step, md=scan_md)
+    # myscan = mod_list_scan(det, energy, list(ept), per_step=per_step, md=md)
     # myscan must be called to return the generators
     myscan = finalize_wrapper(myscan(), finalize_scan)
 
@@ -244,13 +250,13 @@ def xanes_plan(erange=[], estep=[], acqtime=1., samplename='',
     yield from check_shutters(shutter, 'Open')
 
     return (yield from subs_wrapper(myscan, {'all' : livecallbacks,
-                                               'start' : at_scan}))
+                                             'start' : at_scan}))
 
 # Alias
 xas_step = xanes_plan
 
 
-def xanes_batch_plan(xypos=[], erange=[], estep=[], acqtime=1.0,
+def xanes_batch_plan(xypos=[], erange=[], estep=[], dwell=1.0,
                      repeat_point=1, waittime=10, peakup_N=2, peakup_E=None):
     """
     Setup a batch XANES scan at multiple points.
@@ -264,7 +270,7 @@ def xanes_batch_plan(xypos=[], erange=[], estep=[], acqtime=1.0,
                         similar to a typical xanes_plan
     estep       <list>  A list of energy steps to send to the XANES plan
                         similar to a typical xanes_plan
-    acqtime     <float> Acquisition time for each data point.
+    dwell     <float> Acquisition time for each data point.
     repeat_point<int>   Repeat a particular point N times
     peakup_N    <int>   Run a peakup every peakup_N scans. Default is no peakup
     peakup_E    <float> The energy to run peakup at. Default is current energy
@@ -312,7 +318,7 @@ def xanes_batch_plan(xypos=[], erange=[], estep=[], acqtime=1.0,
         # Run the energy scan
         for j in range(repeat_point):
             print(f"Scan {i+1}/{repeat_point}...")
-            yield from xanes_plan(erange=erange, estep=estep, acqtime=acqtime)
+            yield from xanes_plan(erange=erange, estep=estep, dwell=dwell)
 
         # Wait
         if (i != (N-1)):
@@ -320,7 +326,7 @@ def xanes_batch_plan(xypos=[], erange=[], estep=[], acqtime=1.0,
             yield from bps.sleep(waittime)
 
 
-def hfxanes_ioc(erange=[], estep=[], acqtime=1.0, samplename='', filename='',
+def hfxanes_ioc(erange=[], estep=[], dwell=1.0, samplename='', filename='',
                 harmonic=1, detune=0, align=False, align_at=None,
                 roinum=1, shutter=True, per_step=None, waittime=0):
     '''
@@ -353,9 +359,9 @@ def hfxanes_ioc(erange=[], estep=[], acqtime=1.0, samplename='', filename='',
             # Move stages to the next point
             yield from mv(hf_stage.x, xstart,
                           hf_stage.y, ystart)
-            acqtime = thisscan.acq.get()
+            dwell = thisscan.acq.get()
 
-            hfxanes_gen = yield from xanes_plan(erange=erange, estep=estep, acqtime=thisscan.acq.get(),
+            hfxanes_gen = yield from xanes_plan(erange=erange, estep=estep, dwell=thisscan.acq.get(),
                                                 samplename=thisscan.sampname.get(), filename=thisscan.filename.get(),
                                                 roinum=int(thisscan.roi.get()), detune=thisscan.detune.get(), shutter=shutter)
             if (len(scanlist) != 0):
@@ -1296,6 +1302,7 @@ def flying_xas(num_passes=1, shutter=True, md=None):
     yield from check_shutters(shutter, 'Close')
 
 
+@append_srx_kwargs_md
 @parameter_annotation_decorator({
     "parameters": {
         "flyers": {"default": "['flyer_id_mono']"},
@@ -1303,7 +1310,8 @@ def flying_xas(num_passes=1, shutter=True, md=None):
 })
 def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
                         num_scans=1, scan_type='uni', shutter=True, plot=False,
-                        flyers=[flyer_id_mono], harmonic=1, roi_num=1, md=None):
+                        flyers=[flyer_id_mono], harmonic=1, roi_num=1,
+                        vlm_snapshot=True, md=None):
     """This is a modified version of bp.fly to support multiple passes of the flyer."""
     flyer_id_mono.flying_dev.parameters.first_trigger.put(e_start)
     flyer_id_mono.flying_dev.parameters.last_trigger.put(e_stop)
@@ -1347,8 +1355,6 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
     # set harmonic
     flyer_id_mono.flying_dev.parameters.harmonic.put(harmonic)
 
-    if md is None:
-        md = {}
     md = get_stock_md(md)
     md['scan']['type'] = 'XAS_FLY'
     # md['scan']['energy'] = list(np.linspace(e_start, e_stop, num=num_pts))
@@ -1397,39 +1403,76 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
     @subs_decorator(livepopup)
     @ts_monitor_during_decorator([roi_pv])
     def plan():
-        # yield from check_shutters(shutter, 'Open')
-        uid = yield from bps.open_run(md)
-        yield from mv(sclr1.count_mode, 0)
-        yield from mv(energy, e_start)
-        # Wait for scaler to be "done"
-        yield from bps.sleep(2)  # TODO: THIS SHOULD BE SMARTER!
-        yield from bps.mov(sclr1.erase_all, 1)
-        # print(f"Kickoff: {flyers}")
-        for flyer in flyers:
-            # print(f"  Kicking off {flyer}...")
-            flyer.pulse_width = dwell
-            yield from bps.mv(flyer.flying_dev.parameters.num_scans, num_scans)
-            yield from bps.kickoff(flyer, wait=True)
-        for n in range(num_scans):
-            print(f"\n\n*** {print_now()} Iteration #{n+1} ***\n")
-            yield from bps.checkpoint()
-            if shutter is True:
-                yield from abs_set(shut_d.request_open, 1, wait=True, timeout=2)
-            # flyer_id_mono.scaler.erase_start.put(1)
+        # # yield from check_shutters(shutter, 'Open')
+        # uid = yield from bps.open_run(md)
+        # yield from mv(sclr1.count_mode, 0)
+        # yield from mv(energy, e_start)
+        # # Wait for scaler to be "done"
+        # yield from bps.sleep(2)  # TODO: THIS SHOULD BE SMARTER!
+        # yield from bps.mov(sclr1.erase_all, 1)
+        # # print(f"Kickoff: {flyers}")
+        # for flyer in flyers:
+        #     # print(f"  Kicking off {flyer}...")
+        #     flyer.pulse_width = dwell
+        #     yield from bps.mv(flyer.flying_dev.parameters.num_scans, num_scans)
+        #     yield from bps.kickoff(flyer, wait=True)
+        # for n in range(num_scans):
+        #     print(f"\n\n*** {print_now()} Iteration #{n+1} ***\n")
+        #     yield from bps.checkpoint()
+        #     if shutter is True:
+        #         yield from abs_set(shut_d.request_open, 1, wait=True, timeout=2)
+        #     # flyer_id_mono.scaler.erase_start.put(1)
+        #     for flyer in flyers:
+        #         # print(f"  {flyer.name} complete...")
+        #         yield from bps.complete(flyer, wait=True)
+        #     if shutter is True:
+        #         yield from abs_set(shut_d.request_open, 0, wait=False)
+        #     for flyer in flyers:
+        #         # print(f"  {flyer} collect...", end='', flush=True)
+        #         yield from bps.collect(flyer)
+        #         # print("done")
+        #     # This is a work around until the flyer can be rewritten
+        #     yield Msg("nuke_the_cache", flyer_id_mono)
+        # yield from check_shutters(shutter, 'Close')
+        # yield from mv(sclr1.count_mode, 1)
+        # yield from bps.close_run()
+
+        @run_decorator(md=md)
+        @vlm_decorator(vlm_snapshot, after=True)
+        def inner_plan():
+            # yield from check_shutters(shutter, 'Open')
+            yield from mv(sclr1.count_mode, 0)
+            yield from mv(energy, e_start)
+            # Wait for scaler to be "done"
+            yield from bps.sleep(2)  # TODO: THIS SHOULD BE SMARTER!
+            yield from bps.mov(sclr1.erase_all, 1)
+            # print(f"Kickoff: {flyers}")
             for flyer in flyers:
-                # print(f"  {flyer.name} complete...")
-                yield from bps.complete(flyer, wait=True)
-            if shutter is True:
-                yield from abs_set(shut_d.request_open, 0, wait=False)
-            for flyer in flyers:
-                # print(f"  {flyer} collect...", end='', flush=True)
-                yield from bps.collect(flyer)
-                # print("done")
-            # This is a work around until the flyer can be rewritten
-            yield Msg("nuke_the_cache", flyer_id_mono)
-        yield from check_shutters(shutter, 'Close')
-        yield from mv(sclr1.count_mode, 1)
-        yield from bps.close_run()
+                # print(f"  Kicking off {flyer}...")
+                flyer.pulse_width = dwell
+                yield from bps.mv(flyer.flying_dev.parameters.num_scans, num_scans)
+                yield from bps.kickoff(flyer, wait=True)
+            for n in range(num_scans):
+                print(f"\n\n*** {print_now()} Iteration #{n+1} ***\n")
+                yield from bps.checkpoint()
+                if shutter is True:
+                    yield from abs_set(shut_d.request_open, 1, wait=True, timeout=2)
+                # flyer_id_mono.scaler.erase_start.put(1)
+                for flyer in flyers:
+                    # print(f"  {flyer.name} complete...")
+                    yield from bps.complete(flyer, wait=True)
+                if shutter is True:
+                    yield from abs_set(shut_d.request_open, 0, wait=False)
+                for flyer in flyers:
+                    # print(f"  {flyer} collect...", end='', flush=True)
+                    yield from bps.collect(flyer)
+                    # print("done")
+                # This is a work around until the flyer can be rewritten
+                yield Msg("nuke_the_cache", flyer_id_mono)
+            yield from check_shutters(shutter, 'Close')
+            yield from mv(sclr1.count_mode, 1)
+
+        uid = yield from inner_plan()
         for flyer in flyers:
             # yield from bps.mv(flyer.flying_dev.control, "disable")
             st = flyer.flying_dev.control.set("disable")

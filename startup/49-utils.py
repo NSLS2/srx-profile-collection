@@ -2,7 +2,6 @@ print(f'Loading {__file__}...')
 
 
 import os
-import lmfit
 import numpy as np
 import pandas as pd
 from scipy.optimize import curve_fit
@@ -225,6 +224,77 @@ def custom_one_nd_step(detectors, step, pos_cache):
     yield from bps.sleep(1)
 
     yield from trigger_and_read(list(detectors) + list(motors))
+
+
+def append_srx_kwargs_md(func):
+    """
+    Decorator for adding keywords to a function that will be appended into the scan metadata.
+    Currently only adds the sample_name
+    """
+    @functools.wraps(func)
+    def wrapped(*args,
+                sample_name='',
+                **kwargs):
+        if 'md' in kwargs:
+            md = kwargs.pop('md')
+            if md is None:
+                md = {}
+        else:
+            md = {}
+
+        if 'scan' not in md:
+            md['scan'] = {}
+        md['scan']['sample_name'] = sample_name
+        kwargs['md'] = md
+
+        return func(*args, **kwargs)
+    return wrapped
+
+
+# TODO: TEST ME!
+# Stand-alone vlm snapshot plan
+@append_srx_kwargs_md
+def vlm_snapshot(md=None):
+
+    # Define metadata
+    md = get_stock_md(md)
+    md['detectors'] = [nano_vlm.name]
+    md['motors'] = []
+    md['plan_args'] = {}
+    md['plan_name'] = 'vlm_snapshot'
+    md['scan']['type'] = 'VLM_SNAPSHOT'
+    md['scan']['detectors'] = [nano_vlm.name]
+
+    # Define plan
+    @bpp.run_decorator(md=md)
+    def plan():
+        yield from _camera_snapshot([nano_vlm])
+
+    return (yield from plan())
+
+
+# Converts time in seconds to user-friendly string
+def time_rem_convert(time_in_sec):
+
+    time_in_min = time_in_sec / 60
+    time_in_hr = time_in_sec / 3600
+
+    if time_in_hr >= 1:
+        part_hr = int(np.floor(time_in_hr))
+        part_min = int(np.round(60 * (time_in_hr - part_hr), 0))
+        time_str = f'{part_hr} hr and {part_min} min'
+    elif time_in_min >= 1:
+        # part_min = int(np.floor(time_in_min))
+        # part_sec = int(np.round(60 * (time_in_min - part_min), 0))
+        # time_str = f'{part_min} min and {part_sec} sec'
+        part_min = int(np.round(time_in_min))
+        time_str = f'{part_min} min'
+    elif time_in_min == 0:
+        time_str = '0 min'
+    else:
+        time_str = '<1 min'
+
+    return time_str
 
 
 def preserve_positions(*positioners):
