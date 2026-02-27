@@ -900,8 +900,10 @@ def slit_nano_scan_map_cal(uid, orthogonality=False,
             ax.plot(x, y, label=np.round(jj_list[idx], 3))
 
         # Check for significant features
-        if (np.sum(y > 0) < (0.99 * len(y))
-            or np.sum(iterative_background(y, multiplier=6)) == 0):
+        if screen_line(x, y) is False:
+        # if (np.amax(y) < 0.2):
+        # if (np.sum(y > 0) < (0.99 * len(y))
+        #     or np.sum(iterative_background(y, multiplier=6)) == 0):
             # print(f'Feature not significant for row {idx}.')
             fit_mask.append(False)
             cent_list.append(np.nan)
@@ -1041,3 +1043,175 @@ def iterative_background(data, multiplier=3, max_iter=100):
         else:
             old_mask = mask
             counter += 1
+
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.signal import convolve, deconvolve
+
+
+plt.ion()
+
+
+def screen_line(x, y):
+    def norm(x, x0, y, w=1.0):
+        ymax = np.mean(y[np.abs(x-x0) < w/2])
+        ymin = np.amin(y)
+        if ymax - ymin == 0:
+            return np.zeros(y.shape)
+        return (y - ymin) / (ymax - ymin)
+
+
+    def create_line(x, x0, w=5.0):
+        return np.array((np.abs(x - x0) < w/2), dtype=int)
+
+    def RMS(x):
+        x = np.array(x)
+        N = x.shape[0]
+        return np.sqrt(np.sum(np.power(x, 2)) / N)
+
+    def test_nan(x, name):
+        if True in np.isnan(x):
+            print("NaN found!")
+            print(f"{name} = {x}")
+
+    N_pts = x.shape[0]
+    x0 = (x[0] + x[-1]) / 2
+    # fig, ax = plt.subplots(1, 2)
+    # ax[0].plot(x, y, label="Normalized XRF")
+
+    L = create_line(x, x0)
+    # ax[0].plot(x, L, label="Line 1")
+
+    d = convolve(y, L, mode="same")
+    # ax[0].plot(x, d/np.amax(d), label="Correlation")
+    # ax[0].legend()
+
+    x1 = x[np.argmax(d)]
+    d = norm(x, x1, y)
+    # ax[1].plot(x, d, label="Normalized XRF")
+    L = create_line(x, x1)
+    # ax[1].plot(x, L, label="Line 2")
+    # ax[1].legend()
+
+    std_err = RMS(d - L)
+    print(f"Standard error = {std_err}")
+    # Rose-criteria would be SNR=5
+    # if line is normalized to 1, noise must be <0.2
+    if std_err < 0.2:
+        print("Sufficient signal!")
+        return True
+    else:
+        print("Insufficient signal!")
+
+    return False
+
+    # plt.close(fig)
+    # I am lazy
+    # try:
+    #     plt.close(fig2)
+    # except:
+    #     continue
+
+def screen_knife_edge(uid_or_scanid):
+    h = c[uid_or_scanid]
+    tbl = h["stream0"]["data"]
+    start_doc = h.start
+    scan_doc = start_doc["scan"]
+
+    if scan_doc["fast_axis"]["motor_name"] == "nano_stage_sx":
+        xall = tbl["enc1"].read()
+    elif scan_doc["fast_axis"]["motor_name"] == "nano_stage_sy":
+        xall = tbl["enc2"].read()
+    else:
+        raise Exception("Unknown fast axis")
+
+    yall = tbl["xs_fluor"].read()
+    yall = np.sum(yall[:, :, :, 934:954], axis=(-2, -1))
+
+    I0all = tbl["i0"].read()
+
+    xrf = yall / I0all
+
+    def norm(x, x0, y, w=1.0):
+        ymax = np.mean(y[np.abs(x-x0) < w/2])
+        ymin = np.amin(y)
+        if ymax - ymin == 0:
+            return np.zeros(y.shape)
+        return (y - ymin) / (ymax - ymin)
+
+
+    def create_line(x, x0, w=5.0):
+        return np.array((np.abs(x - x0) < w/2), dtype=int)
+
+    def RMS(x):
+        x = np.array(x)
+        N = x.shape[0]
+        return np.sqrt(np.sum(np.power(x, 2)) / N)
+
+    def test_nan(x, name):
+        if True in np.isnan(x):
+            print("NaN found!")
+            print(f"{name} = {x}")
+
+    N_pts = scan_doc["shape"][0]
+    N_scans = scan_doc["shape"][1]
+    for i in range(N_scans):
+        x = xall[i, :]
+        test_nan(x, "x")
+        x0 = (x[0] + x[-1]) / 2
+        # test_nan(x0, "x0")
+        y = xrf[i, :]
+        test_nan(y, "y")
+
+        fig, ax = plt.subplots(1, 2)
+
+        ax[0].plot(x, y, label="Normalized XRF")
+
+        L = create_line(x, x0)
+        test_nan(L, "L1")
+        ax[0].plot(x, L, label="Line 1")
+
+        d = convolve(y, L, mode="same")
+        test_nan(d, "d_convolve")
+        ax[0].plot(x, d/np.amax(d), label="Correlation")
+        ax[0].legend()
+
+        x1 = x[np.argmax(d)]
+        # test_nan(x1, "x1")
+        d = norm(x, x1, y)
+        test_nan(d, "d_norm")
+        ax[1].plot(x, d, label="Normalized XRF")
+        L = create_line(x, x1)
+        test_nan(L, "L2")
+        ax[1].plot(x, L, label="Line 2")
+        ax[1].legend()
+
+        std_err = RMS(d - L)
+        # test_nan(std_err, "std_err")
+        print(f"Standard error = {std_err}")
+        # Rose-criteria would be SNR=5
+        # if line is normalized to 1, noise must be <0.2
+        if std_err < 0.2:
+            print("Sufficient signal!")
+            # test deconvolve
+            # Fd = np.fft.rfft(d)
+            # FL = np.fft.rfft(L)
+            # Flsf = Fd / FL
+            # lsf = np.fft.irfft(Flsf)
+            d = np.roll(d, 40)
+            L = np.roll(L[10:-10], 30)
+            lsf, _ = deconvolve(d, L)
+            lsf = np.roll(lsf, -40)
+            print(f"{lsf=}")
+            fig2, ax2 = plt.subplots()
+            ax2.plot(lsf)
+        else:
+            print("Insufficient signal!")
+
+        _ = input("waiting...")
+        plt.close(fig)
+        # I am lazy
+        try:
+            plt.close(fig2)
+        except:
+            continue
