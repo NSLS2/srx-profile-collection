@@ -468,9 +468,9 @@ class SRXEigerDetector(SingleTrigger, EigerDetector):
         data_session = RE.md["data_session"]
         cycle = RE.md["cycle"]
         if "Commissioning" in get_proposal_type():
-            root_path = f"proposals/commissioning/{data_session}/assets/eiger/"
+            root_path = f"proposals/commissioning/{data_session}/eiger/"
         else:
-            root_path = f"proposals/{cycle}/{data_session}/assets/eiger/"
+            root_path = f"proposals/{cycle}/{data_session}/eiger/"
         return root_path
 
     def path_template_str(root_path):
@@ -480,12 +480,12 @@ class SRXEigerDetector(SingleTrigger, EigerDetector):
     hdf5 = Cpt(EigerHDFWithFileStore, 'HDF1:',
                 read_attrs=[],
                 configuration_attrs=[],
-                # write_path_template=path_start + path_template_str(root_path_str()),
-                # read_path_template=path_start + path_template_str(root_path_str()),
-                # root=path_start+root_path_str()
-                write_path_template=path_start + f'proposals/commissioning/pass-318777/eiger/',
-                read_path_template=path_start + f'proposals/commissioning/pass-318777/eiger/',
-                root=path_start + f'proposals/commissioning/pass-318777/eiger/'
+                write_path_template=path_start + path_template_str(root_path_str()),
+                read_path_template=path_start + path_template_str(root_path_str()),
+                root=path_start+root_path_str()
+                # write_path_template=path_start + f'proposals/commissioning/pass-318777/eiger/',
+                # read_path_template=path_start + f'proposals/commissioning/pass-318777/eiger/',
+                # root=path_start + f'proposals/commissioning/pass-318777/eiger/'
                 )
 
     def __init__(self, prefix, *, read_attrs=None, configuration_attrs=None,

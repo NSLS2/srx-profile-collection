@@ -766,9 +766,11 @@ class SRXFlyer1Axis(Device):
         v = pxsize / dwell
 
         if mode == 'position':
-            if 'dexela' in [d.name for d in self.detectors]:
+            if ('dexela' in [d.name for d in self.detectors]
+                or 'eiger' in [d.name for d in self.detectors]):
                 decrement = (pxsize / dwell) * 0.001
-                decrement = np.max([decrement, 0.001])
+                decrement = np.max([decrement, 0.01])
+                print(f'position decrement {decrement}')
             else:
                 if dwell > 0.099:
                     decrement = (pxsize / dwell) * 0.001
@@ -781,8 +783,10 @@ class SRXFlyer1Axis(Device):
                 decrement = 1e-5
         # Units in seconds
         elif mode == 'time':
-            if 'dexela' in [d.name for d in self.detectors]:
-                decrement = 0.001
+            if ('dexela' in [d.name for d in self.detectors]
+                or 'eiger' in [d.name for d in self.detectors]):
+                decrement = 0.01
+                # print(f'time decrement {decrement}')
             else:
                 decrement = 0.0002
             # decrement = 0.0002

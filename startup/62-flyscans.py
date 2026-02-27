@@ -447,20 +447,19 @@ def scan_and_fly_base(detectors,
                                   log_file=log_file)
                                 )
             ## TODO: Make sure we trigger and wait for dexela first, and then trigger the zebra last
-            if d.name == 'dexela':
-                if verbose:
-                    print("    sleeping for dexela...")
+            if d.name == 'dexela' or d.name == "eiger":
                 state = 0
                 if verbose:
-                    print(f"    [{print_now()}] Dexela is waking up...  ")
+                    print(f"    [{print_now()}] {d.name} is waking up...  ")
                 while state == 0:
                     yield from bps.sleep(0.1)
                     state = d.cam.detector_state.get()
                     # print(f"    Dexela is idle!")
-                # yield from bps.sleep(0.1)
-                yield from bps.sleep(0.3) # EJM quick fix 20250714
+                yield from bps.sleep(0.1)
+                # yield from bps.sleep(0.3) # EJM quick fix 20250714
                 if verbose:
                     print(f"    [{print_now()}] awake!")
+        yield from bps.sleep(0.1)
 
         # Creating one status object to rule them all
         all_st = st_list[0]
@@ -655,7 +654,8 @@ def scan_and_fly_base(detectors,
     # xs could be xs, xs2, xs4 ...
     xs = dets_by_name[flying_zebra.detectors[0].name]
 
-    yield from mv(get_me_the_cam(xs).erase, 0)  # Changed to use helper function
+    yield from mov(get_me_the_cam(xs).erase, 0)  # Changed to use helper function
+    yield from mov(eiger.cam.array_counter, 0)
 
     if plot:
         if (ynum == 1):
@@ -1027,7 +1027,7 @@ def xrf_map2(xstart, xstop, xnum,
             dwell,
             fly_axis='auto',
             scan_type='auto',
-            coords='auto',
+            coords='relative',
             extra_dets=None,
             center_scanner=True,
             return_to_start=True,
@@ -1118,6 +1118,9 @@ def xrf_map2(xstart, xstop, xnum,
     x_range = float(np.abs(xstop - xstart))
     y_range = float(np.abs(ystop - ystart))
 
+    if coords == 'coarse' and scan_type == 'auto':
+        raise ValueError("'scan_type' cannot be 'auto' when using coarse coodinates.")
+
     # Function to make coords relative
     def get_coords(start, stop, motor):
         if 'rel' in coords:
@@ -1154,6 +1157,7 @@ def xrf_map2(xstart, xstop, xnum,
         if max([x_range, y_range]) <= REASONABLE_SCANNER_STAGE_EXTENT:
             resolution = 'nano'
         else:
+            # Potential dangers zone with absolute coarse coodinates
             resolution = 'coarse'
     elif scan_type == 'nano':
         resolution = 'nano'
@@ -1166,7 +1170,7 @@ def xrf_map2(xstart, xstop, xnum,
     
     # Determine flying axis
     if fly_axis == 'auto':
-        if x_range == 0 or y_range / x_range > REASONABLE_ASPECT_RATIO_FOR_X_FLY:
+        if xnum == 1 or ynum / xnum > REASONABLE_ASPECT_RATIO_FOR_X_FLY:
             fly_on_y = True
         else:
             fly_on_y = False

@@ -50,8 +50,9 @@ def setup_xrd_dets(dets,
         xrd.cam.stage_sigs['num_triggers'] = N_images
         xrd.hdf5.stage_sigs['num_capture'] = N_images
 
+        print('New Eiger stage sigs')
         # Sets bit-depth for fly-mode, otherwise actual time
-        xrd.cam.stage_sigs['acquire_time'] = dwell #  - 0.005 # 10 ms is a lot, but dropping too many frames
+        xrd.cam.stage_sigs['acquire_time'] = dwell - 0.010 # 10 ms is a lot, but dropping too many frames
         xrd.cam.stage_sigs['acquire_period'] = dwell
 
         # Update energy thresholds
