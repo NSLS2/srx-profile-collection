@@ -1,5 +1,6 @@
 print(f'Loading {__file__}...')
-import pandas as pd
+
+from scipy.signal import convolve, deconvolve
 
 
 def ssa_hcen_scan(start, stop, num,
@@ -1043,13 +1044,6 @@ def iterative_background(data, multiplier=3, max_iter=100):
         else:
             old_mask = mask
             counter += 1
-
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.signal import convolve, deconvolve
-
-
-plt.ion()
 
 
 def screen_line(x, y):

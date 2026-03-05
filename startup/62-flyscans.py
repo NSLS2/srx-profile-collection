@@ -537,10 +537,10 @@ def scan_and_fly_base(detectors,
             # t0_st_xs = ttime.time()
             # st_xs.wait(timeout=xnum*dwell + 20)
             # print(f"{ttime.time()-t0_st_xs}")
-            print('Waiting for all_st...', end="")
+            # print('Waiting for all_st...', end="")
             t0_st_xs = ttime.time()
             all_st.wait(timeout=xnum*dwell + 20)
-            print(f"{ttime.time()-t0_st_xs}")
+            # print(f"{ttime.time()-t0_st_xs}")
             # xs.hdf5.capture.set("Done")
             # while True:
             #     # print("in while loop!")
@@ -1157,7 +1157,7 @@ def xrf_map2(xstart, xstop, xnum,
         if max([x_range, y_range]) <= REASONABLE_SCANNER_STAGE_EXTENT:
             resolution = 'nano'
         else:
-            # Potential dangers zone with absolute coarse coodinates
+            # Potential danger zone with absolute coarse coodinates
             resolution = 'coarse'
     elif scan_type == 'nano':
         resolution = 'nano'
