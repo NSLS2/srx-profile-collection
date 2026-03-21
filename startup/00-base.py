@@ -10,6 +10,7 @@ import warnings
 import logging
 
 import matplotlib as mpl
+import numpy as np
 import nslsii
 import redis
 from bluesky_queueserver import is_re_worker_active, parameter_annotation_decorator
@@ -234,3 +235,7 @@ ip.prompts = SRXPrompt(ip)
 # but have signatures that are not compatible with the Queue Server. They should not exist in the global
 # namespace, but can be accessed as 'bps.one_1d_step' etc. from other plans.
 del one_1d_step, one_nd_step, one_shot
+
+
+# Setup numpy print options
+np.set_printoptions(legacy='1.25', suppress=True)
