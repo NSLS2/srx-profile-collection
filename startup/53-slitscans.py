@@ -1,6 +1,7 @@
 print(f'Loading {__file__}...')
 
 from scipy.signal import convolve, deconvolve
+import matplotlib.cm as cm
 
 
 def ssa_hcen_scan(start, stop, num,
@@ -732,9 +733,15 @@ def focusKB2(direction, **kwargs):
     kwargs.setdefault('slit_stop', slit_center + 0.5 * slit_range)
     print(f'Start from slit center: {slit_center}\n')
 
+    # Extract any calibration kwargs
+    cal_kwargs = {}
+    for key in ['orthogonality']:
+        if key in kwargs:
+            cal_kwargs[key] = kwargs.pop(key)
+
     uid = yield from slit_nano_scan_map(**kwargs)
 
-    return slit_nano_scan_map_cal(uid)
+    return slit_nano_scan_map_cal(uid, **cal_kwargs)
 
 # Function to use the scan_and_fly_base framework from 62-flyscans for easier data acquisition
 def slit_nano_scan_map(scan_motor, scan_start, scan_stop, scan_num,
@@ -898,7 +905,7 @@ def slit_nano_scan_map_cal(uid, orthogonality=False,
         count_list.append(np.sum(y))
         
         if plot:
-            ax.plot(x, y, label=np.round(jj_list[idx], 3))
+            ax.plot(x, y, label=np.round(jj_list[idx], 3), c=cm.get_cmap('tab20')(idx))
 
         # Check for significant features
         if screen_line(x, y) is False:
