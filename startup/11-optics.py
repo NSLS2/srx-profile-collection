@@ -76,21 +76,29 @@ def check_shutters(check, status):
                 print('Opening B-hutch shutter..')
                 # yield from mov(shut_b, "Open", timeout=10)
                 # yield from abs_set(shut_b, "Open", wait=True, timeout=10)
-                yield from abs_set(shut_b, "Open", wait=True)
+                # yield from abs_set(shut_b, "Open", wait=True)
+                st = yield from mov(shut_b, "Open")
+                # print(st)
+                st[0].wait(10)
             print('Opening D-hutch shutter...')
             try:
-                yield from abs_set(shut_d.request_open, 1, wait=True, timeout=1)
+                # yield from abs_set(shut_d.request_open, 1, wait=True, timeout=1)
+                st = yield from mov(shut_d.request_open, 1)
+                # print(st)
+                st[0].wait(5)
             except WaitTimeoutError:
                 print("Timeout opening D-shutter (1/10) ...") 
-            yield from bps.sleep(1)
+            # yield from bps.sleep(1)
             i = 1
             while (shut_d.read()['shut_d_request_open']['value'] == 0):
                 yield from bps.sleep(1)
                 try:
-                    yield from abs_set(shut_d.request_open, 1, wait=True, timeout=1)
+                    # yield from abs_set(shut_d.request_open, 1, wait=True, timeout=1)
+                    st = yield from mov(shut_d.request_open, 1)
+                    st[0].wait(5)
                 except WaitTimeoutError:
                     print(f"Timeout opening D-shutter ({i+1}/10) ...")
-                except e:
+                except Exception as e:
                     raise e
                 i = i + 1
                 if (i > 10):
@@ -98,7 +106,8 @@ def check_shutters(check, status):
         else:
             print('Closing D-hutch shutter...')
             try:
-                st = yield from abs_set(shut_d.request_open, 0, timeout=3)
+                st = yield from mov(shut_d.request_open, 0)
+                st[0].wait(3)
             except Exception:
                 print('  Error shutting D-shutter!')
                 print(st)
