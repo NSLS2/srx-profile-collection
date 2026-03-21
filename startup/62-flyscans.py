@@ -1151,7 +1151,7 @@ def xrf_map2(xstart, xstop, xnum,
                                 dwell,
                                 extra_dets=extra_dets,
                                 xmotor=fine_motors[0],
-                                ymotor=fine_motors[1]
+                                ymotor=fine_motors[1],
                                 **kwargs)
     elif scan_type == 'auto':
         if max([x_range, y_range]) <= REASONABLE_SCANNER_STAGE_EXTENT:
