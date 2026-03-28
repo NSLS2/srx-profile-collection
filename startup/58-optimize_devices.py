@@ -646,6 +646,7 @@ def calibrate_compucentric_rotation(xstart, xstop, xnum,
     # Setup Zebra
     yield from abs_set(nano_flying_zebra.fast_axis, 'NANOHOR', wait=True)
     yield from abs_set(nano_flying_zebra.slow_axis, 'NANOTHETA')
+    # yield from abs_set(nano_flying_zebra.slow_axis, 'NANOCOMPTHETA')
 
     # Set the roi
     if roi is not None:
@@ -653,7 +654,16 @@ def calibrate_compucentric_rotation(xstart, xstop, xnum,
 
     # Get original slit positions
     th_orig_pos = nano_stage.th.user_setpoint.get()
+    # th_orig_pos = comp_th.real_position.th
 
+    # Modify md
+    if 'md' in kwargs:
+        md = kwargs.pop('md')
+    else:
+        md = None
+    md = get_stock_md(md)
+    md['scan']['type'] = 'COMPUCENTRIC_CALIBRATION'
+    kwargs['md'] = md
 
     def plan():
         return (yield from scan_and_fly_base(
@@ -664,23 +674,28 @@ def calibrate_compucentric_rotation(xstart, xstop, xnum,
                     flying_zebra=nano_flying_zebra,
                     xmotor=nano_stage.sx,
                     ymotor=nano_stage.th,
+                    # ymotor = comp_th,
                     **kwargs
                     ))
     
     def finish_up(): 
             yield from mov(nano_stage.th, th_orig_pos)
+            # yield from mov(comp_th, th_orig_pos)
             yield from move_to_scanner_center(timeout=10)
 
     final_plan = finalize_wrapper(plan(),
                                   finish_up())
 
-    return (yield from final_plan)
+    # return (yield from final_plan)
+    uid = yield from final_plan
 
+    fit_compucentric_rotation_calibration(uid, roi=roi)
 
 
 def fit_compucentric_rotation_calibration(uid,
                                           roi=None, roinum=None, bin_low=None, bin_high=None,
-                                          normalize=True):
+                                          normalize=True,
+                                          drop_indices=[]):
 
     run = c[uid]
     scan_id = run.start['scan_id']
@@ -706,9 +721,9 @@ def fit_compucentric_rotation_calibration(uid,
         
         el = xrfC.XrfElement(el_sym)
         if line is None:
-            for l in ['ka1', 'la1', 'ma1']:
-                if el.emission_line[l] < energy: # in keV
-                    line = el.emission_line[l]
+            for line in ['ka1', 'la1', 'ma1']:
+                if el.emission_line[line] < energy: # in keV
+                    break
         
         roi_slice = slice(
             int((el.emission_line[line] - 0.1) * 100),
@@ -716,7 +731,7 @@ def fit_compucentric_rotation_calibration(uid,
         )
 
     xrf = run['stream0']['data']['xs_fluor'][:, :, :7, roi_slice].sum(axis=(2, 3))
-    x_arr = run['stream0']['data']['enc1']
+    x_arr = run['stream0']['data']['enc1'][:]
     th = np.linspace(scan_input[3], scan_input[4], int(scan_input[5]))
     th = np.radians(th / 1e3) # Convert from mdeg to radians
 
@@ -725,14 +740,19 @@ def fit_compucentric_rotation_calibration(uid,
         xrf = xrf.astype(float) / i0.astype(float)
 
     x_com = []
+    th_keep = []
     for idx in range(xrf.shape[0]):
+        if idx in drop_indices:
+            continue
         d = xrf[idx]
         x = x_arr[idx]
 
-        x_com.append(np.sum(x * d) / np.sum(d))
+        # x_com.append(np.sum(x * d) / np.sum(d))
+        x_com.append(x[np.argmax(d)])
+        th_keep.append(th[idx])
     
     # fits values and corrects pseudomotor
-    fit_compucentric_model(th, x_obs=x_com, correct_pseudomotor=True)
+    fit_compucentric_model(th_keep, x_obs=x_com, correct_pseudomotor=True)
 
 
 
