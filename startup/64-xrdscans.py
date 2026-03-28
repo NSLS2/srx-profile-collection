@@ -50,7 +50,7 @@ def setup_xrd_dets(dets,
         xrd.cam.stage_sigs['num_triggers'] = N_images
         xrd.hdf5.stage_sigs['num_capture'] = N_images
 
-        print('New Eiger stage sigs')
+        # print('New Eiger stage sigs')
         # Sets bit-depth for fly-mode, otherwise actual time
         xrd.cam.stage_sigs['acquire_time'] = dwell - 0.010 # 10 ms is a lot, but dropping too many frames
         xrd.cam.stage_sigs['acquire_period'] = dwell
@@ -233,9 +233,12 @@ def energy_rocking_curve(e_low,
             len(e_range) * (dwell + 4.25) # Some overhead for estimate
         ))
 
-    def finalize_scan(name, doc):
+    def finalize_scan():
         scanrecord.scanning.put(False)
         scanrecord.time_rem_str.put(time_rem_convert(0))
+        # Need a yield from
+        yield from bps.sleep(0.1)
+
 
     def time_per_point(name, doc, st=ttime.time()):
         if (doc[0] == "event_page"):
@@ -246,8 +249,8 @@ def energy_rocking_curve(e_low,
                 ))
 
     # Live Callbacks
-    livecallbacks = [LiveTable(['energy_energy', 'dexela_stats2_total']),
-                     time_per_point]
+    livecallbacks = [LiveTable(['energy_energy', 'dexela_stats2_total'])]
+    # livecallbacks.append(time_per_point)
     
     if plotme:
         livecallbacks.append(LivePlot('dexela_stats2_total', x='energy_energy'))
@@ -591,6 +594,8 @@ def flying_angle_rocking_curve(th_low,
     # Modify md
     if 'md' in kwargs:
         md = kwargs.pop('md')
+    else:
+        md = None
     md = get_stock_md(md)
     md['scan']['type'] = 'FLY_ANGLE_RC'
     kwargs['md'] = md
