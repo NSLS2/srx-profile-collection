@@ -748,10 +748,11 @@ def slit_nano_scan_map(scan_motor, scan_start, scan_stop, scan_num,
                        slit_motor, slit_start, slit_stop, slit_num,
                        dwell, slitgap_motor, slit_gap,
                        roi='Pt',
-                       shutter=True,
-                       plot=True,
+                    #    shutter=True,
+                    #    plot=True,
                        md=None,
-                       verbose=False):
+                    #    verbose=False,
+                       **kwargs):
     """
     scan_motor       motor   motor used for scan
     scan_start       float   starting position
@@ -781,6 +782,13 @@ def slit_nano_scan_map(scan_motor, scan_start, scan_stop, scan_num,
     # Set the roi
     setroi(1, roi)
 
+    # Modify md
+    if 'md' in kwargs:
+        md = kwargs.pop('md')
+    md = get_stock_md(md)
+    md['scan']['type'] = 'FLY_JJ_SCAN'
+    kwargs['md'] = md
+
     # Get original slit positions
     slit_orig_gap = slitgap_motor.user_readback.get()
     slit_orig_pos = slit_motor.user_readback.get()
@@ -802,11 +810,12 @@ def slit_nano_scan_map(scan_motor, scan_start, scan_stop, scan_num,
                     flying_zebra=nano_flying_zebra,
                     xmotor=scan_motor,
                     ymotor=slit_motor,
-                    shutter=shutter,
-                    plot=plot,
+                    # shutter=shutter,
+                    # plot=plot,
                     md=md,
-                    verbose=verbose,
-                    snake=False, vlm_snapshot=False
+                    # verbose=verbose,
+                    # snake=False, vlm_snapshot=False,
+                    **kwargs
                     ))
     
     def finish_up(): 
