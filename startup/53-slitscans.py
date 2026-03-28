@@ -785,6 +785,8 @@ def slit_nano_scan_map(scan_motor, scan_start, scan_stop, scan_num,
     # Modify md
     if 'md' in kwargs:
         md = kwargs.pop('md')
+    else:
+        md = None
     md = get_stock_md(md)
     md['scan']['type'] = 'FLY_JJ_SCAN'
     kwargs['md'] = md
@@ -810,11 +812,6 @@ def slit_nano_scan_map(scan_motor, scan_start, scan_stop, scan_num,
                     flying_zebra=nano_flying_zebra,
                     xmotor=scan_motor,
                     ymotor=slit_motor,
-                    # shutter=shutter,
-                    # plot=plot,
-                    md=md,
-                    # verbose=verbose,
-                    # snake=False, vlm_snapshot=False,
                     **kwargs
                     ))
     
