@@ -770,7 +770,7 @@ class SRXFlyer1Axis(Device):
                 or 'eiger' in [d.name for d in self.detectors]):
                 decrement = (pxsize / dwell) * 0.001
                 decrement = np.max([decrement, 0.01])
-                print(f'position decrement {decrement}')
+                # print(f'position decrement {decrement}')
             else:
                 if dwell > 0.099:
                     decrement = (pxsize / dwell) * 0.001
