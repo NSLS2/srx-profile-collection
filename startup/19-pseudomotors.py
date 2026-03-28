@@ -285,6 +285,8 @@ class CompucentricRotation(PseudoPositioner):
     # sx = Cpt(EpicsMotor, 'XF:05IDD-ES:1{nKB:Smpl-Ax:ssx}Mtr')  # XF:05IDD-ES:1{nKB:Smpl-Ax:ssx}Mtr.RBV
     # sz = Cpt(EpicsMotor, 'XF:05IDD-ES:1{nKB:Smpl-Ax:ssz}Mtr')  # XF:05IDD-ES:1{nKB:Smpl-Ax:ssz}Mtr.RBV
 
+    motor_egu = Cpt(EpicsSignalRO, 'XF:05IDD-ES:1{nKB:Smpl-Ax:th}Mtr.EGU')
+
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -456,7 +458,7 @@ def fit_compucentric_model(th, x_obs=None, z_obs=None,
     r_rel_err = (r_err / r_fit) * 100 if r_fit != 0 else np.inf
 
     print('Fit Results:')
-    print(f'R-squred is {r_sqr[best_idx]:.7f}')
+    print(f'R-squared is {r_sqr[best_idx]:.7f}')
     print(f'\tradius = {r_fit:.3f} ± {r_err:.3f} μm')
     print(f'\tth0 = {np.degrees(th0_fit):.3f} ± {np.degrees(th0_err):.3f} deg')
 
