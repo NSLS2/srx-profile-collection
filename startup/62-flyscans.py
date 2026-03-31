@@ -208,7 +208,8 @@ def scan_and_fly_base(detectors,
             and np.round(step * 1e3, 5) not in reasonable_steps):
             step_err.append((f'Calculated step size of {step:.5f} {motor.motor_egu.get()} '
                              + f'for motor {motor.name} does not seem reasonable.'))
-    if step_check and len(step_err) > 0:
+    if (step_check is True
+        and len(step_err) > 0):
         step_err.insert(0, 'Suspected unreasonable step size')
         step_err.append(f'Reasonable step sizes are as follows multiplied by a power of 10:\n\t{reasonable_steps}')
         step_err.append("Adjust number of points to achieve a reasonable step size or"
