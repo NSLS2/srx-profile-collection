@@ -224,7 +224,7 @@ def energy_rocking_curve(e_low,
     md['scan']['dwell'] = dwell
     # md['scan']['detectors'] = [d.name for d in dets]
     md_dets = dets
-    if vlm_snapshot:
+    if vlm_snapshot is True:
         md_dets = md_dets + [nano_vlm]
     get_det_md(md, md_dets)
 
@@ -417,7 +417,7 @@ def continuous_energy_rocking_curve(e_low,
     md['scan']['dwell'] = dwell
     # md['scan']['detectors'] = [d.name for d in dets]
     md_dets = dets
-    if vlm_snapshot:
+    if vlm_snapshot is True:
         md_dets = md_dets + [nano_vlm]
     get_det_md(md, md_dets)
 
@@ -502,7 +502,7 @@ def angle_rocking_curve(th_low,
     md['scan']['dwell'] = dwell
     # md['scan']['detectors'] = [d.name for d in dets]
     md_dets = dets
-    if vlm_snapshot:
+    if vlm_snapshot is True:
         md_dets = md_dets + [nano_vlm]
     get_det_md(md, md_dets)
 
@@ -670,7 +670,7 @@ def static_xrd(num,
     md['scan']['start_time'] = ttime.ctime(ttime.time())
     # md['scan']['detectors'] = [d.name for d in dets]
     md_dets = dets
-    if vlm_snapshot:
+    if vlm_snapshot is True:
         md_dets = md_dets + [nano_vlm]
     get_det_md(md, md_dets)
 

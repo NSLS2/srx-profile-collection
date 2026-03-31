@@ -216,7 +216,7 @@ def nano_xrf(xstart, xstop, xnum,
     md['scan']['snake'] = 1 if snake else 0
     md['scan']['shape'] = (xnum, ynum)
     md_dets = list(dets)
-    if vlm_snapshot:
+    if vlm_snapshot is True:
         md_dets = md_dets + [nano_vlm]
     get_det_md(md, md_dets)
 

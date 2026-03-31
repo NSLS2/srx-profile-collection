@@ -113,7 +113,7 @@ def xanes_plan(erange=[], estep=[], dwell=1.,
     md['scan']['dwell'] = dwell
     md['scan']['scan_input'] = str(np.around(erange, 2)) + ', ' + str(np.around(estep, 2))
     md_dets = list(det)
-    if vlm_snapshot:
+    if vlm_snapshot is True:
         md_dets = md_dets + [nano_vlm]
     get_det_md(md, md_dets)
     # Fix for the exporter

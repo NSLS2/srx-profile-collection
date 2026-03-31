@@ -303,7 +303,7 @@ def scan_and_fly_base(detectors,
     md['scan']['snake'] = snake
     md['scan']['shape'] = (xnum, ynum)
     md_dets = list(detectors)
-    if vlm_snapshot:
+    if vlm_snapshot is True:
         md_dets = md_dets + [nano_vlm]
     get_det_md(md, md_dets)
 
