@@ -217,9 +217,9 @@ def xanes_plan(erange=[], estep=[], dwell=1.,
 
 
     def at_scan(name, doc):
-        scanrecord.time_rem_str.put(time_rem_convert(
-            len(ept) * (dwell + 2) # Some overhead for estimate
-        ))
+        time_rem = len(ept) * (dwell + 2) # Some overhead for estimate
+        scanrecord.time_remaining.put(time_rem / 3600)
+        scanrecord.time_rem_str.put(time_rem_convert(time_rem))
 
 
     def finalize_scan():
@@ -230,11 +230,14 @@ def xanes_plan(erange=[], estep=[], dwell=1.,
         yield from check_shutters(shutter, 'Close')
         if (detune is not None):
             yield from abs_set(energy.detune, 0)
-        scanrecord.scanning.put(False)
-        scanrecord.time_rem_str.put(time_rem_convert(0))
+        yield from abs_set(scanrecord.scanning, False)
+        yield from abs_set(scanrecord.time_remaining, 0)
+        yield from abs_set(scanrecord.time_rem_str, time_rem_convert(0))
+        # scanrecord.scanning.put(False)
+        # scanrecord.time_rem_str.put(time_rem_convert(0))
 
-
-    energy.move(ept[0])
+    # A bit redundant, but before run started
+    yield from energy.move(ept[0])
 
     # Adding vlm options to modified list scan
     @run_decorator(md=md)

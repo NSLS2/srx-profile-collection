@@ -650,7 +650,7 @@ def scan_and_fly_base(detectors,
             toc(0, str='timing unstage', log_file=log_file)
 
     def at_scan(name, doc):
-        scanrecord.time_remaining.put((dwell * xnum + 3.8)/3600)
+        scanrecord.time_remaining.put((dwell * xnum + 3.8) / 3600)
         scanrecord.time_rem_str.put(time_rem_convert(dwell * xnum + 3.8))
 
     # TODO remove this eventually?
@@ -776,9 +776,12 @@ def scan_and_fly_base(detectors,
     def finalize_plan():
         if shutter:
             yield from check_shutters(shutter, 'Close')
-        scanrecord.scanning.put(False)
-        scanrecord.time_remaining.put(0)
-        scanrecord.time_rem_str.put(time_rem_convert(0))
+        yield from abs_set(scanrecord.scanning, False)
+        yield from abs_set(scanrecord.time_remaining, 0)
+        yield from abs_set(scanrecord.time_rem_str, time_rem_convert(0))
+        # scanrecord.scanning.put(False)
+        # scanrecord.time_remaining.put(0)
+        # scanrecord.time_rem_str.put(time_rem_convert(0))
 
     # Setup the final scan plan
     if verbose:

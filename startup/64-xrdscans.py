@@ -229,16 +229,16 @@ def energy_rocking_curve(e_low,
     get_det_md(md, md_dets)
 
     def at_scan(name, doc):
-        scanrecord.time_rem_str.put(time_rem_convert(
-            len(e_range) * (dwell + 4.25) # Some overhead for estimate
-        ))
+        time_rem = len(e_range) * (dwell + 4.25) # Some overhead for estimate
+        scanrecord.time_remaining.put(time_rem / 3600)
+        scanreocrd.time_rem_str.put(time_rem_convert(time_rem))
 
     def finalize_scan():
-        scanrecord.scanning.put(False)
-        scanrecord.time_rem_str.put(time_rem_convert(0))
-        # Need a yield from
-        yield from bps.sleep(0.1)
-
+        yield from abs_set(scanrecord.scanning, False)
+        yield from abs_set(scanrecord.time_remaining, 0)
+        yield from abs_set(scanrecord.time_rem_str, time_rem_convert(0))
+        # scanrecord.scanning.put(False)
+        # scanrecord.time_rem_str.put(time_rem_convert(0))
 
     def time_per_point(name, doc, st=ttime.time()):
         if (doc[0] == "event_page"):
@@ -507,13 +507,16 @@ def angle_rocking_curve(th_low,
     get_det_md(md, md_dets)
 
     def at_scan(name, doc):
-        scanrecord.time_rem_str.put(time_rem_convert(
-            len(th_range) * (dwell + 4.25) # Some overhead for estimate
-        ))
+        time_rem = len(e_range) * (dwell + 4.25) # Some overhead for estimate
+        scanrecord.time_remaining.put(time_rem / 3600)
+        scanreocrd.time_rem_str.put(time_rem_convert(time_rem))
 
-    def finalize_scan(name, doc):
-        scanrecord.scanning.put(False)
-        scanrecord.time_rem_str.put(time_rem_convert(0))
+    def finalize_scan():
+        yield from abs_set(scanrecord.scanning, False)
+        yield from abs_set(scanrecord.time_remaining, 0)
+        yield from abs_set(scanrecord.time_rem_str, time_rem_convert(0))
+        # scanrecord.scanning.put(False)
+        # scanrecord.time_rem_str.put(time_rem_convert(0))
 
     def time_per_point(name, doc, st=ttime.time()):
         if (doc[0] == "event_page"):
@@ -675,11 +678,16 @@ def static_xrd(num,
     get_det_md(md, md_dets)
 
     def at_scan(name, doc):
-        scanrecord.time_rem_str.put(time_rem_convert(30))
+        time_rem = 30 # Over-estimate
+        scanrecord.time_remaining.put(time_rem / 3600)
+        scanreocrd.time_rem_str.put(time_rem_convert(time_rem))
 
-    def finalize_scan(name, doc):
-        scanrecord.scanning.put(False)
-        scanrecord.time_rem_str.put(time_rem_convert(0))
+    def finalize_scan():
+        yield from abs_set(scanrecord.scanning, False)
+        yield from abs_set(scanrecord.time_remaining, 0)
+        yield from abs_set(scanrecord.time_rem_str, time_rem_convert(0))
+        # scanrecord.scanning.put(False)
+        # scanrecord.time_rem_str.put(time_rem_convert(0))
 
     # Live Callbacks
     livecallbacks = [LiveTable(['dexela_stats2_total'])]
