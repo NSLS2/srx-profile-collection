@@ -172,6 +172,10 @@ class DexelaHDFWithFileStore(HDF5Plugin, DexelaFileStoreHDF5):
             sig.set(val).wait(timeout=10)
 
 
+class SRXDexelaTransformPlugin(TransformPlugin):
+    # Why is this not a part of the base level transform plugin???
+    type = Cpt(EpicsSignal, 'Type', string=True)
+
 
 class SRXDexelaDetector(SingleTrigger, DexelaDetector):
     proc1 = Cpt(ProcessPlugin, 'Proc1:')
@@ -180,7 +184,8 @@ class SRXDexelaDetector(SingleTrigger, DexelaDetector):
     stats3 = Cpt(StatsPluginV33, 'Stats3:')
     stats4 = Cpt(StatsPluginV33, 'Stats4:')
     stats5 = Cpt(StatsPluginV33, 'Stats5:')
-    transform1 = Cpt(TransformPlugin, 'Trans1:')
+    # transform1 = Cpt(TransformPlugin, 'Trans1:')
+    transform1 = Cpt(SRXDexelaTransformPlugin, 'Trans1:')
     roi1 = Cpt(ROIPlugin, 'ROI1:')
     roi2 = Cpt(ROIPlugin, 'ROI2:')
     roi3 = Cpt(ROIPlugin, 'ROI3:')
@@ -264,6 +269,10 @@ try:
         print("  Warmup...", end="", flush=True)
         dexela.hdf5.warmup()
         print("done")
+    # Transforms
+    dexela.transform1.enable.set('Enable')
+    dexela.transform1.nd_array_port.set('DEX1')
+    dexela.transform1.type.set('Mirror')
 except TimeoutError:
     dexela = None
     print('\nCannot connect to Dexela. Continuing without device.\n')

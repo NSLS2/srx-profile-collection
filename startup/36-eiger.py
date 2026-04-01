@@ -203,6 +203,10 @@ class EigerHDFWithFileStore(HDF5Plugin, EigerFileStoreHDF5):
             sig.set(val).wait()
 
 
+class SRXEigerTransformPlugin(TransformPlugin):
+    # Why is this not a part of the base level transform plugin???
+    type = Cpt(EpicsSignal, 'Type', string=True)
+
 class SRXEigerDetector(SingleTrigger, EigerDetector):
     proc1 = Cpt(ProcessPlugin, 'Proc1:')
     stats1 = Cpt(StatsPluginV33, 'Stats1:')
@@ -210,7 +214,8 @@ class SRXEigerDetector(SingleTrigger, EigerDetector):
     stats3 = Cpt(StatsPluginV33, 'Stats3:')
     stats4 = Cpt(StatsPluginV33, 'Stats4:')
     stats5 = Cpt(StatsPluginV33, 'Stats5:')
-    transform1 = Cpt(TransformPlugin, 'Trans1:')
+    # transform1 = Cpt(TransformPlugin, 'Trans1:')
+    transform1 = Cpt(SRXEigerTransformPlugin, 'Trans1:')
     roi1 = Cpt(ROIPlugin, 'ROI1:')
     roi2 = Cpt(ROIPlugin, 'ROI2:')
     roi3 = Cpt(ROIPlugin, 'ROI3:')
@@ -313,6 +318,10 @@ try:
         print("  Warmup...", end="", flush=True)
         eiger.hdf5.warmup()
         print("done")
+    # Transform
+    eiger.transform1.enable.set('Enable')
+    eiger.transform1.nd_array_port.set('EIG1')
+    eiger.transform1.type.set('None')
 except TimeoutError:
     print(f'\nCannot connect to eiger. Continuing without device.\n')
 except Exception as ex:
