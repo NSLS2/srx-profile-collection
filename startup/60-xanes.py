@@ -71,8 +71,6 @@ def xanes_plan(erange=[], estep=[], dwell=1.,
                          + 'c.f., erange = [7000, 7100, 7150, 7500], estep = [2, 0.5, 5] ')
     if (type(roinum) is not list):
         roinum = [roinum]
-    if (detune != 0):
-        yield from abs_set(energy.detune, detune)
 
     # Convert erange and estep to numpy array
     ept = np.array([])
@@ -85,6 +83,33 @@ def xanes_plan(erange=[], estep=[], dwell=1.,
     if reverse:
         ept = ept[::-1]
 
+    # Check ROIs
+    for ind in range(1, 4):
+        roi_name = det_xs.channel01.get_mcaroi(mcaroi_number=ind).roi_name.get()
+        if roi_name == '':
+            continue
+        roi_el, roi_line = roi_name.split('_')
+        roi_edge = roi_line[0]
+        if roi_edge == 'l':
+            roi_edge = 'l3'
+        roi_be = getbindingE(roi_el, roi_edge)
+        if ept[0] > 1e3:
+            roi_ept = ept
+        else:
+            roi_ept = ept / 1e3
+        if np.min(roi_ept) < roi_be < np.max(roi_ept):
+            if ind != roinum[0]:
+                warn_str = (f'Caution: Selected ROI number {roinum[0]} does not match the '
+                            + f'designated energy range. Switching to ROI number {ind} for {roi_name} instead.')
+                print(warn_str)
+                roinum = [ind]
+            break
+    else:
+        warn_str = ('WARNING: Selected ROIs do not match the designated energy range!'
+                    + '\nFull XRF specta are recorded, but displayed and saved data ' 
+                    + 'needs to be reprocessed with the correct ROI.')
+        banner(warn_str)
+
     # Debugging, is this needed? is this recorded in scanoutput?
     # Convert energy to bragg angle
     egap = np.array(())
@@ -96,6 +121,9 @@ def xanes_plan(erange=[], estep=[], dwell=1.,
         ebragg = np.append(ebragg, eb)
         exgap = np.append(exgap, ex)
 
+    # Set energy detuning
+    if (detune != 0):
+        yield from abs_set(energy.detune, detune)
     # Register the detectors
     det_xs.mode = SRXMode.step
     # det = [ring_current, sclr1, xbpm2, det_xs] # EJM removed xpbm2 when disconnected. June 30th 2025
@@ -173,16 +201,16 @@ def xanes_plan(erange=[], estep=[], dwell=1.,
     def time_per_point(name, doc, st=ttime.time()):
         ## Don't do this. Make a proper fix.
         try:
-            if (doc[0] == "event_page"):
+            if (name == "event"):
                 if ('seq_num' in doc.keys()):
                     scanrecord.time_remaining.put((doc['time'] - st) / doc['seq_num'] *
                                                   (len(ept) - doc['seq_num']) / 3600)
-                    scan_record.time_rem_str.put(convert_time_str(
+                    scanrecord.time_rem_str.put(time_rem_convert(
                         ((doc['time'] - st) / doc['seq_num']) * # average time per point
                         (len(ept) - doc['seq_num']) # remaining number of points
                     ))
         except Exception as e:
-            # print(f'Exception encountered in time_per_point function.\n{e}')
+            print(f'Exception encountered in time_per_point function.\n{e}')
             pass
 
     livetableitem.append(roi_key[0])
@@ -237,7 +265,7 @@ def xanes_plan(erange=[], estep=[], dwell=1.,
         # scanrecord.time_rem_str.put(time_rem_convert(0))
 
     # A bit redundant, but before run started
-    yield from energy.move(ept[0])
+    yield from mov(energy, ept[0])
 
     # Adding vlm options to modified list scan
     @run_decorator(md=md)
