@@ -812,6 +812,7 @@ def slit_nano_scan_map(scan_motor, scan_start, scan_stop, scan_num,
                     flying_zebra=nano_flying_zebra,
                     xmotor=scan_motor,
                     ymotor=slit_motor,
+                    vlm_snapshot=False,
                     **kwargs
                     ))
     
@@ -1104,6 +1105,7 @@ def screen_line(x, y):
     print(f"Standard error = {std_err}")
     # Rose-criteria would be SNR=5
     # if line is normalized to 1, noise must be <0.2
+    # if std_err < 0.2:
     if std_err < 0.2:
         print("Sufficient signal!")
         return True
