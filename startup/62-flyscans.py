@@ -661,7 +661,8 @@ def scan_and_fly_base(detectors,
     xs = dets_by_name[flying_zebra.detectors[0].name]
 
     yield from mov(get_me_the_cam(xs).erase, 0)  # Changed to use helper function
-    yield from mov(eiger.cam.array_counter, 0)
+    if 'eiger' in dets_by_name:
+        yield from mov(eiger.cam.array_counter, 0)
 
     if plot:
         if (ynum == 1):
@@ -1029,6 +1030,24 @@ def xrf_map(xstart, xstop, xnum,
                                  **kwargs)
     if center:
         yield from move_to_scanner_center(timeout=10)
+    
+    # def plan():
+    #     if center:
+    #         yield from move_to_scanner_center(timeout=10)
+    #     yield from scan_and_fly_base(dets,
+    #                                  fly_start, fly_stop, fly_num,
+    #                                  step_start, step_stop, step_num,
+    #                                  **kwargs)
+    
+    # def return_plan():
+    #     if center:
+    #         yield from move_to_scanner_center(timeout=10)
+    #     yield from bps.checkpoint()
+    
+    # plan = finalize_wrapper(plan(), return_plan)
+
+    # return (yield from plan())
+
 
 # New alias
 def xrf_map2(xstart, xstop, xnum,
