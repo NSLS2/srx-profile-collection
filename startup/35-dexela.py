@@ -9,19 +9,12 @@ import datetime
 from hxntools.detectors.dexela import (DexelaDetector,)
 from nslsii.detectors.xspress3 import (logger, )
 from databroker.assets.handlers import HandlerBase
-from ophyd.areadetector.filestore_mixins import (FileStoreIterativeWrite,
-                                                 FileStoreHDF5IterativeWrite,
-                                                 FileStoreTIFFSquashing,
-                                                 FileStoreTIFF,
-                                                 FileStoreHDF5,
-                                                 new_short_uid,
+from ophyd.areadetector.filestore_mixins import (new_short_uid,
                                                  FileStoreBase,
                                                  )
 from ophyd.areadetector.trigger_mixins import SingleTrigger
-from ophyd.areadetector import (AreaDetector, PixiradDetectorCam, ImagePlugin,
-                                TIFFPlugin, StatsPlugin, HDF5Plugin,
-                                ProcessPlugin, ROIPlugin, TransformPlugin,
-                                OverlayPlugin)
+from ophyd.areadetector import (StatsPlugin, HDF5Plugin,
+                                ProcessPlugin, ROIPlugin)
 from ophyd import Component as Cpt
 
 
@@ -179,8 +172,25 @@ class DexelaHDFWithFileStore(HDF5Plugin, DexelaFileStoreHDF5):
             sig.set(val).wait(timeout=10)
 
 
+class SRXDexelaTransformPlugin(TransformPlugin):
+    # Why is this not a part of the base level transform plugin???
+    type = Cpt(EpicsSignal, 'Type', string=True)
+
 
 class SRXDexelaDetector(SingleTrigger, DexelaDetector):
+    proc1 = Cpt(ProcessPlugin, 'Proc1:')
+    stats1 = Cpt(StatsPluginV33, 'Stats1:')
+    stats2 = Cpt(StatsPluginV33, 'Stats2:')
+    stats3 = Cpt(StatsPluginV33, 'Stats3:')
+    stats4 = Cpt(StatsPluginV33, 'Stats4:')
+    stats5 = Cpt(StatsPluginV33, 'Stats5:')
+    # transform1 = Cpt(TransformPlugin, 'Trans1:')
+    transform1 = Cpt(SRXDexelaTransformPlugin, 'Trans1:')
+    roi1 = Cpt(ROIPlugin, 'ROI1:')
+    roi2 = Cpt(ROIPlugin, 'ROI2:')
+    roi3 = Cpt(ROIPlugin, 'ROI3:')
+    roi4 = Cpt(ROIPlugin, 'ROI4:')
+
     total_points = Cpt(Signal,
                        value=1,
                        doc="The total number of points to be taken")
@@ -259,6 +269,10 @@ try:
         print("  Warmup...", end="", flush=True)
         dexela.hdf5.warmup()
         print("done")
+    # Transforms
+    dexela.transform1.enable.set('Enable')
+    dexela.transform1.nd_array_port.set('DEX1')
+    dexela.transform1.type.set('Mirror')
 except TimeoutError:
     dexela = None
     print('\nCannot connect to Dexela. Continuing without device.\n')

@@ -107,7 +107,8 @@ _step_check_funcs = ['scan_and_fly_base',
                      'rel_xrf_map2',
                      'nano_knife_edge',
                      'flying_angle_rocking_curve',
-                     'relative_flying_angle_rocking_curve']
+                     'relative_flying_angle_rocking_curve',
+                     'calibrate_compucentric_rotation']
 
 
 # changed the flyer device to be aware of fast vs slow axis in a 2D scan
@@ -203,10 +204,12 @@ def scan_and_fly_base(detectors,
             and np.round(step * 1e-1, 5) not in reasonable_steps
             and np.round(step * 1e-2, 5) not in reasonable_steps
             and np.round(step * 1e1, 5) not in reasonable_steps
-            and np.round(step * 1e2, 5) not in reasonable_steps):
+            and np.round(step * 1e2, 5) not in reasonable_steps
+            and np.round(step * 1e3, 5) not in reasonable_steps):
             step_err.append((f'Calculated step size of {step:.5f} {motor.motor_egu.get()} '
                              + f'for motor {motor.name} does not seem reasonable.'))
-    if step_check and len(step_err) > 0:
+    if (step_check is True
+        and len(step_err) > 0):
         step_err.insert(0, 'Suspected unreasonable step size')
         step_err.append(f'Reasonable step sizes are as follows multiplied by a power of 10:\n\t{reasonable_steps}')
         step_err.append("Adjust number of points to achieve a reasonable step size or"
@@ -249,28 +252,31 @@ def scan_and_fly_base(detectors,
     limit_err = []
     xlow, _, _, xhigh = sorted([row_start, row_stop, xstart, xstop])
     ylow, yhigh = sorted([ystart, ystop])
-    if xlow < xmotor.low_limit: # For low to high flying
-        if row_start == xlow:
-            limit_err.append((f'Flying axis motor {xmotor.name} row start value of {row_start} exceeds motor limits.'
-                            + f'\nDifference with specified start value of {xstart} is {row_start - xstart:.3f}.'))
-        elif row_stop == xlow:
-            limit_err.append((f'Flying axis motor {xmotor.name} row stop value of {row_stop} exceeds motor limits.'
-                            + f'\nDifference with specified stop value of {xstop} is {row_stop - xstop:.3f}.'))       
-        else:
-            limit_err.append(f'Flying axis motor {xmotor.name} value of {xlow} exceeds motor limits.')
-    if xhigh > xmotor.high_limit: # For high to low flying
-        if row_start == xhigh:
-            limit_err.append((f'Flying axis motor {xmotor.name} row start value of {row_start} exceeds motor limits.'
-                            + f'\nDifference with specified start value of {xstart} is {row_start - xstart:.3f}.'))
-        elif row_stop == xhigh:
-            limit_err.append((f'Flying axis motor {xmotor.name} row stop value of {row_stop} exceeds motor limits.'
-                            + f'\nDifference with specified stop value of {xstop} is {row_stop - xstop:.3f}.')) 
-        else:
-            limit_err.append(f'Flying axis motor {xmotor.name} value of {xhigh} exceeds motor limits.')             
-    if ylow < ymotor.low_limit: # Simple comparison
-        limit_err.append(f'Slow axis motor {ymotor.name} value of {ylow} exceeds motor limits.')
-    if yhigh > ymotor.high_limit: # Simple comparison
-        limit_err.append(f'Slow axis motor {ymotor.name} value of {yhigh} exceeds motor limits.')
+    if xmotor.low_limit != xmotor.high_limit:
+        if xlow < xmotor.low_limit: # For low to high flying
+            if row_start == xlow:
+                limit_err.append((f'Flying axis motor {xmotor.name} row start value of {row_start} exceeds motor limits.'
+                                + f'\nDifference with specified start value of {xstart} is {row_start - xstart:.3f}.'))
+            elif row_stop == xlow:
+                limit_err.append((f'Flying axis motor {xmotor.name} row stop value of {row_stop} exceeds motor limits.'
+                                + f'\nDifference with specified stop value of {xstop} is {row_stop - xstop:.3f}.'))       
+            else:
+                limit_err.append(f'Flying axis motor {xmotor.name} value of {xlow} exceeds motor limits.')
+        if xhigh > xmotor.high_limit: # For high to low flying
+            if row_start == xhigh:
+                limit_err.append((f'Flying axis motor {xmotor.name} row start value of {row_start} exceeds motor limits.'
+                                + f'\nDifference with specified start value of {xstart} is {row_start - xstart:.3f}.'))
+            elif row_stop == xhigh:
+                limit_err.append((f'Flying axis motor {xmotor.name} row stop value of {row_stop} exceeds motor limits.'
+                                + f'\nDifference with specified stop value of {xstop} is {row_stop - xstop:.3f}.')) 
+            else:
+                limit_err.append(f'Flying axis motor {xmotor.name} value of {xhigh} exceeds motor limits.')
+
+    if ymotor.low_limit != ymotor.high_limit:         
+        if ylow < ymotor.low_limit: # Simple comparison
+            limit_err.append(f'Slow axis motor {ymotor.name} value of {ylow} exceeds motor limits.')
+        if yhigh > ymotor.high_limit: # Simple comparison
+            limit_err.append(f'Slow axis motor {ymotor.name} value of {yhigh} exceeds motor limits.')
 
     if len(limit_err) > 0:
         limit_err.insert(0, 'Stage Limit Error')
@@ -297,7 +303,7 @@ def scan_and_fly_base(detectors,
     md['scan']['snake'] = snake
     md['scan']['shape'] = (xnum, ynum)
     md_dets = list(detectors)
-    if vlm_snapshot:
+    if vlm_snapshot is True:
         md_dets = md_dets + [nano_vlm]
     get_det_md(md, md_dets)
 
@@ -644,7 +650,7 @@ def scan_and_fly_base(detectors,
             toc(0, str='timing unstage', log_file=log_file)
 
     def at_scan(name, doc):
-        scanrecord.time_remaining.put((dwell * xnum + 3.8)/3600)
+        scanrecord.time_remaining.put((dwell * xnum + 3.8) / 3600)
         scanrecord.time_rem_str.put(time_rem_convert(dwell * xnum + 3.8))
 
     # TODO remove this eventually?
@@ -655,7 +661,8 @@ def scan_and_fly_base(detectors,
     xs = dets_by_name[flying_zebra.detectors[0].name]
 
     yield from mov(get_me_the_cam(xs).erase, 0)  # Changed to use helper function
-    yield from mov(eiger.cam.array_counter, 0)
+    if 'eiger' in dets_by_name:
+        yield from mov(eiger.cam.array_counter, 0)
 
     if plot:
         if (ynum == 1):
@@ -770,9 +777,12 @@ def scan_and_fly_base(detectors,
     def finalize_plan():
         if shutter:
             yield from check_shutters(shutter, 'Close')
-        scanrecord.scanning.put(False)
-        scanrecord.time_remaining.put(0)
-        scanrecord.time_rem_str.put(time_rem_convert(0))
+        yield from abs_set(scanrecord.scanning, False)
+        yield from abs_set(scanrecord.time_remaining, 0)
+        yield from abs_set(scanrecord.time_rem_str, time_rem_convert(0))
+        # scanrecord.scanning.put(False)
+        # scanrecord.time_remaining.put(0)
+        # scanrecord.time_rem_str.put(time_rem_convert(0))
 
     # Setup the final scan plan
     if verbose:
@@ -1020,6 +1030,24 @@ def xrf_map(xstart, xstop, xnum,
                                  **kwargs)
     if center:
         yield from move_to_scanner_center(timeout=10)
+    
+    # def plan():
+    #     if center:
+    #         yield from move_to_scanner_center(timeout=10)
+    #     yield from scan_and_fly_base(dets,
+    #                                  fly_start, fly_stop, fly_num,
+    #                                  step_start, step_stop, step_num,
+    #                                  **kwargs)
+    
+    # def return_plan():
+    #     if center:
+    #         yield from move_to_scanner_center(timeout=10)
+    #     yield from bps.checkpoint()
+    
+    # plan = finalize_wrapper(plan(), return_plan)
+
+    # return (yield from plan())
+
 
 # New alias
 def xrf_map2(xstart, xstop, xnum,
@@ -1151,7 +1179,7 @@ def xrf_map2(xstart, xstop, xnum,
                                 dwell,
                                 extra_dets=extra_dets,
                                 xmotor=fine_motors[0],
-                                ymotor=fine_motors[1]
+                                ymotor=fine_motors[1],
                                 **kwargs)
     elif scan_type == 'auto':
         if max([x_range, y_range]) <= REASONABLE_SCANNER_STAGE_EXTENT:

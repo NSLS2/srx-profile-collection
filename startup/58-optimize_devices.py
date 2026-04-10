@@ -1,5 +1,7 @@
 print(f'Loading {__file__}...')
 import time as ttime
+import numpy as np
+from scipy.optimize import curve_fit
 from itertools import product
 import bluesky.plan_stubs as bps
 
@@ -623,6 +625,134 @@ def switch_foils(foil_name='auto'):
         else:
             ostr = f"{foil_name} foil already in place."
         print(ostr)
+
+
+def calibrate_compucentric_rotation(xstart, xstop, xnum,
+                                    thstart, thstop, thnum,
+                                    dwell,
+                                    roi=None,
+                                    **kwargs):
+    """
+    xstart      float   x start position
+    xstop       float   x stop position
+    xnum        int     number of x data points
+    thstart     float   theta start andle
+    thstop      float   theta stop angle
+    thnum       int     number of theta data points
+    dwell       float   counting time per step
+    roi         str     ROI of element
+    """
+
+    # Setup Zebra
+    yield from abs_set(nano_flying_zebra.fast_axis, 'NANOHOR', wait=True)
+    yield from abs_set(nano_flying_zebra.slow_axis, 'NANOTHETA')
+    # yield from abs_set(nano_flying_zebra.slow_axis, 'NANOCOMPTHETA')
+
+    # Set the roi
+    if roi is not None:
+        setroi(1, roi)
+
+    # Get original slit positions
+    th_orig_pos = nano_stage.th.user_setpoint.get()
+    # th_orig_pos = comp_th.real_position.th
+
+    # Modify md
+    if 'md' in kwargs:
+        md = kwargs.pop('md')
+    else:
+        md = None
+    md = get_stock_md(md)
+    md['scan']['type'] = 'COMPUCENTRIC_CALIBRATION'
+    kwargs['md'] = md
+
+    def plan():
+        return (yield from scan_and_fly_base(
+                    [xs],
+                    xstart, xstop, xnum,
+                    thstart, thstop, thnum,
+                    dwell,
+                    flying_zebra=nano_flying_zebra,
+                    xmotor=nano_stage.sx,
+                    ymotor=nano_stage.th,
+                    # ymotor = comp_th,
+                    **kwargs
+                    ))
+    
+    def finish_up(): 
+            yield from mov(nano_stage.th, th_orig_pos)
+            # yield from mov(comp_th, th_orig_pos)
+            yield from move_to_scanner_center(timeout=10)
+
+    final_plan = finalize_wrapper(plan(),
+                                  finish_up())
+
+    # return (yield from final_plan)
+    uid = yield from final_plan
+
+    fit_compucentric_rotation_calibration(uid, roi=roi)
+
+
+def fit_compucentric_rotation_calibration(uid,
+                                          roi=None, roinum=None, bin_low=None, bin_high=None,
+                                          normalize=True,
+                                          drop_indices=[]):
+
+    run = c[uid]
+    scan_id = run.start['scan_id']
+    scan_input = run.start['scan']['scan_input']
+    energy = run.start['scan']['energy'] # in keV
+
+    # Construct roi_slice
+    if bin_low is not None and bin_high is not None:
+        roi_slice = slice(int(bin_low), int(bin_high))
+    else:
+        if roi is not None:
+            pass
+        elif roinum is not None:
+            roi = run.start['scan']['detectors']['xs'][f'roi{roinum}']
+        else:
+            roi = run.start['scan']['detectors']['xs'][f'roi1']
+        
+        if len(roi.split('_')) > 1:
+            el_sym, line = roi.split('_')
+        else:
+            el_sym = roi
+            line = None
+        
+        el = xrfC.XrfElement(el_sym)
+        if line is None:
+            for line in ['ka1', 'la1', 'ma1']:
+                if el.emission_line[line] < energy: # in keV
+                    break
+        
+        roi_slice = slice(
+            int((el.emission_line[line] - 0.1) * 100),
+            int((el.emission_line[line] + 0.1) * 100)
+        )
+
+    xrf = run['stream0']['data']['xs_fluor'][:, :, :7, roi_slice].sum(axis=(2, 3))
+    x_arr = run['stream0']['data']['enc1'][:]
+    th = np.linspace(scan_input[3], scan_input[4], int(scan_input[5]))
+    th = np.radians(th / 1e3) # Convert from mdeg to radians
+
+    if normalize:
+        i0 = run['stream0']['data']['i0'][:]
+        xrf = xrf.astype(float) / i0.astype(float)
+
+    x_com = []
+    th_keep = []
+    for idx in range(xrf.shape[0]):
+        if idx in drop_indices:
+            continue
+        d = xrf[idx]
+        x = x_arr[idx]
+
+        # x_com.append(np.sum(x * d) / np.sum(d))
+        x_com.append(x[np.argmax(d)])
+        th_keep.append(th[idx])
+    
+    # fits values and corrects pseudomotor
+    fit_compucentric_model(th_keep, x_obs=x_com, correct_pseudomotor=True)
 
 
 

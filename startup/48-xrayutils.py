@@ -6,16 +6,16 @@ import skbeam.core.constants.xrf as xrfC
 
 
 
-def edge(element=None, line='K', unit='eV'):
+def edge(element=None, edge='K', unit='eV'):
     '''
     function return edge (K or L3) in eV or keV with input element sympbol
     '''
 
     atomic_num = xraylib.SymbolToAtomicNumber(element)
 
-    if line == 'K':
+    if edge == 'K':
         edge_value = xraylib.EdgeEnergy(atomic_num, xraylib.K_SHELL)
-    if line == 'L3':
+    if edge == 'L3':
         edge_value = xraylib.EdgeEnergy(atomic_num, xraylib.L3_SHELL)        
 
     if unit == 'eV':
@@ -31,33 +31,42 @@ interestinglist = ['Si', 'P', 'S', 'Cl', 'Ar', 'K', 'Ca', 'Sc', 'Ti', 'V',
                    'Xe', 'Cs', 'Ba', 'La', 'Ce', 'Pr', 'Nd', 'Pm', 'Sm', 'Eu',
                    'Gd', 'Tb', 'Dy', 'Ho', 'Er', 'Tm', 'Yb', 'Lu', 'Hf', 'Ta',
                    'W', 'Re', 'Os', 'Ir', 'Pt', 'Au', 'Hg', 'Tl', 'Pb', 'Bi',
-                   'Po', 'At', 'Rn', 'Fr', 'Ra', 'Ac', 'Th', 'Pa', 'U', 'Np', 'Pu']
+                   'Po', 'At', 'Rn', 'Fr', 'Ra', 'Ac', 'Th', 'Pa', 'U', 'Np',
+                   'Pu', 'Am', 'Cm', 'Cf']
 
 elements = dict()
-element_edges = ['ka1', 'ka2', 'kb1', 'la1', 'la2', 'lb1', 'lb2', 'lg1', 'ma1']
-element_transitions = ['k', 'l1', 'l2', 'l3', 'm1', 'm2', 'm3', 'm4', 'm5']
+element_lines = ['ka1', 'ka2', 'kb1', 'la1', 'la2', 'lb1', 'lb2', 'lg1', 'ma1']
+roi_lines = ['ka1', 'la1', 'ma1']
+element_edges = ['k', 'l1', 'l2', 'l3', 'm1', 'm2', 'm3', 'm4', 'm5']
 for i in interestinglist:
     elements[i] = xrfC.XrfElement(i)
 
 
-def setroi(roinum, element, edge=None, det=None):
+def setroi(roinum, element, line=None, det=None):
     '''
     Set energy ROIs for Vortex SDD.
     Selects elemental edge given current energy if not provided.
     roinum      [1,2,3]     ROI number
     element     <symbol>    element symbol for target energy
-    edge                    optional:  ['ka1', 'ka2', 'kb1', 'la1', 'la2',
+    line                    optional:  ['ka1', 'ka2', 'kb1', 'la1', 'la2',
                                         'lb1', 'lb2', 'lg1', 'ma1']
     '''
+
     cur_element = xrfC.XrfElement(element)
-    if edge is None:
-        for e in ['ka1', 'ka2', 'kb1', 'la1', 'la2',
-                  'lb1', 'lb2', 'lg1', 'ma1']:
+
+    if line is not None:
+        if line.lower() not in element_lines:
+            print(f'WARNING: line {line} not in allowed lines {element_lines}.')
+            print('Finding most appropriate line for the current energy.')
+            line = None
+
+    if line is None:
+        # for e in element_lines:
+        for e in roi_lines:
             if cur_element.emission_line[e] < energy.energy.readback.get():
-                edge = 'e'
                 break
     else:
-        e = edge
+        e = line.lower()
 
     e_ch = int(cur_element.emission_line[e] * 1000)
     if det is not None:
@@ -89,7 +98,8 @@ def setroi(roinum, element, edge=None, det=None):
             roi_name=f"{element}_{e}"
         )
         mcaroi.kind = "hinted"
-    print("ROI{} set for {}-{} edge.".format(roinum, element, e))
+
+    print(f'ROI {roinum} set for {element}-{e} line.')
 
 
 def clearroi(roinum=None, verbose=False):
@@ -128,7 +138,7 @@ def getemissionE(element, edge=None):
     cur_element = xrfC.XrfElement(element)
     if edge is None:
         print("Edge\tEnergy [keV]")
-        for e in element_edges:
+        for e in element_lines:
             if cur_element.emission_line[e] < 25. and \
                cur_element.emission_line[e] > 1.:
                 # print("{0:s}\t{1:8.2f}".format(e, cur_element.emission_line[e]))

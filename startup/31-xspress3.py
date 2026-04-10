@@ -329,25 +329,9 @@ class CommunitySrxXspress3Detector(CommunityXspress3_8Channel):
         )
         if read_attrs is None:
             pass
-            # JL removed channels from read_attrs
-            #read_attrs = ["channel1", "channel2", "channel3", "channel4", "hdf5"]
-            # JL read all rois on all channels
-            #read_attrs = [
-            #    xs_mcaroi.total_rbv.name
-            #    for xs_channel
-            #    in self.iterate_channels()
-            #    for xs_mcaroi
-            #    in xs_channel.iterate_mcarois()
-            #]
-            #read_attrs.append("hdf5")
-            #print(f"read_attrs: {read_attrs}")
-        # this is possiblely one too many places to store this
-        # in the parent class it looks at if the extrenal_trig signal is high
+
         self.mode = SRXMode.fly
 
-        # 2020-01-24
-        # Commented out by AMK for using the xs3-server-IOC from TES
-        # self.create_dir.put(-3)
     @property
     def mode(self):
         return self._mode
@@ -451,24 +435,6 @@ class CommunitySrxXspress3Detector(CommunityXspress3_8Channel):
 
         self.stage_sigs[self.hdf5.auto_save] = 'Yes'
 
-        # print("stage!")
-        # Erase what is currently in the system
-        # This prevents a single hot pixel in the upper-left corner of a map
-        # JL replaced xs.erase.put(0) with self.cam.erase.put(0)
-        #    why was xs.erase.put(0) not self.erase.put(0) ?
-        #xs.erase.put(0)
-        # JL commented out the next line because it caused a significant delay in starting acqusitions
-        #self.cam.erase.put(0)
-        # JL added the next line, it is not pretty
-
-        # file_write_mode = self.hdf5.file_write_mode.get(as_string=True)
-        # print(f"{file_write_mode = }")
-
-        # self.previous_file_write_mode_value = self.hdf5.file_write_mode.get()
-        # JL added the next 2 lines
-        #   should use stage_sigs for file_write_mode?
-        # self.hdf5.file_write_mode.put(1)
-        #self.hdf5.auto_save.put(1)  # using stage_sigs for this
         # do the latching
         if self.fly_next.get():
             self.fly_next.put(False)
@@ -476,12 +442,7 @@ class CommunitySrxXspress3Detector(CommunityXspress3_8Channel):
         return super().stage()
 
     def unstage(self):
-        # print("unstage!")
-        # JL added the next two lines
-        #self.hdf5.auto_save.put(0)
-        # self.hdf5.file_write_mode.put(self.previous_file_write_mode_value)
-        # JL removed the next line
-        #self.hdf5.capture.put(0)  # this PV un-sets itself
+
         try:
             ret = super().unstage()
         finally:

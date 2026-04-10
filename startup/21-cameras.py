@@ -189,7 +189,7 @@ def vlm_decorator(vlm_snapshot=True, after=True, position=None):
     def inner_decorator(func):
         @functools.wraps(func)
         def func_with_snapshot(*args, **kwargs):
-            if vlm_snapshot:
+            if vlm_snapshot is True:
                 if position is not None:
                     yield from mv(*position)
 

@@ -1,6 +1,7 @@
 print(f'Loading {__file__}...')
 
 from scipy.signal import convolve, deconvolve
+import matplotlib.cm as cm
 
 
 def ssa_hcen_scan(start, stop, num,
@@ -732,19 +733,26 @@ def focusKB2(direction, **kwargs):
     kwargs.setdefault('slit_stop', slit_center + 0.5 * slit_range)
     print(f'Start from slit center: {slit_center}\n')
 
+    # Extract any calibration kwargs
+    cal_kwargs = {}
+    for key in ['orthogonality']:
+        if key in kwargs:
+            cal_kwargs[key] = kwargs.pop(key)
+
     uid = yield from slit_nano_scan_map(**kwargs)
 
-    return slit_nano_scan_map_cal(uid)
+    return slit_nano_scan_map_cal(uid, **cal_kwargs)
 
 # Function to use the scan_and_fly_base framework from 62-flyscans for easier data acquisition
 def slit_nano_scan_map(scan_motor, scan_start, scan_stop, scan_num,
                        slit_motor, slit_start, slit_stop, slit_num,
                        dwell, slitgap_motor, slit_gap,
                        roi='Pt',
-                       shutter=True,
-                       plot=True,
+                    #    shutter=True,
+                    #    plot=True,
                        md=None,
-                       verbose=False):
+                    #    verbose=False,
+                       **kwargs):
     """
     scan_motor       motor   motor used for scan
     scan_start       float   starting position
@@ -774,6 +782,15 @@ def slit_nano_scan_map(scan_motor, scan_start, scan_stop, scan_num,
     # Set the roi
     setroi(1, roi)
 
+    # Modify md
+    if 'md' in kwargs:
+        md = kwargs.pop('md')
+    else:
+        md = None
+    md = get_stock_md(md)
+    md['scan']['type'] = 'FLY_JJ_SCAN'
+    kwargs['md'] = md
+
     # Get original slit positions
     slit_orig_gap = slitgap_motor.user_readback.get()
     slit_orig_pos = slit_motor.user_readback.get()
@@ -795,11 +812,8 @@ def slit_nano_scan_map(scan_motor, scan_start, scan_stop, scan_num,
                     flying_zebra=nano_flying_zebra,
                     xmotor=scan_motor,
                     ymotor=slit_motor,
-                    shutter=shutter,
-                    plot=plot,
-                    md=md,
-                    verbose=verbose,
-                    snake=False, vlm_snapshot=False
+                    vlm_snapshot=False,
+                    **kwargs
                     ))
     
     def finish_up(): 
@@ -898,7 +912,7 @@ def slit_nano_scan_map_cal(uid, orthogonality=False,
         count_list.append(np.sum(y))
         
         if plot:
-            ax.plot(x, y, label=np.round(jj_list[idx], 3))
+            ax.plot(x, y, label=np.round(jj_list[idx], 3), c=cm.get_cmap('tab20')(idx))
 
         # Check for significant features
         if screen_line(x, y) is False:
@@ -1091,6 +1105,7 @@ def screen_line(x, y):
     print(f"Standard error = {std_err}")
     # Rose-criteria would be SNR=5
     # if line is normalized to 1, noise must be <0.2
+    # if std_err < 0.2:
     if std_err < 0.2:
         print("Sufficient signal!")
         return True

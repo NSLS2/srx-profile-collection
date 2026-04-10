@@ -50,7 +50,7 @@ def setup_xrd_dets(dets,
         xrd.cam.stage_sigs['num_triggers'] = N_images
         xrd.hdf5.stage_sigs['num_capture'] = N_images
 
-        print('New Eiger stage sigs')
+        # print('New Eiger stage sigs')
         # Sets bit-depth for fly-mode, otherwise actual time
         xrd.cam.stage_sigs['acquire_time'] = dwell - 0.010 # 10 ms is a lot, but dropping too many frames
         xrd.cam.stage_sigs['acquire_period'] = dwell
@@ -224,18 +224,21 @@ def energy_rocking_curve(e_low,
     md['scan']['dwell'] = dwell
     # md['scan']['detectors'] = [d.name for d in dets]
     md_dets = dets
-    if vlm_snapshot:
+    if vlm_snapshot is True:
         md_dets = md_dets + [nano_vlm]
     get_det_md(md, md_dets)
 
     def at_scan(name, doc):
-        scanrecord.time_rem_str.put(time_rem_convert(
-            len(e_range) * (dwell + 4.25) # Some overhead for estimate
-        ))
+        time_rem = len(e_range) * (dwell + 4.25) # Some overhead for estimate
+        scanrecord.time_remaining.put(time_rem / 3600)
+        scanreocrd.time_rem_str.put(time_rem_convert(time_rem))
 
-    def finalize_scan(name, doc):
-        scanrecord.scanning.put(False)
-        scanrecord.time_rem_str.put(time_rem_convert(0))
+    def finalize_scan():
+        yield from abs_set(scanrecord.scanning, False)
+        yield from abs_set(scanrecord.time_remaining, 0)
+        yield from abs_set(scanrecord.time_rem_str, time_rem_convert(0))
+        # scanrecord.scanning.put(False)
+        # scanrecord.time_rem_str.put(time_rem_convert(0))
 
     def time_per_point(name, doc, st=ttime.time()):
         if (doc[0] == "event_page"):
@@ -246,8 +249,8 @@ def energy_rocking_curve(e_low,
                 ))
 
     # Live Callbacks
-    livecallbacks = [LiveTable(['energy_energy', 'dexela_stats2_total']),
-                     time_per_point]
+    livecallbacks = [LiveTable(['energy_energy', 'dexela_stats2_total'])]
+    # livecallbacks.append(time_per_point)
     
     if plotme:
         livecallbacks.append(LivePlot('dexela_stats2_total', x='energy_energy'))
@@ -414,7 +417,7 @@ def continuous_energy_rocking_curve(e_low,
     md['scan']['dwell'] = dwell
     # md['scan']['detectors'] = [d.name for d in dets]
     md_dets = dets
-    if vlm_snapshot:
+    if vlm_snapshot is True:
         md_dets = md_dets + [nano_vlm]
     get_det_md(md, md_dets)
 
@@ -499,18 +502,21 @@ def angle_rocking_curve(th_low,
     md['scan']['dwell'] = dwell
     # md['scan']['detectors'] = [d.name for d in dets]
     md_dets = dets
-    if vlm_snapshot:
+    if vlm_snapshot is True:
         md_dets = md_dets + [nano_vlm]
     get_det_md(md, md_dets)
 
     def at_scan(name, doc):
-        scanrecord.time_rem_str.put(time_rem_convert(
-            len(th_range) * (dwell + 4.25) # Some overhead for estimate
-        ))
+        time_rem = len(e_range) * (dwell + 4.25) # Some overhead for estimate
+        scanrecord.time_remaining.put(time_rem / 3600)
+        scanreocrd.time_rem_str.put(time_rem_convert(time_rem))
 
-    def finalize_scan(name, doc):
-        scanrecord.scanning.put(False)
-        scanrecord.time_rem_str.put(time_rem_convert(0))
+    def finalize_scan():
+        yield from abs_set(scanrecord.scanning, False)
+        yield from abs_set(scanrecord.time_remaining, 0)
+        yield from abs_set(scanrecord.time_rem_str, time_rem_convert(0))
+        # scanrecord.scanning.put(False)
+        # scanrecord.time_rem_str.put(time_rem_convert(0))
 
     def time_per_point(name, doc, st=ttime.time()):
         if (doc[0] == "event_page"):
@@ -591,6 +597,8 @@ def flying_angle_rocking_curve(th_low,
     # Modify md
     if 'md' in kwargs:
         md = kwargs.pop('md')
+    else:
+        md = None
     md = get_stock_md(md)
     md['scan']['type'] = 'FLY_ANGLE_RC'
     kwargs['md'] = md
@@ -665,16 +673,21 @@ def static_xrd(num,
     md['scan']['start_time'] = ttime.ctime(ttime.time())
     # md['scan']['detectors'] = [d.name for d in dets]
     md_dets = dets
-    if vlm_snapshot:
+    if vlm_snapshot is True:
         md_dets = md_dets + [nano_vlm]
     get_det_md(md, md_dets)
 
     def at_scan(name, doc):
-        scanrecord.time_rem_str.put(time_rem_convert(30))
+        time_rem = 30 # Over-estimate
+        scanrecord.time_remaining.put(time_rem / 3600)
+        scanreocrd.time_rem_str.put(time_rem_convert(time_rem))
 
-    def finalize_scan(name, doc):
-        scanrecord.scanning.put(False)
-        scanrecord.time_rem_str.put(time_rem_convert(0))
+    def finalize_scan():
+        yield from abs_set(scanrecord.scanning, False)
+        yield from abs_set(scanrecord.time_remaining, 0)
+        yield from abs_set(scanrecord.time_rem_str, time_rem_convert(0))
+        # scanrecord.scanning.put(False)
+        # scanrecord.time_rem_str.put(time_rem_convert(0))
 
     # Live Callbacks
     livecallbacks = [LiveTable(['dexela_stats2_total'])]
