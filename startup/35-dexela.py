@@ -197,25 +197,44 @@ class SRXDexelaDetector(SingleTrigger, DexelaDetector):
     path_write_start = "W:\\"
     path_read_start = "/nsls2/data/srx/"
 
-    def root_path_str():
+    # def root_path_str():
+    #     data_session = RE.md["data_session"]
+    #     cycle = RE.md["cycle"]
+    #     if "Commissioning" in get_proposal_type():
+    #         root_path = f"proposals/commissioning/{data_session}/assets/dexela/"
+    #     else:
+    #         root_path = f"proposals/{cycle}/{data_session}/assets/dexela/"
+    #     return root_path
+
+    # def path_template_str(root_path):
+    #     path_template = "%Y/%m/%d/"
+    #     return root_path + path_template
+    
+    @property
+    def root_path_str(self):
         data_session = RE.md["data_session"]
         cycle = RE.md["cycle"]
-        if "Commissioning" in get_proposal_type():
-            root_path = f"proposals/commissioning/{data_session}/assets/dexela/"
-        else:
-            root_path = f"proposals/{cycle}/{data_session}/assets/dexela/"
+        root_path = f"proposals/{cycle}/{data_session}/assets/dexela/"
         return root_path
 
-    def path_template_str(root_path):
-        path_template = "%Y/%m/%d/"
-        return root_path + path_template
+    @property
+    def path_template_str(self):
+        path_template = "%Y/%m/%d"
+        return path_template
+
+    # hdf5 = Cpt(DexelaHDFWithFileStore, 'HDF1:',
+    #            read_attrs=[],
+    #            configuration_attrs=[],
+    #            write_path_template=path_write_start + path_template_str(root_path_str()).replace("/", "\\"),
+    #            read_path_template=path_read_start + path_template_str(root_path_str()),
+    #            root=path_read_start+root_path_str())
 
     hdf5 = Cpt(DexelaHDFWithFileStore, 'HDF1:',
                read_attrs=[],
                configuration_attrs=[],
-               write_path_template=path_write_start + path_template_str(root_path_str()).replace("/", "\\"),
-               read_path_template=path_read_start + path_template_str(root_path_str()),
-               root=path_read_start+root_path_str())
+               write_path_template=path_write_start.replace("/", "\\"),
+               read_path_template=None,
+               root=None)
     # this is used as a latch to put the xspress3 into 'bulk' mode
     # for fly scanning.  Do this is a signal (rather than as a local variable
     # or as a method so we can modify this as part of a plan
@@ -232,8 +251,18 @@ class SRXDexelaDetector(SingleTrigger, DexelaDetector):
         super().__init__(*args, **kwargs)
         self._mode = SRXMode.step
         # self.cam.trigger_mode = EpicsSignalWithRBV("XF:05IDD-ES{Dexela:1}cam1:TriggerMode")
+        self.set_paths()
+
+    def set_paths(self):
+        full_path = f'{self.root_path_str}{self.path_template_str}'
+        self.hdf5.write_path_template = f'{self.path_write_start}{full_path}'.replace("/", "\\")
+        self.hdf5.read_path_template = f'{self.path_read_start}{full_path}'
 
     def stage(self):
+
+        # Set paths
+        self.set_paths()
+
         # EJM: Clear counter for consistency with Xspress3
         _TIMEOUT = 2
         self.cam.array_counter.set(0, timeout=_TIMEOUT).wait()
@@ -276,8 +305,7 @@ try:
 except TimeoutError:
     dexela = None
     print('\nCannot connect to Dexela. Continuing without device.\n')
-except Exception:
+except Exception as e:
+    print('\nUnexpected error connecting to Dexela:')
+    print(f'\t{e.__class__.__name__}:{e}\n')
     dexela = None
-    print('\nUnexpected error connecting to Dexela.\n',
-          sys.exc_info()[0],
-          end='\n\n')
