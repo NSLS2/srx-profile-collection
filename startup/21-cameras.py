@@ -42,6 +42,7 @@ class SRXCamera(SingleTrigger, AreaDetector):
         self.read_attrs = ['tiff', 'stats5']
         self.stats5.read_attrs = ['total']
         self.root_path = root_path
+        self.set_paths()
         
         # if root_path is None: # Post data security
         #     self.tiff.write_path_template=self.path_start + self.path_template_str(self.root_path_str())
@@ -51,9 +52,8 @@ class SRXCamera(SingleTrigger, AreaDetector):
         #     self.tiff.write_path_template=f'{root_path}/{self.name}/%Y/%m/%d/'
         #     self.tiff.read_path_template=f'{root_path}/{self.name}/%Y/%m/%d/'
         #     self.tiff.reg_root=f'{root_path}/{self.name}'
-
-    def stage(self, *args, **kwargs):
-
+    
+    def set_paths(self):
         if self.root_path is None:
             reg_root = f'{self.path_start}{self.root_path_str}'
             full_path = f'{reg_root}{self.path_template_str}'
@@ -65,6 +65,9 @@ class SRXCamera(SingleTrigger, AreaDetector):
         self.tiff.write_path_template = full_path
         self.tiff.read_path_template = full_path
 
+
+    def stage(self, *args, **kwargs):
+        self.set_paths()
         super().stage(*args, **kwargs)
 
 
@@ -107,9 +110,8 @@ class SRXCamera(SingleTrigger, AreaDetector):
     stats4 = Cpt(StatsPlugin, 'Stats4:')
     stats5 = Cpt(StatsPlugin, 'Stats5:')
     tiff = Cpt(SRXTIFFPlugin, 'TIFF1:',
-               write_path_template='%Y/%m/%d/',
-               read_path_template='%Y/%m/%d/',
-               # root=root_path)
+               write_path_template=path_start, # Required. Overriden when staging
+               read_path_template=None, # Overrident when staging
                )
 
 def create_camera(pv, name, root_path='/nsls2/data/srx/assets'):
@@ -118,8 +120,9 @@ def create_camera(pv, name, root_path='/nsls2/data/srx/assets'):
     except TimeoutError:
         print(f'\nCannot connect to {name}. Continuing without device.\n')
         cam = None
-    except Exception as ex:
-        print(ex, end='\n\n')
+    except Exception as e:
+        print(f'\nUnexpected error connecting to {name}:')
+        print(f'\t{e.__class__.__name__}:{e}\n')
         cam = None
     return cam
 
