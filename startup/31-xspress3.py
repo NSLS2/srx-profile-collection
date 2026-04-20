@@ -261,11 +261,14 @@ class Xspress3HDF5PluginWithRedis(Xspress3HDF5Plugin):
         # cycle = self._redis_dict["cycle"]
         data_session = RE.md["data_session"]
         cycle = RE.md["cycle"]
-        if "Commissioning" in get_proposal_type():
-            root_path = f"/nsls2/data/srx/proposals/commissioning/{data_session}/assets/xspress3/"
-        else:
-            root_path = f"/nsls2/data/srx/proposals/{cycle}/{data_session}/assets/xspress3/"
-        return root_path
+
+        # if "Commissioning" in get_proposal_type():
+        #     root_path = f"/nsls2/data/srx/proposals/commissioning/{data_session}/assets/xspress3/"
+        # else:
+        #     root_path = f"/nsls2/data/srx/proposals/{cycle}/{data_session}/assets/xspress3/"
+        # return root_path
+
+        return f"/nsls2/data/srx/proposals/{cycle}/{data_session}/assets/xpress3/"
 
     @property
     def path_template_str(self):
