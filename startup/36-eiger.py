@@ -229,30 +229,50 @@ class SRXEigerDetector(SingleTrigger, EigerDetector):
                    doc="latch to put the detector in 'fly' mode")
     path_start = "/nsls2/data/srx/"
 
-    def root_path_str():
+    # def root_path_str():
+    #     data_session = RE.md["data_session"]
+    #     cycle = RE.md["cycle"]
+    #     if "Commissioning" in get_proposal_type():
+    #         root_path = f"proposals/commissioning/{data_session}/eiger/"
+    #     else:
+    #         root_path = f"proposals/{cycle}/{data_session}/eiger/"
+    #     return root_path
+
+    # def path_template_str(root_path):
+    #     path_template = "%Y/%m/%d/"
+    #     return root_path + path_template
+
+    @property
+    def root_path_str(self):
         data_session = RE.md["data_session"]
         cycle = RE.md["cycle"]
-        if "Commissioning" in get_proposal_type():
-            root_path = f"proposals/commissioning/{data_session}/eiger/"
-        else:
-            root_path = f"proposals/{cycle}/{data_session}/eiger/"
+        root_path = f"proposals/{cycle}/{data_session}/assets/dexela/"
         return root_path
 
-    def path_template_str(root_path):
-        path_template = "%Y/%m/%d/"
-        return root_path + path_template
+    @property
+    def path_template_str(self):
+        path_template = "%Y/%m/%d"
+        return path_template
 
+    # hdf5 = Cpt(EigerHDFWithFileStore, 'HDF1:',
+    #             read_attrs=[],
+    #             configuration_attrs=[],
+    #             write_path_template=path_start + path_template_str(root_path_str()),
+    #             read_path_template=path_start + path_template_str(root_path_str()),
+    #             root=path_start+root_path_str()
+    #             # write_path_template=path_start + f'proposals/commissioning/pass-318777/eiger/',
+    #             # read_path_template=path_start + f'proposals/commissioning/pass-318777/eiger/',
+    #             # root=path_start + f'proposals/commissioning/pass-318777/eiger/'
+    #             )
+    
     hdf5 = Cpt(EigerHDFWithFileStore, 'HDF1:',
-                read_attrs=[],
-                configuration_attrs=[],
-                write_path_template=path_start + path_template_str(root_path_str()),
-                read_path_template=path_start + path_template_str(root_path_str()),
-                root=path_start+root_path_str()
-                # write_path_template=path_start + f'proposals/commissioning/pass-318777/eiger/',
-                # read_path_template=path_start + f'proposals/commissioning/pass-318777/eiger/',
-                # root=path_start + f'proposals/commissioning/pass-318777/eiger/'
-                )
-
+               read_attrs=[],
+               configuration_attrs=[],
+               write_path_template=path_start,
+               read_path_template=None,
+               root=None
+               )
+    
     def __init__(self, prefix, *, read_attrs=None, configuration_attrs=None,
                  **kwargs):
         if read_attrs is None:
@@ -268,9 +288,20 @@ class SRXEigerDetector(SingleTrigger, EigerDetector):
                          read_attrs=read_attrs, **kwargs)
         self._mode = SRXMode.step
         self.cam.ensure_nonblocking()
+        self.set_paths()
+
+
+    def set_paths(self):
+        full_path = f'{self.path_start}{self.root_path_str}{self.path_template_str}'
+        self.hdf5.write_path_template = full_path
+        self.hdf5.read_path_template = full_path
 
 
     def stage(self):
+
+        # Set paths
+        self.set_paths()
+
         # EJM: Clear counter for consistency with Xspress3
         _TIMEOUT = 2
         self.cam.array_counter.set(0, timeout=_TIMEOUT).wait()
@@ -304,12 +335,9 @@ class SRXEigerDetector(SingleTrigger, EigerDetector):
 
 
 try:
-    eiger = SRXEigerDetector('XF:05IDD-ES{Det:Eig1M}', name='eiger',
-                              #image_name='eiger',
-                              read_attrs=['hdf5',
-                                          # 'cam',
-                                          # 'stats1'
-                                          ])
+    eiger = SRXEigerDetector('XF:05IDD-ES{Det:Eig1M}',
+                             name='eiger',
+                             read_attrs=['hdf5'])
     eiger.hdf5.read_attrs = []
     eiger.cam.auto_summation.set('Enable')
     eiger.cam.photon_energy.set(10000)
@@ -324,5 +352,8 @@ try:
     eiger.transform1.type.set('None')
 except TimeoutError:
     print(f'\nCannot connect to eiger. Continuing without device.\n')
-except Exception as ex:
-    print(ex, end='\n\n')
+    eiger = None
+except Exception as e:
+    print('\nUnexpected error connecting to Eiger:')
+    print(f'\t{e.__class__.__name__}:{e}\n')
+    eiger = None
