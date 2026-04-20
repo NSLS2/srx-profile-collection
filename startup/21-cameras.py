@@ -35,35 +35,61 @@ class SRXAreaDetectorCam(AreaDetectorCam):
 
 class SRXCamera(SingleTrigger, AreaDetector):
 
+    path_start = "/nsls2/data/srx/"
 
     def __init__(self, *args, root_path=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.read_attrs = ['tiff', 'stats5']
         self.stats5.read_attrs = ['total']
+        self.root_path = root_path
         
-        if root_path is None: # Post data security
-            self.tiff.write_path_template=self.path_start + self.path_template_str(self.root_path_str())
-            self.tiff.read_path_template=self.path_start + self.path_template_str(self.root_path_str())
-            self.tiff.reg_root=self.path_start + self.root_path_str()
-        else: # Pre data security
-            self.tiff.write_path_template=f'{root_path}/{self.name}/%Y/%m/%d/'
-            self.tiff.read_path_template=f'{root_path}/{self.name}/%Y/%m/%d/'
-            self.tiff.reg_root=f'{root_path}/{self.name}'
+        # if root_path is None: # Post data security
+        #     self.tiff.write_path_template=self.path_start + self.path_template_str(self.root_path_str())
+        #     self.tiff.read_path_template=self.path_start + self.path_template_str(self.root_path_str())
+        #     self.tiff.reg_root=self.path_start + self.root_path_str()
+        # else: # Pre data security
+        #     self.tiff.write_path_template=f'{root_path}/{self.name}/%Y/%m/%d/'
+        #     self.tiff.read_path_template=f'{root_path}/{self.name}/%Y/%m/%d/'
+        #     self.tiff.reg_root=f'{root_path}/{self.name}'
 
-    path_start = "/nsls2/data/srx/"
+    def stage(self, *args, **kwargs):
 
+        if self.root_path is None:
+            reg_root = f'{self.path_start}{self.root_path_str}'
+            full_path = f'{reg_root}{self.path_template_str}'
+        else:
+            reg_root = f'{self.root_path}/{self.name}/'
+            full_path = f'{reg_root}/{self.path_template_str}'
+
+        self.tiff.reg_root = reg_root
+        self.tiff.write_path_template = full_path
+        self.tiff.read_path_template = full_path
+
+        super().stage(*args, **kwargs)
+
+
+    @property
     def root_path_str(self):
         data_session = RE.md["data_session"]
         cycle = RE.md["cycle"]
-        if "Commissioning" in get_proposal_type():
-            root_path = f"proposals/commissioning/{data_session}/assets/{self.name}/"
-        else:
-            root_path = f"proposals/{cycle}/{data_session}/assets/{self.name}/"
-        return root_path
 
-    def path_template_str(self, root_path):
-        path_template = "%Y/%m/%d/"
-        return root_path + path_template
+        # if "Commissioning" in get_proposal_type():
+        #     root_path = f"proposals/commissioning/{data_session}/assets/{self.name}/"
+        # else:
+        #     root_path = f"proposals/{cycle}/{data_session}/assets/{self.name}/"
+
+        root_path = f"proposals/{cycle}/{data_session}/assets/{self.name}/"
+
+        return root_path
+    
+    @property
+    def path_template_str(self):
+        path_template = "%Y/%m/%d"
+        return path_template
+
+    # def path_template_str(self, root_path):
+    #     path_template = "%Y/%m/%d/"
+    #     return root_path + path_template
 
     cam = Cpt(AreaDetectorCam, 'cam1:')
     image = Cpt(ImagePlugin, 'image1:')
