@@ -156,7 +156,6 @@ class SRXMerlinDetector(AreaDetector):
               )
     
 
-# class SRXMerlin(SingleTrigger, MerlinDetector):
 class SRXMerlin(SingleTrigger, SRXMerlinDetector):
     proc1 = Cpt(ProcessPlugin, 'Proc1:')
     stats1 = Cpt(StatsPluginV33, 'Stats1:')
@@ -180,25 +179,31 @@ class SRXMerlin(SingleTrigger, SRXMerlinDetector):
 
     path_start = "/nsls2/data/srx/"
 
-    def root_path_str():
+    @property
+    def root_path_str(self):
         data_session = RE.md["data_session"]
         cycle = RE.md["cycle"]
-        if "Commissioning" in get_proposal_type():
-            root_path = f"proposals/commissioning/{data_session}/assets/merlin/"
-        else:
-            root_path = f"proposals/{cycle}/{data_session}/assets/merlin/"
+        root_path = f"proposals/{cycle}/{data_session}/assets/merlin/"
         return root_path
 
-    def path_template_str(root_path):
-        path_template = "%Y/%m/%d/"
-        return root_path + path_template
+    @property
+    def path_template_str(self):
+        path_template = "%Y/%m/%d"
+        return path_template
+
+    # hdf5 = Cpt(HDF5PluginWithFileStoreMerlin, 'HDF1:',
+    #             read_attrs=[],
+    #             configuration_attrs=[],
+    #             write_path_template=path_start + path_template_str(root_path_str()),
+    #             read_path_template=path_start + path_template_str(root_path_str()),
+    #             root=path_start+root_path_str())
 
     hdf5 = Cpt(HDF5PluginWithFileStoreMerlin, 'HDF1:',
                 read_attrs=[],
                 configuration_attrs=[],
-                write_path_template=path_start + path_template_str(root_path_str()),
-                read_path_template=path_start + path_template_str(root_path_str()),
-                root=path_start+root_path_str())
+                write_path_template=path_start, # Required. Overriden when staging
+                read_path_template=None, # Overriden when stagin
+                root=None)
 
     stats1 = Cpt(StatsPlugin, 'Stats1:')
     stats2 = Cpt(StatsPlugin, 'Stats2:')
@@ -213,11 +218,18 @@ class SRXMerlin(SingleTrigger, SRXMerlinDetector):
     roi3 = Cpt(ROIPlugin, 'ROI3:')
     roi4 = Cpt(ROIPlugin, 'ROI4:')
 
-    # def __init__(self, prefix, *, configuration_attrs=None, read_attrs=None,
-    #              **kwargs):
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._mode = SRXMode.step
+        self.set_paths()
+
+
+    def set_paths(self):
+        full_path = f'{self.path_start}{self.root_path_str}{self.path_template_str}'
+        self.hdf5.write_path_template = full_path
+        self.hdf5.read_path_template = full_path
+
 
     def stop(self, success=False):
         ret = super().stop(success=success)
@@ -225,6 +237,10 @@ class SRXMerlin(SingleTrigger, SRXMerlinDetector):
         return ret
 
     def stage(self):
+
+        # Set paths
+        self.set_paths()
+
         # EJM: Clear counter for consistency with Xspress3
         _TIMEOUT = 2
         self.cam.array_counter.set(0, timeout=_TIMEOUT).wait()
@@ -269,7 +285,10 @@ try:
 except TimeoutError:
     print('\nCannot connect to Merlin. Continuing without device.\n')
     merlin = None
-except Exception:
-    print('\nUnexpected error connecting to Merlin.\n',
-          sys.exc_info()[0],
-          end='\n\n')
+except Exception as e:
+    print('\nUnexpected error connecting to Merlin:')
+    print(f'\t{e.__class__.__name__}:{e}\n')
+    merlin = None
+    # print('\nUnexpected error connecting to Merlin.\n',
+    #       sys.exc_info()[0],
+    #       end='\n\n')
