@@ -255,7 +255,7 @@ class SRXDexelaDetector(SingleTrigger, DexelaDetector):
 
     def set_paths(self):
         full_path = f'{self.root_path_str}{self.path_template_str}'
-        self.hdf5.write_path_template = f'{self.path_write_start}{full_path}'.replace("/", "\\")
+        self.hdf5.write_path_template = f'{self.path_write_start}{full_path}/'.replace("/", "\\")
         self.hdf5.read_path_template = f'{self.path_read_start}{full_path}'
 
     def stage(self):
