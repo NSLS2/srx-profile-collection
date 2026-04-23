@@ -244,3 +244,31 @@ del one_1d_step, one_nd_step, one_shot
 
 # Setup numpy print options
 np.set_printoptions(legacy='1.25', suppress=True)
+
+# # Custom beamline warning formatting. Remove if these cause problems - EJM
+def simple_format(message, category, filename, lineno, line=None):
+    # This returns only the category and message, skipping the filename/line info
+    return f"{category.__name__}: {message}\n"
+# Override the default formatter
+warnings.formatwarning = simple_format
+
+def srx_deprecated(new_plan):
+    """
+    Custom decorator for deprecated srx plans
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            warn_str = (
+                f"SRX plan ({func.__name__}) is now deprecated.\n"
+                + f"This plan will still work as intended, but ({new_plan.__name__}) is encouraged as a replacement.\n\n"
+            )
+            warnings.warn(
+                warn_str,
+                category=DeprecationWarning,
+                stacklevel=2
+            )
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
+
