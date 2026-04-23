@@ -1146,8 +1146,9 @@ def xrf_map2(xstart, xstop, xnum,
     x_range = float(np.abs(xstop - xstart))
     y_range = float(np.abs(ystop - ystart))
 
-    if coords == 'coarse' and scan_type == 'auto':
-        raise ValueError("'scan_type' cannot be 'auto' when using coarse coodinates.")
+    # Guard block
+    if coords == 'absolute' and scan_type == 'auto':
+        raise ValueError("'scan_type' cannot be 'auto' when using absolute coodinates.")
 
     # Function to make coords relative
     def get_coords(start, stop, motor):
