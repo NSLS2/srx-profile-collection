@@ -714,9 +714,7 @@ def point_rsm(start, stop, num,
 
 
 ### Older scan versions ####
-
-    
-
+@srx_deprecated(point_rsm)
 @append_srx_kwargs_md
 def energy_rocking_curve(e_low,
                          e_high,
@@ -828,6 +826,7 @@ def energy_rocking_curve(e_low,
         yield from mov(energy, start_energy)
 
 
+@srx_deprecated(point_rsm)
 def relative_energy_rocking_curve(e_range,
                                   e_num,
                                   dwell,
@@ -860,6 +859,7 @@ def relative_energy_rocking_curve(e_range,
                                     **kwargs)
 
 
+@srx_deprecated(point_rsm)
 def extended_energy_rocking_curve(e_low,
                                   e_high,
                                   e_num,
@@ -1001,6 +1001,7 @@ def continuous_energy_rocking_curve(e_low,
         yield from mov(energy, start_energy)
 
 
+@srx_deprecated(point_rsm)
 @append_srx_kwargs_md
 def angle_rocking_curve(th_low,
                         th_high,
@@ -1100,6 +1101,7 @@ def angle_rocking_curve(th_low,
         yield from mov(nano_stage.th, start_th)
 
 
+@srx_deprecated(point_rsm)
 def relative_angle_rocking_curve(th_range,
                                  th_num,
                                  dwell,
@@ -1118,6 +1120,7 @@ def relative_angle_rocking_curve(th_range,
                                    **kwargs)
 
 
+@srx_deprecated(point_rsm)
 def flying_angle_rocking_curve(th_low,
                                th_high,
                                th_num,
@@ -1162,6 +1165,7 @@ def flying_angle_rocking_curve(th_low,
         yield from mov(nano_stage.th, start_th)
 
     
+@srx_deprecated(point_rsm)
 def relative_flying_angle_rocking_curve(th_range,
                                         th_num,
                                         dwell,
