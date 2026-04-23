@@ -988,9 +988,9 @@ def ra_peakup(start=None,
         scanreocrd.time_rem_str.put(time_rem_convert(59))
 
     def finalize_scan():
-        yield from abs_set(scanrecord.scanning, False, timeout=10)
-        yield from abs_set(scanrecord.time_remaining, 0, timeout=10)
-        yield from abs_set(scanrecord.time_rem_str, time_rem_convert(0), timeout=10)
+        yield from abs_set(scanrecord.scanning, False)
+        yield from abs_set(scanrecord.time_remaining, 0)
+        yield from abs_set(scanrecord.time_rem_str, time_rem_convert(0))
 
 
     plan = bpp.finalize_wrapper(smart_max_core(start), finalize_scan)
@@ -1111,8 +1111,6 @@ def ra_optimize_scalers(dwell=0.5,
     @bpp.subs_decorator(livecb)
     def optimize_all_preamps():
         settle_time = 0.1
-
-        yield from abs_set(scanrecord.time_rem_str, time_rem_convert(59), timeout=10)
 
         ### Optimize sensitivity ###
         # Turn off offset correction
@@ -1290,8 +1288,6 @@ def ra_optimize_scalers(dwell=0.5,
             if shut_b.status.get() == 'Not Open':
                 print('Opening B-hutch shutter..')
                 yield from abs_set(shut_b, "Open", wait=True)
-        
-        yield from abs_set(scanrecord.time_rem_str, time_rem_convert(0), timeout=10)
 
     # Define some helper functions
     def at_scan(name, doc):
@@ -1299,9 +1295,9 @@ def ra_optimize_scalers(dwell=0.5,
         scanreocrd.time_rem_str.put(time_rem_convert(59))
 
     def finalize_scan():
-        yield from abs_set(scanrecord.scanning, False, timeout=10)
-        yield from abs_set(scanrecord.time_remaining, 0, timeout=10)
-        yield from abs_set(scanrecord.time_rem_str, time_rem_convert(0), timeout=10)
+        yield from abs_set(scanrecord.scanning, False)
+        yield from abs_set(scanrecord.time_remaining, 0)
+        yield from abs_set(scanrecord.time_rem_str, time_rem_convert(0))
         sclr1.stage_sigs.pop('preset_time', None)
 
     plan = bpp.finalize_wrapper(optimize_all_preamps(), finalize_scan)
