@@ -729,7 +729,6 @@ def scan_and_fly_base(detectors,
                             (ynum - ystep)) # number of remaining rows
             
             # Update scanrecord with new time estimate
-            print(f'{time_rem=}')
             yield from abs_set(scanrecord.time_remaining, time_rem / 3600., timeout=10)
             yield from abs_set(scanrecord.time_rem_str, time_rem_convert(time_rem), timeout=10)
 
