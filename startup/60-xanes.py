@@ -198,20 +198,38 @@ def xanes_plan(erange=[], estep=[], dwell=1.,
             pass
 
 
-    def time_per_point(name, doc, st=ttime.time()):
-        ## Don't do this. Make a proper fix.
-        try:
-            if (name == "event"):
-                if ('seq_num' in doc.keys()):
-                    scanrecord.time_remaining.put((doc['time'] - st) / doc['seq_num'] *
-                                                  (len(ept) - doc['seq_num']) / 3600)
-                    scanrecord.time_rem_str.put(time_rem_convert(
-                        ((doc['time'] - st) / doc['seq_num']) * # average time per point
-                        (len(ept) - doc['seq_num']) # remaining number of points
-                    ))
-        except Exception as e:
-            print(f'Exception encountered in time_per_point function.\n{e}')
-            pass
+    # def time_per_point(name, doc, st=ttime.time()):
+    #     ## Don't do this. Make a proper fix.
+    #     try:
+    #         if (name == "event"):
+    #             if ('seq_num' in doc.keys()):
+    #                 scanrecord.time_remaining.put((doc['time'] - st) / doc['seq_num'] *
+    #                                               (len(ept) - doc['seq_num']) / 3600)
+    #                 scanrecord.time_rem_str.put(time_rem_convert(
+    #                     ((doc['time'] - st) / doc['seq_num']) * # average time per point
+    #                     (len(ept) - doc['seq_num']) # remaining number of points
+    #                 ))
+    #     except Exception as e:
+    #         print(f'Exception encountered in time_per_point function.\n{e}')
+    #         pass
+
+    # _time_estimate_start = None
+    def time_per_point(name, doc, st=[ttime.time()]):
+        if name != 'event':
+            return
+        if 'seq_num' not in doc.keys():
+            return
+        
+        print(f'{st[0]=}')
+        if doc['seq_num'] == 1:
+            print('Reference time is rewritten!')
+            st[0] = ttime.time() # Ovewritten to start from first data point
+            return
+
+        time_rem = (((doc['time'] - st[0]) / doc['seq_num']) * # average time per point
+                    (len(ept) - doc['seq_num'])) # remaining number of points
+        scanrecord.time_remaining.put(time_rem / 3600)
+        scanrecord.time_rem_str.put(time_rem_convert(time_rem))
 
     livetableitem.append(roi_key[0])
     livecallbacks.append(LiveTable(livetableitem))
