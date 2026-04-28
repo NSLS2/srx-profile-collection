@@ -62,8 +62,6 @@ def setup_xrd_dets(dets,
         del xrd
 
 
-
-
 # Assumes detector stage sigs are already set
 # Treat like a plan stub and use within a run decorator
 def _continuous_dark_fields(dets,
@@ -247,15 +245,22 @@ def step_rsm_base(start, stop, num,
         if return_to_start:
             yield from mov(rocking_motor, curr_pos)
 
-    def time_per_point(name, doc, st=ttime.time()):
-        if (name == "event"):
-            if ('seq_num' in doc.keys()):
-                scanrecord.time_remaining.put((doc['time'] - st) / doc['seq_num'] *
-                                                (len(ept) - doc['seq_num']) / 3600)
-                scanrecord.time_rem_str.put(time_rem_convert(
-                    ((doc['time'] - st) / doc['seq_num']) * # average time per point
-                    (len(ept) - doc['seq_num']) # remaining number of points
-                ))
+    def time_per_point(name, doc, st=[ttime.time()]):
+        if name != 'event':
+            return
+        if 'seq_num' not in doc.keys():
+            return
+        
+        print(f'{st[0]=}')
+        if doc['seq_num'] == 1:
+            print('Reference time is rewritten!')
+            st[0] = ttime.time() # Ovewritten to start from first data point
+            return
+
+        time_rem = (((doc['time'] - st[0]) / doc['seq_num']) * # average time per point
+                    (len(ept) - doc['seq_num'])) # remaining number of points
+        scanrecord.time_remaining.put(time_rem / 3600)
+        scanrecord.time_rem_str.put(time_rem_convert(time_rem))
 
     # Live Callbacks
     livecallbacks = [LiveTable(['energy_energy', 'dexela_stats2_total'])]
