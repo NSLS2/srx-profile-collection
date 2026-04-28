@@ -611,7 +611,7 @@ class FlyerIDMono(Device):
 
         # print(f"{print_now()}: before unstaging scaler")
         self.scaler.stop_all.put(1)
-        self.scaler.count_mode.put(1)
+        # self.scaler.count_mode.put(1)
         self.scaler.read_attrs = ["channels.chan2", "channels.chan3", "channels.chan4"]
         # self.scaler.count_mode.put(1)  # return SIS3820 into autocount (not single count) mode
         # print(f"{print_now()}: after unstaging scaler")
