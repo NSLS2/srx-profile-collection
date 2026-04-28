@@ -135,8 +135,10 @@ if 'clear_describe_cache' not in RE.commands:
         ) is key_absence_sentinel:
             current_run = None
         if current_run is not None:
-            if obj in current_run._describe_cache.keys():
-                current_run._describe_cache.pop(obj)
+            # if obj in current_run._describe_cache.keys():
+            #     current_run._describe_cache.pop(obj)
+            if obj in current_run._current_stream_cache.describe_cache.keys():
+                current_run._current_stream_cache.describe_cache.pop(obj)
 
     RE.register_command('clear_describe_cache', _clear_describe_cache)
 
@@ -145,12 +147,15 @@ if 'clear_describe_cache' not in RE.commands:
 RE.unsubscribe(0)
 
 # Define tiled catalog
-srx_raw = from_profile("nsls2", api_key=os.environ["TILED_BLUESKY_WRITING_API_KEY_SRX"])["srx"]["raw"]
+srx_raw = from_profile("srx", api_key=os.environ["TILED_BLUESKY_WRITING_API_KEY_SRX"])
 
-c = tiled_reading_client = from_uri(
-        "https://tiled.nsls2.bnl.gov/api/v1/metadata/srx/raw",
-        include_data_sources=True,
-)
+# c = tiled_reading_client = from_uri(
+#         "https://tiled.nsls2.bnl.gov/api/v1/metadata/srx/raw",
+#         include_data_sources=True,
+# )
+
+c = tiled_reading_client = from_profile("srx", include_data_sources=True)
+
 
 discard_liveplot_data = True
 descriptor_uids = []
