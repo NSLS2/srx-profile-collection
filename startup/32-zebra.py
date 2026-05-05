@@ -738,7 +738,7 @@ class SRXFlyer1Axis(Device):
         desc["i0"] = spec
         desc["i0"]["source"] = self._sis.mca2.pvname
         desc["i0_time"] = spec
-        desc["i0_time"]["source"] = self._sis.mca1.pvname
+        desc["i0_time"]["source"] = self._sis.mca01.pvname
         desc["im"] = spec
         desc["im"]["source"] = self._sis.mca3.pvname
         desc["it"] = spec

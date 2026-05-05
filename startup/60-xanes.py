@@ -901,7 +901,7 @@ class FlyerIDMono(Device):
         ttime.sleep(self.pulse_width + 0.1)
 
         orig_read_attrs = self.scaler.read_attrs
-        self.scaler.read_attrs = ['mca1', 'mca2', 'mca3', 'mca4']
+        self.scaler.read_attrs = ['mca01', 'mca02', 'mca03', 'mca04']
         # print(orig_read_attrs)
 
         total_points = self.num_scans * self.num_triggers
@@ -910,10 +910,10 @@ class FlyerIDMono(Device):
         flag_collecting_data = 0
         while (flag_collecting_data < 5):
             scaler_mca_data = self.scaler.read()
-            i0_time = scaler_mca_data[f"{self.scaler.name}_mca1"]['value']
-            i0 = scaler_mca_data[f"{self.scaler.name}_mca2"]['value']
-            im = scaler_mca_data[f"{self.scaler.name}_mca3"]['value']
-            it = scaler_mca_data[f"{self.scaler.name}_mca4"]['value']
+            i0_time = scaler_mca_data[f"{self.scaler.name}_mca01"]['value']
+            i0 = scaler_mca_data[f"{self.scaler.name}_mca02"]['value']
+            im = scaler_mca_data[f"{self.scaler.name}_mca03"]['value']
+            it = scaler_mca_data[f"{self.scaler.name}_mca04"]['value']
 
             # print(f'{i0_time.shape[0]}\t?=\t{2*self.num_triggers}')
             if i0_time.shape[0] == 2*self.num_triggers:

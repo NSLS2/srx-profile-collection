@@ -65,14 +65,16 @@ class SRXScaler(EpicsScaler):
     stop_all = Cpt(EpicsSignal, "StopAll")
     user_led = Cpt(EpicsSignal, "UserLED")
     wfrm = Cpt(EpicsSignal, "Wfrm")
-    mca1 = Cpt(EpicsSignalRO, "mca1")
-    mca2 = Cpt(EpicsSignalRO, "mca2")
-    mca3 = Cpt(EpicsSignalRO, "mca3")
-    mca4 = Cpt(EpicsSignalRO, "mca4")
+
+    _MAX_SCALER_CHANNELS = 32
+
 
     def __init__(self, prefix, **kwargs):
         super().__init__(prefix, **kwargs)
         self.stage_sigs[self.count_mode] = "OneShot"
+        for i in range(self._MAX_SCALER_CHANNELS):
+            mca_name = f"mca{i:02d}"
+            setattr(self, mca_name, Cpt(EpicsSignalRO, mca_name, kind=Kind.omitted))
 
 
 sclr1 = SRXScaler("XF:05IDD-ES:1{Sclr:1}", name="sclr1")
@@ -92,23 +94,23 @@ im = sclr1.channels.chan3
 
 def export_sis_data(ion, filepath, zebra):
     N = ion.nuse_all.get()
-    t = ion.mca1.get(timeout=5.0)
-    i = ion.mca2.get(timeout=5.0)
-    im = ion.mca3.get(timeout=5.0)
-    it = ion.mca4.get(timeout=5.0)
+    t = ion.mca01.get(timeout=5.0)
+    i = ion.mca02.get(timeout=5.0)
+    im = ion.mca03.get(timeout=5.0)
+    it = ion.mca04.get(timeout=5.0)
     while len(t) == 0 and len(t) != len(i):
-        t = ion.mca1.get(timeout=5.0)
-        i = ion.mca2.get(timeout=5.0)
-        im = ion.mca3.get(timeout=5.0)
-        it = ion.mca4.get(timeout=5.0)
+        t = ion.mca01.get(timeout=5.0)
+        i = ion.mca02.get(timeout=5.0)
+        im = ion.mca03.get(timeout=5.0)
+        it = ion.mca04.get(timeout=5.0)
 
     if len(i) != N:
         print(f'Scaler did not collect enough points.')
         ## Try one more time
-        t = ion.mca1.get(timeout=5.0)
-        i = ion.mca2.get(timeout=5.0)
-        im = ion.mca3.get(timeout=5.0)
-        it = ion.mca4.get(timeout=5.0)
+        t = ion.mca01.get(timeout=5.0)
+        i = ion.mca02.get(timeout=5.0)
+        im = ion.mca03.get(timeout=5.0)
+        it = ion.mca04.get(timeout=5.0)
         if len(i) != N:
             print(f'Nope. Only received {len(i)}/{N} points.')
 
