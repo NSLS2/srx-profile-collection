@@ -1272,7 +1272,7 @@ def ra_optimize_scalers(dwell=0.5,
 
             yield Msg('save')
 
-            if not RUN_WRAPPER:
+            if run_agnostic:
                 # Clear descripter cache
                 yield Msg("clear_describe_cache", sclr1)
         else:
