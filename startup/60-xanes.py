@@ -197,23 +197,6 @@ def xanes_plan(erange=[], estep=[], dwell=1.,
         except NameError:
             pass
 
-
-    # def time_per_point(name, doc, st=ttime.time()):
-    #     ## Don't do this. Make a proper fix.
-    #     try:
-    #         if (name == "event"):
-    #             if ('seq_num' in doc.keys()):
-    #                 scanrecord.time_remaining.put((doc['time'] - st) / doc['seq_num'] *
-    #                                               (len(ept) - doc['seq_num']) / 3600)
-    #                 scanrecord.time_rem_str.put(time_rem_convert(
-    #                     ((doc['time'] - st) / doc['seq_num']) * # average time per point
-    #                     (len(ept) - doc['seq_num']) # remaining number of points
-    #                 ))
-    #     except Exception as e:
-    #         print(f'Exception encountered in time_per_point function.\n{e}')
-    #         pass
-
-    # _time_estimate_start = None
     def time_per_point(name, doc, st=[ttime.time()]):
         if name != 'event':
             return
