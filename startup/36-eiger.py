@@ -246,7 +246,7 @@ class SRXEigerDetector(SingleTrigger, EigerDetector):
     def root_path_str(self):
         data_session = RE.md["data_session"]
         cycle = RE.md["cycle"]
-        root_path = f"proposals/{cycle}/{data_session}/assets/dexela/"
+        root_path = f"proposals/{cycle}/{data_session}/assets/eiger/"
         return root_path
 
     @property
