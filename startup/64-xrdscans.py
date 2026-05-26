@@ -251,9 +251,9 @@ def step_rsm_base(start, stop, num,
         if 'seq_num' not in doc.keys():
             return
         
-        print(f'{st[0]=}')
+        # print(f'{st[0]=}')
         if doc['seq_num'] == 1:
-            print('Reference time is rewritten!')
+            # print('Reference time is rewritten!')
             st[0] = ttime.time() # Ovewritten to start from first data point
             return
 
