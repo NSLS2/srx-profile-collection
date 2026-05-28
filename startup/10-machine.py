@@ -267,8 +267,10 @@ class Energy(PseudoPositioner):
                     uposlistIn.append(num[0])
                     elistIn.append(num[1])
 
-        self.etoulookup = make_interp_spline(elistIn, uposlistIn, bc_type=([(2, 0.0)], [(2, 0.0)]))
-        self.utoelookup = make_interp_spline(uposlistIn, elistIn, bc_type=([(2, 0.0)], [(2, 0.0)]))
+        self.etoulookup = make_interp_spline(elistIn, uposlistIn)
+        self.utoelookup = make_interp_spline(uposlistIn, elistIn)
+        # self.etoulookup = make_interp_spline(elistIn, uposlistIn, bc_type=([(2, 0.0)], [(2, 0.0)]))
+        # self.utoelookup = make_interp_spline(uposlistIn, elistIn, bc_type=([(2, 0.0)], [(2, 0.0)]))
 
         self.u_gap.gap.user_readback.name = self.u_gap.name
 
