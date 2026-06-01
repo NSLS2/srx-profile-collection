@@ -307,6 +307,12 @@ def scan_and_fly_base(detectors,
         md_dets = md_dets + [nano_vlm]
     get_det_md(md, md_dets)
 
+    # Overwrite nanoZebra in start metadata because the zebra object has no knowledge of the flyer
+    if 'coarse' in flying_zebra.name:
+        md['scan']['detectors']['nanoZebra']['mode'] = 'time'
+    else:
+        md['scan']['detectors']['nanoZebra']['mode'] = 'position'
+
     # Setup LivePlot
     # Set the ROI pv
     xs_ = dets_by_name[flying_zebra.detectors[0].name]
