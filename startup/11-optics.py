@@ -21,8 +21,30 @@ shut_b = SRXTwoButtonShutter("XF:05IDB-PPS:1{PSh:4}", name="shut_b")
 
 class SRXFastShutter(Device):
     # Based on HXN Fast Shutter code
-    request_open = Cpt(EpicsSignal, "")
+    request_open = Cpt(EpicsSignal, "", kind=Kind.omitted)
     _verbosity = 1
+    open_command = Cpt(
+        EpicsSignal,
+        "XF:05IDD{FS:1}Open-Cmd",
+        name="close_command",
+        add_prefix=(),
+        kind=Kind.omitted,
+    )
+    close_command = Cpt(
+        EpicsSignal,
+        "XF:05IDD{FS:1}Close-Cmd",
+        name="close_command",
+        add_prefix=(),
+        kind=Kind.omitted,
+    )
+    status = Cpt(
+        EpicsSignalRO,
+        "XF:05IDD{FS:1}Status",
+        name="status",
+        add_prefix=(),
+        kind=Kind.hinted,
+        string=True,
+    )
 
     def __init__(self, prefix, **kwargs):
         super().__init__(prefix, **kwargs)
@@ -83,18 +105,21 @@ def check_shutters(check, status):
             print('Opening D-hutch shutter...')
             try:
                 # yield from abs_set(shut_d.request_open, 1, wait=True, timeout=1)
-                st = yield from mov(shut_d.request_open, 1)
+                # st = yield from mov(shut_d.request_open, 1)
+                st = yield from mov(shut_d.open_command, 1)
                 # print(st)
                 st[0].wait(5)
             except WaitTimeoutError:
                 print("Timeout opening D-shutter (1/10) ...") 
             # yield from bps.sleep(1)
             i = 1
-            while (shut_d.read()['shut_d_request_open']['value'] == 0):
+            # while (shut_d.read()['shut_d_request_open']['value'] == 0):
+            while (shut_d.read()['shut_d_status']['value'] == "Closed"):
                 yield from bps.sleep(1)
                 try:
                     # yield from abs_set(shut_d.request_open, 1, wait=True, timeout=1)
-                    st = yield from mov(shut_d.request_open, 1)
+                    # st = yield from mov(shut_d.request_open, 1)
+                    st = yield from mov(shut_d.open_command, 1)
                     st[0].wait(5)
                 except WaitTimeoutError:
                     print(f"Timeout opening D-shutter ({i+1}/10) ...")
@@ -106,7 +131,9 @@ def check_shutters(check, status):
         else:
             print('Closing D-hutch shutter...')
             try:
-                st = yield from mov(shut_d.request_open, 0)
+                # st = yield from mov(shut_d.request_open, 0)
+                # st[0].wait(3)
+                st = yield from mov(shut_d.close_command, 1)
                 st[0].wait(3)
             except Exception:
                 print('  Error shutting D-shutter!')
