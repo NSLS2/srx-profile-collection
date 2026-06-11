@@ -18,6 +18,8 @@ from IPython.terminal.prompts import Prompts, Token
 from ophyd.signal import DEFAULT_CONNECTION_TIMEOUT, EpicsSignal, EpicsSignalBase
 from redis_json_dict import RedisJSONDict
 from tiled.client import from_profile, from_uri
+from bluesky.callbacks.buffer import BufferingWrapper
+from bluesky_tiled_plugins import TiledInserter
 
 
 # Start to list warnings that we don't want to see - or just hide them from users
@@ -148,6 +150,10 @@ RE.unsubscribe(0)
 
 # Define tiled catalog
 srx_raw = from_profile("srx", api_key=os.environ["TILED_BLUESKY_WRITING_API_KEY_SRX"])
+tiled_inserter = TiledInserter(srx_raw, 'srx',
+                               backup_directory='/tmp/tiled_backup',
+                               backup_dictionary=None)
+tiled_inserter = BufferingWrapper(tiled_inserter)
 
 # c = tiled_reading_client = from_uri(
 #         "https://tiled.nsls2.bnl.gov/api/v1/metadata/srx/raw",
@@ -175,25 +181,7 @@ def post_document(name, doc):
     elif name == "event_page" and doc["descriptor"] in descriptor_uids:
         return
     # print(f"==================  name={name!r} doc={doc} type(doc)={type(doc)}")
-    ATTEMPTS = 120
-    error = None
-    for attempt in range(ATTEMPTS):
-        try:
-            start_time = ttime.time()
-            srx_raw.post_document(name, doc)
-            # print(f"{name} {doc} Post dt = {ttime.time() - start_time}")
-            # log_ipy.debug(f"{name} {doc} Post dt = {ttime.time() - start_time}")
-        except Exception as exc:
-            print(f"[{print_now()}] Document saving failure ({attempt+1}/{ATTEMPTS}):", repr(exc))
-            error = exc
-            # raise exc
-        else:
-            break
-        ttime.sleep(2)
-    else:
-        # Out of attempts
-        raise error
-
+    tiled_inserter.post_document(name, doc)
 
 RE.subscribe(post_document)
 
