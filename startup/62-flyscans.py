@@ -307,6 +307,12 @@ def scan_and_fly_base(detectors,
         md_dets = md_dets + [nano_vlm]
     get_det_md(md, md_dets)
 
+    # Overwrite nanoZebra in start metadata because the zebra object has no knowledge of the flyer
+    if 'coarse' in flying_zebra.name:
+        md['scan']['detectors']['nanoZebra']['mode'] = 'time'
+    else:
+        md['scan']['detectors']['nanoZebra']['mode'] = 'position'
+
     # Setup LivePlot
     # Set the ROI pv
     xs_ = dets_by_name[flying_zebra.detectors[0].name]
@@ -650,8 +656,9 @@ def scan_and_fly_base(detectors,
             toc(0, str='timing unstage', log_file=log_file)
 
     def at_scan(name, doc):
-        scanrecord.time_remaining.put((dwell * xnum + 3.8) / 3600)
-        scanrecord.time_rem_str.put(time_rem_convert(dwell * xnum + 3.8))
+        time_rem = ynum * (dwell * xnum + 3.8)
+        scanrecord.time_remaining.put(time_rem / 3600.)
+        scanrecord.time_rem_str.put(time_rem_convert(time_rem))
 
     # TODO remove this eventually?
     # xs = dets_by_name['xs']
@@ -717,12 +724,20 @@ def scan_and_fly_base(detectors,
         yield from abs_set(xs.channel01.mcaroi.ts_num_points, xnum, wait=True, timeout=10)
 
         ystep = 0
+        _time_estimate_start = ttime.time()
         for step in tqdm(np.linspace(ystart, ystop, ynum), desc="Scan progress", position=0, leave=True, unit="row"):
-            yield from abs_set(scanrecord.time_remaining,
-                               (ynum - ystep) * ( dwell * xnum + 3.8 ) / 3600.,
-                               timeout=10)
-            yield from abs_set(scanrecord.time_rem_str, time_rem_convert(
-                               (ynum - ystep) * (dwell * xnum + 3.8)), timeout=10)
+            
+            # Estimate time
+            if ystep == 0:
+                time_rem = ynum * (dwell * xnum + 3.8)
+            else:
+                time_rem = (((ttime.time() - _time_estimate_start) / ystep) *  # average time per row
+                            (ynum - ystep)) # number of remaining rows
+            
+            # Update scanrecord with new time estimate
+            yield from abs_set(scanrecord.time_remaining, time_rem / 3600., timeout=10)
+            yield from abs_set(scanrecord.time_rem_str, time_rem_convert(time_rem), timeout=10)
+
             # 'arm' the all of the detectors for outputting fly data
             for d in flying_zebra.detectors:
                 yield from bps.mov(d.fly_next, True)
@@ -761,7 +776,7 @@ def scan_and_fly_base(detectors,
             else:
                 yield from fly_each_step(ymotor, step, start, stop)
             # print('return from step\t',time.time())
-            ystep = ystep + 1
+            ystep += 1
 
         # Print 3 extra lines for tqdm
         print("\n\n\n", end="")
@@ -1146,8 +1161,9 @@ def xrf_map2(xstart, xstop, xnum,
     x_range = float(np.abs(xstop - xstart))
     y_range = float(np.abs(ystop - ystart))
 
-    if coords == 'coarse' and scan_type == 'auto':
-        raise ValueError("'scan_type' cannot be 'auto' when using coarse coodinates.")
+    # Guard block
+    if coords == 'absolute' and scan_type == 'auto':
+        raise ValueError("'scan_type' cannot be 'auto' when using absolute coodinates.")
 
     # Function to make coords relative
     def get_coords(start, stop, motor):

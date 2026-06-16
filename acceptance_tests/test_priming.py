@@ -97,7 +97,7 @@ def scan_and_fly_test(xstart, xstop, xnum, ystart, ystop, ynum, dwell, *,
         scanrecord.time_remaining.put(0)
 
     #@subs_decorator([LiveTable([ymotor]), RowBasedLiveGrid((ynum, xnum), ion.name, row_key=ymotor.name), LiveZebraPlot()])
-    #@subs_decorator([LiveTable([ymotor]), LiveGrid((ynum, xnum), sclr1.mca1.name)])
+    #@subs_decorator([LiveTable([ymotor]), LiveGrid((ynum, xnum), sclr1.mca01.name)])
     @subs_decorator([LiveTable([ymotor])])
     #@subs_decorator([LiveGrid((ynum, xnum+1), xs.channel1.rois.roi01.value.name,extent=(xstart,xstop,ystop,ystart))])
     @subs_decorator({'start':at_scan})

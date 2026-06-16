@@ -338,8 +338,6 @@ class CompucentricRotation(PseudoPositioner):
     def inverse(self, real_pos):
         return self.PseudoPosition(rotation=real_pos.th)
     
-
-
         # if self.mode == 'coarse':
         #     return self.RealPosition(x=self.real_position.x + dx,
         #                              z=self.real_position.z + dz,
@@ -493,7 +491,6 @@ def fit_compucentric_model(th, x_obs=None, z_obs=None,
             ax.set_title('Compucentric Z position Fit')
             ax.legend()
             fig.show()
-
 
     if r_rel_err > 10:
         print(('WARNING: Poor calibration. Relative error of radius greater than 10%.'
