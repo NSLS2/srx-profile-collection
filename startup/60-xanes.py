@@ -197,21 +197,22 @@ def xanes_plan(erange=[], estep=[], dwell=1.,
         except NameError:
             pass
 
+    def time_per_point(name, doc, st=[ttime.time()]):
+        if name != 'event':
+            return
+        if 'seq_num' not in doc.keys():
+            return
+        
+        # print(f'{st[0]=}')
+        if doc['seq_num'] == 1:
+            # print('Reference time is rewritten!')
+            st[0] = ttime.time() # Ovewritten to start from first data point
+            return
 
-    def time_per_point(name, doc, st=ttime.time()):
-        ## Don't do this. Make a proper fix.
-        try:
-            if (name == "event"):
-                if ('seq_num' in doc.keys()):
-                    scanrecord.time_remaining.put((doc['time'] - st) / doc['seq_num'] *
-                                                  (len(ept) - doc['seq_num']) / 3600)
-                    scanrecord.time_rem_str.put(time_rem_convert(
-                        ((doc['time'] - st) / doc['seq_num']) * # average time per point
-                        (len(ept) - doc['seq_num']) # remaining number of points
-                    ))
-        except Exception as e:
-            print(f'Exception encountered in time_per_point function.\n{e}')
-            pass
+        time_rem = (((doc['time'] - st[0]) / doc['seq_num']) * # average time per point
+                    (len(ept) - doc['seq_num'])) # remaining number of points
+        scanrecord.time_remaining.put(time_rem / 3600)
+        scanrecord.time_rem_str.put(time_rem_convert(time_rem))
 
     livetableitem.append(roi_key[0])
     livecallbacks.append(LiveTable(livetableitem))
@@ -883,7 +884,7 @@ class FlyerIDMono(Device):
         ttime.sleep(self.pulse_width + 0.1)
 
         orig_read_attrs = self.scaler.read_attrs
-        self.scaler.read_attrs = ['mca1', 'mca2', 'mca3', 'mca4']
+        self.scaler.read_attrs = ['mca01', 'mca02', 'mca03', 'mca04']
         # print(orig_read_attrs)
 
         total_points = self.num_scans * self.num_triggers
@@ -892,10 +893,10 @@ class FlyerIDMono(Device):
         flag_collecting_data = 0
         while (flag_collecting_data < 5):
             scaler_mca_data = self.scaler.read()
-            i0_time = scaler_mca_data[f"{self.scaler.name}_mca1"]['value']
-            i0 = scaler_mca_data[f"{self.scaler.name}_mca2"]['value']
-            im = scaler_mca_data[f"{self.scaler.name}_mca3"]['value']
-            it = scaler_mca_data[f"{self.scaler.name}_mca4"]['value']
+            i0_time = scaler_mca_data[f"{self.scaler.name}_mca01"]['value']
+            i0 = scaler_mca_data[f"{self.scaler.name}_mca02"]['value']
+            im = scaler_mca_data[f"{self.scaler.name}_mca03"]['value']
+            it = scaler_mca_data[f"{self.scaler.name}_mca04"]['value']
 
             # print(f'{i0_time.shape[0]}\t?=\t{2*self.num_triggers}')
             if i0_time.shape[0] == 2*self.num_triggers:

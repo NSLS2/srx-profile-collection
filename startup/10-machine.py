@@ -269,6 +269,8 @@ class Energy(PseudoPositioner):
 
         self.etoulookup = make_interp_spline(elistIn, uposlistIn)
         self.utoelookup = make_interp_spline(uposlistIn, elistIn)
+        # self.etoulookup = make_interp_spline(elistIn, uposlistIn, bc_type=([(2, 0.0)], [(2, 0.0)]))
+        # self.utoelookup = make_interp_spline(uposlistIn, elistIn, bc_type=([(2, 0.0)], [(2, 0.0)]))
 
         self.u_gap.gap.user_readback.name = self.u_gap.name
 
@@ -339,6 +341,8 @@ class Energy(PseudoPositioner):
                 if ugapcal < self.u_gap.low_limit:
                     break
                 harmonic += 2
+                if harmonic > 30:
+                    raise ValueError("Cannot find harmonic")
 
         self.selected_harmonic.put(harmonic)
 
@@ -376,16 +380,16 @@ class Energy(PseudoPositioner):
         self.move(self.energy.get()[0])
 
 
-cal_data_2026cycle1 = {
-    "d_111": 3.128858620610273,
-    "delta_bragg": 0.23401012019685835,
+cal_data_2026cycle2 = {
+    "d_111": 3.128787814497396,
+    "delta_bragg": 0.23304812742534142,
     "C2Xcal": 3.6,
     "T2cal": 15.0347755916,
     "xoffset": 24.65,
 }
 
 # print('Connecting to energy PVs...')
-energy = Energy(prefix="", name="energy", **cal_data_2026cycle1)
+energy = Energy(prefix="", name="energy", **cal_data_2026cycle2)
 try:
     energy.wait_for_connection()
 except TimeoutError as e:

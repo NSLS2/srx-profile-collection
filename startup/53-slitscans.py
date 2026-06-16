@@ -5,6 +5,7 @@ import matplotlib.cm as cm
 
 
 def ssa_hcen_scan(start, stop, num,
+                  gap_size=0.010,
                   shutter=True, fit_data=True):
     # Setup metadata
     scan_md = {}
@@ -31,19 +32,26 @@ def ssa_hcen_scan(start, stop, num,
     livecallbacks = [LiveTable(livetableitem),
                      plotme]
 
+    # Record old position
+    old_pos = slt_ssa.h_cen.position
+
     # Setup the scan
     @subs_decorator(livecallbacks)
     def myscan():
+        old_gap = slt_ssa.h_gap.position
+        yield from mov(slt_ssa.h_gap, gap_size)
+
         ret = yield from scan([slt_ssa.h_cen, sclr1, xbpm2],
                               slt_ssa.h_cen,
                               start,
                               stop,
                               num,
                               md=scan_md)
+
+        yield from mov(slt_ssa.h_gap, old_gap)
+
         return ret
 
-    # Record old position
-    old_pos = slt_ssa.h_cen.position
 
     # Run the scan
     yield from check_shutters(shutter, 'Open')

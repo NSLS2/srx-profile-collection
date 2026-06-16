@@ -33,6 +33,7 @@ def undulator_calibration(
     u_gap_end=12000,
     u_gap_step=500,
     harmonic=3,
+    shutter=True,
 ):
     '''
     outfile  string   filename for a txt file for the lookup table
@@ -93,7 +94,7 @@ def undulator_calibration(
 
         yield from mov(energy.move_u_gap, False)
 
-        yield from peakup(target_fields=['bpm4_total_current'])
+        yield from peakup(target_fields=['bpm4_total_current'], shutter=shutter)
 
         # Setup LiveCallbacks
         # liveplotfig1 = plt.figure()

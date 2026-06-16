@@ -220,6 +220,10 @@ def nano_xrf(xstart, xstop, xnum,
         md_dets = md_dets + [nano_vlm]
     get_det_md(md, md_dets)
 
+    if nano_vlm in extra_dets:
+        nano_vlm.cam.stage_sigs['acquire_period'] = dwell
+        nano_vlm.cam.stage_sigs['acquire_time'] = dwell - 0.05
+
     # Set xs mode to step.
     xs.mode = SRXMode.step
 
@@ -248,6 +252,23 @@ def nano_xrf(xstart, xstop, xnum,
                                   xlabel='x [um]', ylabel='y [um]',
                                   extent=[xstart, xstop, ystart, ystop],
                                   x_positive='right', y_positive='down'))
+    if nano_vlm in extra_dets:
+        if xnum == 1 or ynum == 1:
+            # Use a LivePlot
+            if xnum == 1:
+                plot_motor = ymotor.name
+            else:
+                plot_motor = xmotor.name
+            livecallbacks.append(LivePlot(y="nano_vlm_stats4_total",
+                                        x=plot_motor))
+        else:
+            # Use a LiveGrid
+            livecallbacks.append(LiveGrid((ynum, xnum), "nano_vlm_stats4_total",
+                                    clim=None, cmap='viridis',
+                                    xlabel='x [um]', ylabel='y [um]',
+                                    extent=[xstart, xstop, ystart, ystop],
+                                    x_positive='right', y_positive='down'))
+
     
     @run_decorator(md=md)
     @vlm_decorator(vlm_snapshot, after=True, position=(xmotor, (xstop + xstart) / 2,
@@ -277,5 +298,9 @@ def nano_xrf(xstart, xstop, xnum,
 
     # Close shutter
     yield from check_shutters(shutter, 'Close')
+
+    if nano_vlm in extra_dets:
+        nano_vlm.cam.stage_sigs.pop('acquire_time')
+        nano_vlm.cam.stage_sigs.pop('acquire_period')
 
     return uid

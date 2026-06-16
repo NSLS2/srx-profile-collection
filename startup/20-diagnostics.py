@@ -200,9 +200,34 @@ class ScalerPreAmp(Device):
     offset_num = Cpt(EpicsSignal, 'offset_num', string=True, timeout=_DEFAULT_TIMEOUT) # XF:05IDD-CT{SR570:N}offset_num
     offset_unit = Cpt(EpicsSignal, 'offset_unit', string=True, timeout=_DEFAULT_TIMEOUT) # XF:05IDD-CT{SR570:N}offset_unit
     invert = Cpt(EpicsSignal, 'invert_on', string=True, timeout=_DEFAULT_TIMEOUT)  # XF:05IDD-CT{SR570:N}invert_on
-    off_u_put = Cpt(EpicsSignal, 'off_u_put', kind=Kind.omitted) # XF:05IDD-CT{SR570:N}off_u_put
-    offset_u_tweak = Cpt(EpicsSignal, 'offset_u_tweak', kind=Kind.omitted) # XF:05IDD-CT{SR570:N}offset_u_tweak
-    offset_cal = Cpt(EpicsSignal, 'offset_cal', kind=Kind.omitted) # XF:05IDD-CT{SR570:N}offset_cal
+
+    # Not recorded in baseline
+    bias_put = Cpt(EpicsSignal, 'bias_put', string=True, kind=Kind.omitted) # XF:05IDD-CT{SR570:3}bias_put
+    bias_twek = Cpt(EpicsSignal, 'bias_tweak', string=True, kind=Kind.omitted) # XF:05IDD-CT{SR570:3}bias_tweak
+    bias_on = Cpt(EpicsSignal, 'bias_on', string=True, kind=Kind.omitted) # XF:05IDD-CT{SR570:3}bias_on
+    off_u_put = Cpt(EpicsSignal, 'off_u_put', string=True, kind=Kind.omitted) # XF:05IDD-CT{SR570:N}off_u_put
+    offset_u_tweak = Cpt(EpicsSignal, 'offset_u_tweak', string=True, kind=Kind.omitted) # XF:05IDD-CT{SR570:N}offset_u_tweak
+    offset_cal = Cpt(EpicsSignal, 'offset_cal', string=True, kind=Kind.omitted) # XF:05IDD-CT{SR570:N}offset_cal
+    filter_type = Cpt(EpicsSignal, 'filter_type', string=True, kind=Kind.omitted) # XF:05IDD-CT{SR570:3}filter_type
+    filter_reset = Cpt(EpicsSignal, 'filter_reset', string=True, kind=Kind.omitted) # XF:05IDD-CT{SR570:3}filter_reset
+    gain_mode = Cpt(EpicsSignal, 'gain_mode', string=True, kind=Kind.omitted) # XF:05IDD-CT{SR570:3}gain_mode
+    low_freq = Cpt(EpicsSignal, 'low_freq', string=True, kind=Kind.omitted) # XF:05IDD-CT{SR570:3}low_freq
+    high_freq = Cpt(EpicsSignal, 'high_freq', string=True, kind=Kind.omitted) # XF:05IDD-CT{SR570:3}high_freq
+    blank_on = Cpt(EpicsSignal, 'blank_on', string=True, kind=Kind.omitted) # XF:05IDD-CT{SR570:3}blank_on
+    init = Cpt(EpicsSignal, 'init', string=True, kind=Kind.omitted) # XF:05IDD-CT{SR570:3}init
+    reset = Cpt(EpicsSignal, 'reset', string=True, kind=Kind.omitted) # XF:05IDD-CT{SR570:3}reset
+
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Set defaults for safety
+        self.bias_on.set(0) # 'OFF'
+        self.filter_type.set(0) # '  No filter'
+        self.low_freq.set(0) # '0.03 Hz'
+        self.high_freq.set(0) # '0.03 Hz'
+        self.gain_mode.set(0) # 'LOW NOISE'
+        self.blank_on.set(0) # 'OFF'
 
 
 i0_preamp = ScalerPreAmp('XF:05IDD-CT{SR570:1}', name='i0_preamp')

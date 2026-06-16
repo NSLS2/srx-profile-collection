@@ -735,14 +735,25 @@ class SRXFlyer1Axis(Device):
             desc.update(d.describe())
 
         # Handle the ion chamber that the zebra is collecting
-        desc["i0"] = spec
-        desc["i0"]["source"] = self._sis.mca2.pvname
-        desc["i0_time"] = spec
-        desc["i0_time"]["source"] = self._sis.mca1.pvname
-        desc["im"] = spec
-        desc["im"]["source"] = self._sis.mca3.pvname
-        desc["it"] = spec
-        desc["it"]["source"] = self._sis.mca4.pvname
+        # desc["i0"] = spec
+        # desc["i0"]["source"] = self._sis.mca2.pvname
+        # desc["i0_time"] = spec
+        # desc["i0_time"]["source"] = self._sis.mca01.pvname
+        # desc["im"] = spec
+        # desc["im"]["source"] = self._sis.mca3.pvname
+        # desc["it"] = spec
+        # desc["it"]["source"] = self._sis.mca4.pvname
+
+        # Handle scaler channels
+        for idx, channel_name in zip(range(1, self._sis._MAX_SCALER_CHANNELS + 1),
+                                     ["i0_time"] + self._sis.scaler_name_list):
+            
+            if idx > self._sis._number_read_channels:
+                break
+            # print(idx, channel_name)
+            mca_channel = f"mca{idx:02d}"
+            desc[channel_name] = spec
+            desc[channel_name]["source"] = getattr(self._sis, mca_channel).pvname
 
         return {"stream0": desc}
 
@@ -919,28 +930,40 @@ class SRXFlyer1Axis(Device):
         enc1_datum = datum_factory_z({"column": "enc1"})
         enc2_datum = datum_factory_z({"column": "enc2"})
         enc3_datum = datum_factory_z({"column": "enc3"})
-        sis_datum = datum_factory_sis({"column": "i0"})
-        sis_datum_im = datum_factory_sis({"column": "im"})
-        sis_datum_it = datum_factory_sis({"column": "it"})
-        sis_datum_time = datum_factory_sis({"column": "sis_time"})
+        # sis_datum = datum_factory_sis({"column": "i0"})
+        # sis_datum_im = datum_factory_sis({"column": "im"})
+        # sis_datum_it = datum_factory_sis({"column": "it"})
+        # sis_datum_time = datum_factory_sis({"column": "sis_time"})
+
+        scaler_datums = {"i0_time" : datum_factory_sis({"column" : "sis_time"})}
+        for channel_name in self._sis.scaler_name_list[:self._sis._number_read_channels - 1]: # -1 for "sis_time"
+            scaler_datums[channel_name] = datum_factory_sis({"column" : channel_name})
 
         self._document_cache.extend(
             ("resource", d)
             for d in (self.__filestore_resource, self.__filestore_resource_sis)
         )
+        # self._document_cache.extend(
+        #     ("datum", d)
+        #     for d in (
+        #         time_datum,
+        #         enc1_datum,
+        #         enc2_datum,
+        #         enc3_datum,
+        #         sis_datum,
+        #         sis_datum_time,
+        #         sis_datum_im,
+        #         sis_datum_it,
+        #     )
+        # )
         self._document_cache.extend(
             ("datum", d)
-            for d in (
-                time_datum,
-                enc1_datum,
-                enc2_datum,
-                enc3_datum,
-                sis_datum,
-                sis_datum_time,
-                sis_datum_im,
-                sis_datum_it,
+            for d in [time_datum,
+                      enc1_datum,
+                      enc2_datum,
+                      enc3_datum
+                      ] + list(scaler_datums.values())
             )
-        )
 
         # grab the asset documents from all of the child detectors
         for d in self._dets:
@@ -987,30 +1010,48 @@ class SRXFlyer1Axis(Device):
 
         # Yield a (partial) Event document. The RunEngine will put this
         # into metadatastore, as it does all readings.
+        # self._last_bulk = {
+        #     "time": ttime.time(),
+        #     "seq_num": 1,
+        #     "data": {
+        #         "zebra_time": time_datum["datum_id"],
+        #         "enc1": enc1_datum["datum_id"],
+        #         "enc2": enc2_datum["datum_id"],
+        #         "enc3": enc3_datum["datum_id"],
+        #         "i0": sis_datum["datum_id"],
+        #         "i0_time": sis_datum_time["datum_id"],
+        #         "im": sis_datum_im["datum_id"],
+        #         "it": sis_datum_it["datum_id"],
+        #     },
+        #     "timestamps": {
+        #         "zebra_time": time_datum["datum_id"],  # not a typo#
+        #         "enc1": time_datum["datum_id"],
+        #         "enc2": time_datum["datum_id"],
+        #         "enc3": time_datum["datum_id"],
+        #         "i0": sis_datum["datum_id"],
+        #         "i0_time": sis_datum_time["datum_id"],
+        #         "im": sis_datum_im["datum_id"],
+        #         "it": sis_datum_it["datum_id"],
+        #     },
+        # }
+        # data_dict = {}
+        # data_dict.update({k, v["datam_id"] for k, v in scaler_datums.items()})
+        # timestamps_dict = {}
         self._last_bulk = {
             "time": ttime.time(),
             "seq_num": 1,
-            "data": {
-                "zebra_time": time_datum["datum_id"],
-                "enc1": enc1_datum["datum_id"],
-                "enc2": enc2_datum["datum_id"],
-                "enc3": enc3_datum["datum_id"],
-                "i0": sis_datum["datum_id"],
-                "i0_time": sis_datum_time["datum_id"],
-                "im": sis_datum_im["datum_id"],
-                "it": sis_datum_it["datum_id"],
-            },
-            "timestamps": {
-                "zebra_time": time_datum["datum_id"],  # not a typo#
-                "enc1": time_datum["datum_id"],
-                "enc2": time_datum["datum_id"],
-                "enc3": time_datum["datum_id"],
-                "i0": sis_datum["datum_id"],
-                "i0_time": sis_datum_time["datum_id"],
-                "im": sis_datum_im["datum_id"],
-                "it": sis_datum_it["datum_id"],
-            },
+            "data": {"zebra_time": time_datum["datum_id"],
+                     "enc1": enc1_datum["datum_id"],
+                     "enc2": enc2_datum["datum_id"],
+                     "enc3": enc3_datum["datum_id"]}
+                     | {k :  v["datum_id"] for k, v in scaler_datums.items()},
+            "timestamps": {"zebra_time": time_datum["datum_id"],  # not a typo#
+                           "enc1": time_datum["datum_id"],
+                           "enc2": time_datum["datum_id"],
+                           "enc3": time_datum["datum_id"]}
+                           | {k : v["datum_id"] for k, v in scaler_datums.items()}
         }
+
         for d in self._dets:
             reading = d.read()
             self._last_bulk["data"].update(

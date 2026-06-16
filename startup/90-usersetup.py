@@ -122,7 +122,6 @@ def get_det_md(scan_md, dets):
     for name, det in {d.name : d for d in dets}.items():
         det_dict = {}
         if name in ['xs', 'xs_id_mono_fly']:
-            det_dict = {}
             # Add the first four rois, regardless if they are used
             for ind in range(det.channel01.get_mcaroi_count()):
                 det_dict[f'roi{ind + 1}'] = det.channel01.get_mcaroi(mcaroi_number=ind + 1).roi_name.get()
@@ -135,15 +134,21 @@ def get_det_md(scan_md, dets):
             det_dict['binning_mode'] = det.cam.binning_mode.get(as_string=True) # Detector binning
             det_dict['full_well_mode'] = det.cam.full_well_mode.get(as_string=True) # Full well mode
         elif name == 'eiger':
-            det_dict['photon_energy'] = det.cam.photon_energy.get()
-            det_dict['threshold_energy'] = det.cam.threshold_energy.get()
+            # Check stage sigs first
+            for attr in ['photon_energy', 'threshold_energy']:
+                if attr in det.cam.stage_sigs:
+                    det_dict[attr] = det.cam.stage_sigs[attr]
+                else:
+                    det_dict[attr] = getattr(det.cam, attr).get()
+            # det_dict['photon_energy'] = det.cam.photon_energy.get()
+            # det_dict['threshold_energy'] = det.cam.threshold_energy.get()
         elif name == 'nano_vlm':
             det_dict['cross_position_x'] = det.over.overlay_1.position_x.get() # Crosshair position x
             det_dict['cross_position_y'] = det.over.overlay_1.position_y.get() # Crosshair position x
         elif name == 'nanoZebra':
+            det_dict['mode'] = ''
             # Is there a better way to get this information??
-            det_dict['mode'] = det.pc.gate_source.get(as_string=True) # Position or time?
-            # det_dict['mode'] = det.mode.get()
+            # det_dict['mode'] = det.pc.gate_source.get(as_string=True) # Position or time?
         elif name in ['sclr1', 'ring_current', 'xbpm2', 'dcm_c2_pitch', 'bpm4']:
             pass # Nothing to add
         else:
