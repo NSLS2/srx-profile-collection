@@ -363,7 +363,7 @@ def optimize_scalers(dwell=0.5,
     # Setup dwell stage_sigs
     sclr1.stage_sigs['preset_time'] = dwell
 
-    start_shut_d = shut_d.read()['shut_d_request_open']['value'] # 0 is closed, 1 is open
+    start_shut_d = shut_d.read()['shut_d_status']['value']
     start_shut_b = shut_b.status.get() # 'Not Open' or 'Open'
 
     # Visualization
