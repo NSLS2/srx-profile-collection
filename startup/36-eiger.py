@@ -348,7 +348,7 @@ try:
         print("done")
     # Transform
     eiger.transform1.enable.set('Enable')
-    eiger.transform1.nd_array_port.set('EIG1')
+    eiger.transform1.nd_array_port.set('EIG')
     eiger.transform1.type.set('None')
 except TimeoutError:
     print(f'\nCannot connect to Eiger. Continuing without device.\n')

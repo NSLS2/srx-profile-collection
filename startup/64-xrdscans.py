@@ -201,13 +201,13 @@ def step_rsm_base(start, stop, num,
     points = np.linspace(start, stop, num)
     
     # Setup detectors
-    dets = [xs, slcr1] + xrd_dets
+    dets = [xs, sclr1] + xrd_dets
     setup_xrd_dets(dets, dwell, num)
 
     # Some pseudo stage-sigs to protect xs and sclr1
     sigs = [
             (xs, 'external_trig', False),
-            (xs, 'total_points', e_num),
+            (xs, 'total_points', num),
             (get_me_the_cam(xs), 'acquire_time', dwell),
             (sclr1, 'preset_time', dwell)
             ]
@@ -229,9 +229,9 @@ def step_rsm_base(start, stop, num,
     
     # Define some helper functions
     def at_scan(name, doc):
-        time_rem = len(e_range) * (dwell + 4.25) # Some overhead for estimate
+        time_rem = len(points) * (dwell + 4.25) # Some overhead for estimate
         scanrecord.time_remaining.put(time_rem / 3600)
-        scanreocrd.time_rem_str.put(time_rem_convert(time_rem))
+        scanrecord.time_rem_str.put(time_rem_convert(time_rem))
 
     def finalize_scan():
         yield from abs_set(scanrecord.scanning, False)
@@ -258,7 +258,7 @@ def step_rsm_base(start, stop, num,
             return
 
         time_rem = (((doc['time'] - st[0]) / doc['seq_num']) * # average time per point
-                    (len(ept) - doc['seq_num'])) # remaining number of points
+                    (len(points) - doc['seq_num'])) # remaining number of points
         scanrecord.time_remaining.put(time_rem / 3600)
         scanrecord.time_rem_str.put(time_rem_convert(time_rem))
 
@@ -282,8 +282,9 @@ def step_rsm_base(start, stop, num,
     def plan():
         # Always check shutters to print banner
         yield from check_shutters(shutter, 'Open')
+        print('Out of check_shutters and starting mod_list_scan')
         yield from mod_list_scan(dets, rocking_motor, points, run_agnostic=True)
-        if shutter: # Conditional check ot avoid banner
+        if shutter: # Conditional check to avoid banner
             yield from check_shutters(shutter, 'Close')
 
     # Plan must be called to return the generators
@@ -334,6 +335,7 @@ def extended_energy_rsm(start, stop, num,
         for i, pts_rsm in enumerate(pts_rsms):
             # No dark-field or vlm snapshots in intermediate scans
             if i != 0:
+                nonlocal N_dark, vlm_snapshot
                 N_dark = 0
                 vlm_snapshot=False
 
@@ -542,7 +544,7 @@ def static_xrd(num,
     def at_scan(name, doc):
         time_rem = 30 # Over-estimate
         scanrecord.time_remaining.put(time_rem / 3600)
-        scanreocrd.time_rem_str.put(time_rem_convert(time_rem))
+        scanrecord.time_rem_str.put(time_rem_convert(time_rem))
 
     def finalize_scan():
         yield from abs_set(scanrecord.scanning, False)
@@ -732,7 +734,8 @@ def energy_rocking_curve(e_low,
                          shutter=True,
                          peakup_flag=True,
                          plotme=False,
-                         return_to_start=True):
+                         return_to_start=True,
+                         verbose=True):
 
     start_energy = energy.energy.readback.get()
 
@@ -762,7 +765,9 @@ def energy_rocking_curve(e_low,
     xs.mode = SRXMode.step
     for obj, key, value in sigs:
         original_sigs.append((obj, key, getattr(obj, key).get()))
-        yield from abs_set(getattr(obj, key), value)
+        if verbose:
+            print(f'Recording orignal setting {key} as part of sigs')
+        yield from abs_set(getattr(obj, key), value, wait=True, timeout=1)
 
     # Defining scan metadata
     md = get_stock_md(md)
@@ -778,7 +783,7 @@ def energy_rocking_curve(e_low,
     def at_scan(name, doc):
         time_rem = len(e_range) * (dwell + 4.25) # Some overhead for estimate
         scanrecord.time_remaining.put(time_rem / 3600)
-        scanreocrd.time_rem_str.put(time_rem_convert(time_rem))
+        scanrecord.time_rem_str.put(time_rem_convert(time_rem))
 
     def finalize_scan():
         yield from abs_set(scanrecord.scanning, False)
@@ -824,8 +829,12 @@ def energy_rocking_curve(e_low,
                                    'start' : at_scan})
 
     # Reset xs and sclr1
+    if verbose is True:
+        print('Resetting original settings from xs and sclr1')
     for obj, key, value in original_sigs:
-        yield from abs_set(getattr(obj, key), value)
+        if verbose is True:
+            print(f'Resetting {key}')
+        yield from abs_set(getattr(obj, key), value, wait=True, timeout=1)
     
     if return_to_start:
         yield from mov(energy, start_energy)
@@ -1059,7 +1068,7 @@ def angle_rocking_curve(th_low,
     def at_scan(name, doc):
         time_rem = len(e_range) * (dwell + 4.25) # Some overhead for estimate
         scanrecord.time_remaining.put(time_rem / 3600)
-        scanreocrd.time_rem_str.put(time_rem_convert(time_rem))
+        scanrecord.time_rem_str.put(time_rem_convert(time_rem))
 
     def finalize_scan():
         yield from abs_set(scanrecord.scanning, False)
