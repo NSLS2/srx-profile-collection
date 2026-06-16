@@ -39,7 +39,8 @@ class SRXCamera(SingleTrigger, AreaDetector):
 
     def __init__(self, *args, root_path=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.read_attrs = ['tiff', 'stats5']
+        self.read_attrs = ['tiff', 'stats4', 'stats5']
+        self.stats4.read_attrs = ['total']
         self.stats5.read_attrs = ['total']
         self.root_path = root_path
         self.set_paths()
