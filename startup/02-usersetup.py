@@ -1,5 +1,5 @@
 print(f"Loading {__file__}...")
-
+import functools
 import os
 import shutil
 import time as ttime
@@ -22,16 +22,19 @@ nslsii_api_client = httpx.Client(base_url="https://api.nsls2.bnl.gov")
 # proposal_response.raise_for_status()
 # proposal = proposal_response.json()["proposal"]
 
-
-def get_proposal_type(proposal_id=None):
-    if (proposal_id is None):
-        proposal_id = RE.md["proposal"]["proposal_id"]
-    
-    proposal_response = nslsii_api_client.get(f"/v1/proposal/{RE.md['proposal']['proposal_id']}")
+@functools.lru_cache(150)
+def _cached_get_psopoal_type(proposal_id):
+    proposal_response = nslsii_api_client.get(f"/v1/proposal/{proposal_id}")
     proposal_response.raise_for_status()
     proposal = proposal_response.json()["proposal"]
 
     return proposal["type"]
+
+
+def get_proposal_type(proposal_id=None):
+    if (proposal_id is None):
+        proposal_id = RE.md["proposal"]["proposal_id"]
+    return _cached_get_psopoal_type(proposal_id)
 
 
 # PI_lastname = "whoami"
