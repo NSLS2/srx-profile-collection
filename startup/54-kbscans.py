@@ -4,7 +4,7 @@ import time as ttime
 
 
 # Run a knife-edge scan
-def nano_knife_edge(motor, start, stop, stepsize, acqtime,
+def nano_knife_edge(motor, start, stop, stepsize, dwell,
                     roi="Pt", shutter=True, plot=True,
                     normalize=True, use_trans=False, plot_guess=False, **kwargs):
     """
@@ -12,7 +12,7 @@ def nano_knife_edge(motor, start, stop, stepsize, acqtime,
     start       float   starting position
     stop        float   stopping position
     stepsize    float   distance between data points
-    acqtime     float   counting time per step
+    dwell       float   counting time per step
     fly         bool    if the motor can fly, then fly that motor
     high2low    bool    scan from high transmission to low transmission
                         ex. start will full beam and then block with object (knife/wire)
@@ -33,9 +33,13 @@ def nano_knife_edge(motor, start, stop, stepsize, acqtime,
         plotme = LivePlot('')
         @subs_decorator(plotme)
         def _plan():
-            yield from nano_scan_and_fly(start, stop, num,
-                                         y0, y0, 1, acqtime,
-                                         shutter=shutter, vlm_snapshot=False, **kwargs)
+            yield from xrf_map(start, stop, num,
+                               y0, y0, 1, dwell,
+                               shutter=shutter, vlm_snapshot=False,
+                               resolution='nano', **kwargs)
+            # yield from nano_scan_and_fly(start, stop, num,
+            #                              y0, y0, 1, dwell,
+            #                              shutter=shutter, vlm_snapshot=False, **kwargs)
         yield from _plan()
     elif (motor.name == 'nano_stage_sy'):
         fly = True
@@ -45,9 +49,13 @@ def nano_knife_edge(motor, start, stop, stepsize, acqtime,
         plotme = LivePlot('')
         @subs_decorator(plotme)
         def _plan():
-            yield from nano_y_scan_and_fly(start, stop, num,
-                                           x0, x0, 1, acqtime,
-                                           shutter=shutter, vlm_snapshot=False, **kwargs)
+            yield from xrf_map(x0, x0, 1,
+                               start, stop, num, dwell,
+                               shutter=shutter, vlm_snapshot=False,
+                               resolution='nano', fly_on_y=True, **kwargs)
+            # yield from nano_y_scan_and_fly(start, stop, num,
+            #                                x0, x0, 1, dwell,
+            #                                shutter=shutter, vlm_snapshot=False, **kwargs)
         yield from _plan()
     elif (motor.name == 'nano_stage_x'):
         fly = False

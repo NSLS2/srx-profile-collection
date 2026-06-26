@@ -48,9 +48,13 @@ def xanes_map(erange=[], estep=[],
         yield from bps.sleep(1)
 
         print(f"  Running map...")
-        yield from nano_scan_and_fly(xstart, xstop, xnum,
-                                     ystart, ystop, ynum, dwell,
-                                     shutter=shutter, md=scan_md)
+        yield from xrf_map(xstart, xstop, xnum,
+                           ystart, ystop, ynum, dwell,
+                           shutter=shutter, md=scan_md)
+        # yield from nano_scan_and_fly(xstart, xstop, xnum,
+        #                              ystart, ystop, ynum, dwell,
+        #                              shutter=shutter, md=scan_md)
+
 
 
 # 1D xanes_map

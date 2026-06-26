@@ -826,112 +826,6 @@ def scan_and_fly_base(detectors,
     return uid
 
 
-def nano_scan_and_fly(xstart, xstop, xnum, ystart, ystop, ynum, dwell, *, extra_dets=None, center=True, **kwargs):
-    kwargs.setdefault('xmotor', nano_stage.sx)
-    kwargs.setdefault('ymotor', nano_stage.sy)
-    kwargs.setdefault('vlm_snapshot', True)
-    kwargs.setdefault('flying_zebra', nano_flying_zebra)
-    yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR', wait=True)
-    yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOVER')
-
-    _xs = kwargs.pop('xs', xs)
-    if extra_dets is None:
-        extra_dets = []
-    dets = [_xs] + extra_dets
-    if center:
-        yield from move_to_scanner_center(timeout=10)
-    yield from scan_and_fly_base(dets, xstart, xstop, xnum, ystart, ystop, ynum, dwell, **kwargs)
-    if center:
-        yield from move_to_scanner_center(timeout=10)
-
-
-def nano_y_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
-    kwargs.setdefault('xmotor', nano_stage.sy)
-    kwargs.setdefault('ymotor', nano_stage.sx)
-    kwargs.setdefault('vlm_snapshot', True)
-    kwargs.setdefault('flying_zebra', nano_flying_zebra)
-    yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOVER', wait=True)
-    yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOHOR')
-
-    _xs = kwargs.pop('xs', xs)
-    if extra_dets is None:
-        extra_dets = []
-    dets = [_xs] + extra_dets
-
-    if center:
-        yield from move_to_scanner_center(timeout=10)
-    yield from scan_and_fly_base(dets, *args, **kwargs)
-    if center:
-        yield from move_to_scanner_center(timeout=10)
-
-
-
-def nano_z_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
-    kwargs.setdefault('xmotor', nano_stage.sz)
-    kwargs.setdefault('ymotor', nano_stage.sx)
-    kwargs.setdefault('vlm_snapshot', True)
-    kwargs.setdefault('flying_zebra', nano_flying_zebra)
-    yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOZ')
-
-    _xs = kwargs.pop('xs', xs)
-    if extra_dets is None:
-        extra_dets = []
-    dets = [_xs] + extra_dets
-
-    if center:
-        yield from move_to_scanner_center(timeout=10)
-    yield from scan_and_fly_base(dets, *args, **kwargs)
-    if center:
-        yield from move_to_scanner_center(timeout=10)
-
-
-def coarse_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
-    kwargs.setdefault('xmotor', nano_stage.x)
-    kwargs.setdefault('ymotor', nano_stage.y)
-    kwargs.setdefault('vlm_snapshot', True)
-    kwargs.setdefault('flying_zebra', nano_flying_zebra_coarse)
-    yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR')
-    yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOVER')
-
-    _xs = kwargs.pop('xs', xs)
-    if extra_dets is None:
-        extra_dets = []
-    dets = [_xs] + extra_dets
-
-    if center:
-        yield from move_to_scanner_center(timeout=10)
-    yield from scan_and_fly_base(dets, *args, **kwargs)
-    if center:
-        yield from move_to_scanner_center(timeout=10)
-
-
-def coarse_y_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
-    '''
-    Convenience wrapper for scanning Y as the fast axis.
-    Call scan_and_fly_base, forcing slow and fast axes to be X and Y.
-    In this function, the first three scan parameters are for the *fast axis*,
-    i.e., the vertical, and the second three for the *slow axis*, horizontal.
-    '''
-
-    kwargs.setdefault('xmotor', nano_stage.y)
-    kwargs.setdefault('ymotor', nano_stage.x)
-    kwargs.setdefault('vlm_snapshot', True)
-    kwargs.setdefault('flying_zebra', nano_flying_zebra_coarse)
-    yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOVER')
-    yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOHOR')
-
-    _xs = kwargs.pop('xs', xs)
-    if extra_dets is None:
-        extra_dets = []
-    dets = [_xs] + extra_dets
-
-    if center:
-        yield from move_to_scanner_center(timeout=10)
-    yield from scan_and_fly_base(dets, *args, **kwargs)
-    if center:
-        yield from move_to_scanner_center(timeout=10)
-
-
 # New alias
 def xrf_map(xstart, xstop, xnum,
             ystart, ystop, ynum, 
@@ -1305,6 +1199,118 @@ def xrf_map2(xstart, xstop, xnum,
 def rel_xrf_map2(*args, **kwargs):
     kwargs.setdefault('coords', 'relative')
     yield from xrf_map2(*args, **kwargs)
+
+
+### Deprecated ###
+
+@srx_deprecated(xrf_map)
+def nano_scan_and_fly(xstart, xstop, xnum, ystart, ystop, ynum, dwell, *, extra_dets=None, center=True, **kwargs):
+    kwargs.setdefault('xmotor', nano_stage.sx)
+    kwargs.setdefault('ymotor', nano_stage.sy)
+    kwargs.setdefault('vlm_snapshot', True)
+    kwargs.setdefault('flying_zebra', nano_flying_zebra)
+    yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR', wait=True)
+    yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOVER')
+
+    _xs = kwargs.pop('xs', xs)
+    if extra_dets is None:
+        extra_dets = []
+    dets = [_xs] + extra_dets
+    if center:
+        yield from move_to_scanner_center(timeout=10)
+    yield from scan_and_fly_base(dets, xstart, xstop, xnum, ystart, ystop, ynum, dwell, **kwargs)
+    if center:
+        yield from move_to_scanner_center(timeout=10)
+
+
+@srx_deprecated(xrf_map)
+def nano_y_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
+    kwargs.setdefault('xmotor', nano_stage.sy)
+    kwargs.setdefault('ymotor', nano_stage.sx)
+    kwargs.setdefault('vlm_snapshot', True)
+    kwargs.setdefault('flying_zebra', nano_flying_zebra)
+    yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOVER', wait=True)
+    yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOHOR')
+
+    _xs = kwargs.pop('xs', xs)
+    if extra_dets is None:
+        extra_dets = []
+    dets = [_xs] + extra_dets
+
+    if center:
+        yield from move_to_scanner_center(timeout=10)
+    yield from scan_and_fly_base(dets, *args, **kwargs)
+    if center:
+        yield from move_to_scanner_center(timeout=10)
+
+
+# xrf_map does not replace this behavior, so this one is not deprecated
+def nano_z_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
+    kwargs.setdefault('xmotor', nano_stage.sz)
+    kwargs.setdefault('ymotor', nano_stage.sx)
+    kwargs.setdefault('vlm_snapshot', True)
+    kwargs.setdefault('flying_zebra', nano_flying_zebra)
+    yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOZ')
+
+    _xs = kwargs.pop('xs', xs)
+    if extra_dets is None:
+        extra_dets = []
+    dets = [_xs] + extra_dets
+
+    if center:
+        yield from move_to_scanner_center(timeout=10)
+    yield from scan_and_fly_base(dets, *args, **kwargs)
+    if center:
+        yield from move_to_scanner_center(timeout=10)
+
+
+@srx_deprecated(xrf_map)
+def coarse_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
+    kwargs.setdefault('xmotor', nano_stage.x)
+    kwargs.setdefault('ymotor', nano_stage.y)
+    kwargs.setdefault('vlm_snapshot', True)
+    kwargs.setdefault('flying_zebra', nano_flying_zebra_coarse)
+    yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR')
+    yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOVER')
+
+    _xs = kwargs.pop('xs', xs)
+    if extra_dets is None:
+        extra_dets = []
+    dets = [_xs] + extra_dets
+
+    if center:
+        yield from move_to_scanner_center(timeout=10)
+    yield from scan_and_fly_base(dets, *args, **kwargs)
+    if center:
+        yield from move_to_scanner_center(timeout=10)
+
+
+@srx_deprecated(xrf_map)
+def coarse_y_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
+    '''
+    Convenience wrapper for scanning Y as the fast axis.
+    Call scan_and_fly_base, forcing slow and fast axes to be X and Y.
+    In this function, the first three scan parameters are for the *fast axis*,
+    i.e., the vertical, and the second three for the *slow axis*, horizontal.
+    '''
+
+    kwargs.setdefault('xmotor', nano_stage.y)
+    kwargs.setdefault('ymotor', nano_stage.x)
+    kwargs.setdefault('vlm_snapshot', True)
+    kwargs.setdefault('flying_zebra', nano_flying_zebra_coarse)
+    yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOVER')
+    yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOHOR')
+
+    _xs = kwargs.pop('xs', xs)
+    if extra_dets is None:
+        extra_dets = []
+    dets = [_xs] + extra_dets
+
+    if center:
+        yield from move_to_scanner_center(timeout=10)
+    yield from scan_and_fly_base(dets, *args, **kwargs)
+    if center:
+        yield from move_to_scanner_center(timeout=10)
 
 
 # This class is not used in this file

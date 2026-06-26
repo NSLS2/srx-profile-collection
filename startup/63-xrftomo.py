@@ -128,7 +128,7 @@ def nano_tomo(x0, x1, nx, y0, y1, ny, ct, th=None,
               th_ind_start=0,
               centering_method='none',
               roi=None,
-              fly_in_Y=False,
+              fly_on_y=False,
               extra_dets=[],
               shutter=True):
     # x0 = x starting point
@@ -158,6 +158,13 @@ def nano_tomo(x0, x1, nx, y0, y1, ny, ct, th=None,
         nonlocal x0, x1, y0, y1
         run_start_uid = doc['run_start']
         x0, x1, y0, y1 = calc_com(run_start_uid, roi=roi)
+        
+        # Transpose data
+        if fly_on_y:
+            old_x0, old_x1 = x0, x1
+            old_y0, old_y1 = y0, y1
+            x0, x1 = old_y0, old_y1
+            y0, y1 = old_x0, old_x1
 
     # Open the shutter
     yield from check_shutters(shutter, 'Open')
@@ -174,10 +181,11 @@ def nano_tomo(x0, x1, nx, y0, y1, ny, ct, th=None,
         yield from bps.sleep(1)  # Give 1 second sleep to allow sample to settle
         
         # Run the scan/projection
-        if fly_in_Y is False:
-            myscan = nano_scan_and_fly(x0, x1, nx, y0, y1, ny, ct, extra_dets=extra_dets, shutter=False)
-        else:
-            myscan = nano_y_scan_and_fly(x0, x1, nx, y0, y1, ny, ct, extra_dets=extra_dets, shutter=False)
+        myscan = xrf_map(x0, x1, nx, y0, y1, ny, ct, fly_on_y=fly_on_y, extra_dets=extra_dets, shutter=False)
+        # if fly_in_Y is False:
+        #     myscan = nano_scan_and_fly(x0, x1, nx, y0, y1, ny, ct, extra_dets=extra_dets, shutter=False)
+        # else:
+        #     myscan = nano_y_scan_and_fly(x0, x1, nx, y0, y1, ny, ct, extra_dets=extra_dets, shutter=False)
 
         if (centering_method == 'com'):
             myscan = subs_wrapper(myscan, {'stop' : cb_calc_com})
@@ -218,7 +226,7 @@ def nano_Etomo(x0, x1, nx, y0, y1, ny, ct, th=None, energy_list=None,
 def scan_coarsez(x0, x1, nx, y0, y1, ny, ct, z_list, 
               centering_method='none',
               roi=None,
-              fly_in_Y=False,
+              fly_on_y=False,
               extra_dets=[],
               shutter=True):
     # x0 = x starting point
@@ -244,6 +252,13 @@ def scan_coarsez(x0, x1, nx, y0, y1, ny, ct, z_list,
         run_start_uid = doc['run_start']
         x0, x1, y0, y1 = calc_com(run_start_uid, roi=roi)
 
+        # Transpose data
+        if fly_on_y:
+            old_x0, old_x1 = x0, x1
+            old_y0, old_y1 = y0, y1
+            x0, x1 = old_y0, old_y1
+            y0, y1 = old_x0, old_x1
+
     # Open the shutter
     yield from check_shutters(shutter, 'Open')
 
@@ -256,10 +271,11 @@ def scan_coarsez(x0, x1, nx, y0, y1, ny, ct, z_list,
         yield from bps.sleep(1)  # Give 1 second sleep to allow sample to settle
         
         # Run the scan/projection
-        if fly_in_Y is False:
-            myscan = nano_scan_and_fly(x0, x1, nx, y0, y1, ny, ct, extra_dets=extra_dets, shutter=False, vlm_snapshot=False)
-        else:
-            myscan = nano_y_scan_and_fly(x0, x1, nx, y0, y1, ny, ct, extra_dets=extra_dets, shutter=False, vlm_snapshot=False)
+        myscan = xrf_map(x0, x1, nx, y0, y1, ny, ct, fly_on_y=fly_on_y, extra_dets=extra_dets, shutter=False)
+        # if fly_in_Y is False:
+        #     myscan = nano_scan_and_fly(x0, x1, nx, y0, y1, ny, ct, extra_dets=extra_dets, shutter=False)
+        # else:
+        #     myscan = nano_y_scan_and_fly(x0, x1, nx, y0, y1, ny, ct, extra_dets=extra_dets, shutter=False)
 
         if (centering_method == 'com'):
             myscan = subs_wrapper(myscan, {'stop' : cb_calc_com})
