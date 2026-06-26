@@ -987,9 +987,6 @@ def xrf_map(xstart, xstop, xnum,
     vlm_snapshot : bool, optional
         Flag to enable VLM snapshots before scanning. If True, snapshot_after
         will also function. False by default.
-    snapshot_after : bool, optional
-        Flag to enable VLM snapshots after scanning. Will only function if
-        vlm_snapshot is also True. False by default.
     N_dark : int, optional
         Number of dark-field images to be acquired by selected detectors if
         they are included. Only for dexela if included in extra_dets. 0 by default.
