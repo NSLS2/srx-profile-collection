@@ -24,14 +24,15 @@ nslsii_api_client = httpx.Client(base_url="https://api.nsls2.bnl.gov")
 
 
 def get_proposal_type(proposal_id=None):
-    if (proposal_id is None):
-        proposal_id = RE.md["proposal"]["proposal_id"]
+    # if (proposal_id is None):
+    #     proposal_id = RE.md["proposal"]["proposal_id"]
     
-    proposal_response = nslsii_api_client.get(f"/v1/proposal/{RE.md['proposal']['proposal_id']}")
-    proposal_response.raise_for_status()
-    proposal = proposal_response.json()["proposal"]
+    # proposal_response = nslsii_api_client.get(f"/v1/proposal/{RE.md['proposal']['proposal_id']}")
+    # proposal_response.raise_for_status()
+    # proposal = proposal_response.json()["proposal"]
 
-    return proposal["type"]
+    # return proposal["type"]
+    return RE.md["cycle"]
 
 
 # PI_lastname = "whoami"
