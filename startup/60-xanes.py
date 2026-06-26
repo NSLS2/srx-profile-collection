@@ -25,6 +25,12 @@ from ophyd.sim import NullStatus
 # warnings.filterwarnings(action="ignore", message="MSG_SIZE_TOO_LARGE")
 
 
+_energy_check_funcs = ['xanes_plan',
+                       'xas_step',
+                       'xanes_batch_plan',
+                       'xanes_map']
+
+
 @append_srx_kwargs_md
 @parameter_annotation_decorator({
     "parameters": {
@@ -42,7 +48,8 @@ def xanes_plan(erange=[], estep=[], dwell=1.,
                shutter=True,
                per_step=None,
                reverse=False,
-               vlm_snapshot=True):
+               vlm_snapshot=True,
+               energy_check=True):
     '''
     erange (list of floats): energy ranges for XANES in eV, e.g. erange = [7112-50, 7112-20, 7112+50, 7112+120]
     estep  (list of floats): energy step size for each energy range in eV, e.g. estep = [2, 1, 5]
@@ -82,6 +89,38 @@ def xanes_plan(erange=[], estep=[], dwell=1.,
     ept = np.append(ept, np.array(erange[-1]))
     if reverse:
         ept = ept[::-1]
+
+    # Check foils and energy range
+    min_energy = min(ept)
+    max_energy = max(ept)
+    # Convert to keV
+    if max_energy > 1e3:
+        min_energy /= 1e3
+        max_energy /= 1e3
+    
+    # Check for copper
+    energy_err = []
+    if min_energy < 8.979 < max_energy:
+        if np.abs(bpm3_pos.y - 0) < 5:
+            energy_err.append("BPM-A foil is Cu and will cause a loss of flux for the designated energy range.")
+        if np.abs(bpm4_pos.y - 0) < 5:
+            energy_err.append("BPM-B foil is Cu and will cause a loss of flux for the designated energy range.")
+
+    elif min_energy < 4.966 < max_energy:
+        if np.abs(bpm3_pos.y - 25) < 5:
+            energy_err.append("BPM-A foil is Ti and will cause a loss of flux for the designated energy range.")
+        if np.abs(bpm4_pos.y - 25) < 5:
+            energy_err.append("BPM-B foil is Ti and will cause a loss of flux for the designated energy range.")
+    
+    if (energy_check is True
+        and len(energy_err) > 0):
+        energy_err.insert(0, 'Energy Range Error:')
+        energy_err.append("Switch BPM foils or set the 'energy_check' keyword argument to False.")
+        # There may be more robust ways of finding the highest level plan name
+        if RE._plan.__name__ in _energy_check_funcs:
+            raise ValueError('\n\t'.join(energy_err))
+        else:
+            print('\n\t'.join(energy_err))
 
     # Check ROIs
     for ind in range(1, 4):
