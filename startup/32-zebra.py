@@ -229,6 +229,50 @@ class SRXZebraAND(Device):
         super().unstage()
 
 
+class SRXZebraDIV(Device):
+    input_addr = Cpt(EpicsSignalWithRBV, '_INP')
+    divisor = Cpt(EpicsSignal, '_DIV')
+
+    input_edge = FC(EpicsSignal,
+                    '{self._zebra_prefix}POLARITY:{self._edge_addr}')
+    first_pulse = FC(EpicsSignal,
+                    '{self._zebra_prefix}DIV_FIRST:{self._first_pulse_addr}')
+
+    _edge_addrs = {1: 'B8',
+                   2: 'B9',
+                   3: 'BA',
+                   4: 'BB',
+                   }
+
+    _first_pulse_addrs = {1: 'B0',
+                          2: 'B1',
+                          3: 'B2',
+                          4: 'B3',
+                          }
+
+    def stage(self):
+        super().stage()
+
+    def unstage(self):
+        super().unstage()
+
+    def __init__(self, prefix, *, index=None, parent=None,
+                 configuration_attrs=None, read_attrs=None, **kwargs):
+        if read_attrs is None:
+            read_attrs = ['input_addr', 'divisor', 'first_pulse']
+        if configuration_attrs is None:
+            configuration_attrs = []
+
+        zebra = parent
+        self.index = index
+        self._zebra_prefix = zebra.prefix
+        self._edge_addr = self._edge_addrs[index]
+        self._first_pulse_addr = self._first_pulse_addrs[index]
+
+        super().__init__(prefix, configuration_attrs=configuration_attrs,
+                         read_attrs=read_attrs, parent=parent, **kwargs)
+
+
 
 class ZebraPulse(Device):
     width = Cpt(EpicsSignalWithRBV, 'WID')
@@ -289,6 +333,10 @@ class SRXZebra(Zebra):
     pulse2 = Cpt(ZebraPulse, "PULSE2_", index=2)
     pulse3 = Cpt(ZebraPulse, "PULSE3_", index=3)
     pulse4 = Cpt(ZebraPulse, "PULSE4_", index=4)
+    div1 = Cpt(SRXZebraDIV, 'DIV1', index=1) # XF:05IDD-ES:1{Dev:Zebra1}:PULSE1_INP
+    div2 = Cpt(SRXZebraDIV, 'DIV2', index=2)
+    div3 = Cpt(SRXZebraDIV, 'DIV3', index=3)
+    div4 = Cpt(SRXZebraDIV, 'DIV4', index=4)
 
     def stage(self):
         super().stage()
