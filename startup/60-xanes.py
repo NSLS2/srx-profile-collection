@@ -1480,7 +1480,7 @@ def flying_xas(num_passes=1, shutter=True, md=None):
 def fly_multiple_passes(e_start, e_stop, e_num, dwell,  *,
                         e_width=None, num_scans=1, scan_type='uni', shutter=True, plot=True,
                         flyers=[flyer_id_mono], harmonic=1, roi_num=1,
-                        vlm_snapshot=True, md=None, energy_check=True,
+                        vlm_snapshot=True, md=None, energy_check=True, energy_step_check=True,
                         verbose=False):
     """This is a modified version of bp.fly to support multiple passes of the flyer."""
 
@@ -1527,6 +1527,9 @@ def fly_multiple_passes(e_start, e_stop, e_num, dwell,  *,
     if (abs(e_step) < e_width):
         raise ValueError('Cannot have energy collection widths larger than energy step!')
     
+    # Check energy step size
+    check_energy_steps(e_start, e_stop, e_num,
+                       energy_step_check=energy_step_check, verbose=verbose)
     # Check foils and energy range
     check_energy_range_for_foils(np.min([e_start, e_stop]), np.max([e_start, e_stop]),
                                  energy_check=energy_check)
@@ -1822,6 +1825,39 @@ def reset_after_flying_xas():
         st.wait(timeout=10)
     except WaitTimeoutError:
         print("Timeout error!")
+
+
+# Check functions
+
+def check_energy_steps(e_start, e_stop, e_num, energy_step_check=True, verbose=False):
+
+    # Check for reasonable step sizes
+    if e_num != 1:
+        e_step = np.abs((e_stop - e_start) / (e_num - 1))
+    else:
+        e_step = 0
+
+    reasonable_steps = {0, 1, 1.25, 2, 2.5, 3, 4, 5, 6, 7, 7.5, 8, 9}
+    step_err = []
+    if verbose:
+        print(f'Step size of {e_step} eV for energy.')
+    if (e_step not in reasonable_steps
+        and np.round(step * 1e-1, 5) not in reasonable_steps
+        and np.round(step * 1e-2, 5) not in reasonable_steps
+        and np.round(step * 1e1, 5) not in reasonable_steps):
+        step_err.append((f'Calculated step size of {e_step:.5f} eV '
+                            + f'for energy does not seem reasonable.'))
+    if (energy_step_check is True
+        and len(step_err) > 0):
+        step_err.insert(0, 'Suspected unreasonable step size')
+        step_err.append(f'Reasonable step sizes are as follows multiplied by a power of 10:\n\t{reasonable_steps}')
+        step_err.append("Adjust number of points to achieve a reasonable step size or"
+                        + " set the 'energy_step_check' keyword argument to False.")
+        # There may be more robust ways of finding the highest level plan name
+        if RE._plan.__name__ in _energy_check_funcs:
+            raise ValueError('\n'.join(step_err))
+        else:
+            print('\n'.join(step_err))
 
 
 def check_energy_range_for_foils(min_energy, max_energy, energy_check=True):
