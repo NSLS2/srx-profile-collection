@@ -15,6 +15,7 @@ from ophyd.pseudopos import pseudo_position_argument, real_position_argument
 from ophyd.positioner import PositionerBase
 from ophyd import Component as Cpt
 from ophyd.status import SubscriptionStatus
+from ophyd.status import WaitTimeoutError
 
 from scipy.interpolate import make_interp_spline
 import functools
@@ -52,6 +53,10 @@ class InsertionDevice(Device, PositionerBase):
     taper = Cpt(EpicsSignalRO, "-Ax:Taper}-Mtr.RBV", kind="omitted")
     tilt = Cpt(EpicsSignalRO, "-Ax:Tilt}-Mtr.RBV", kind="omitted")
     elev_u = Cpt(EpicsSignalRO, "-Ax:E}-Mtr.RBV", kind="omitted")
+
+    # Needed for swapping control
+    ivu_sp = Cpt(EpicsSignal, "-Ax:Gap}-Mtr-SP", kind="omitted")
+    ivu_move = Cpt(EpicsSignal, "-Ax:Gap}-Mtr-Go", kind="omitted")
 
     def set(self, *args, **kwargs):
         # set_and_wait(self.brake, 1) // deprecated
@@ -378,6 +383,16 @@ class Energy(PseudoPositioner):
     def retune_undulator(self):
         self.detune.put(0.0)
         self.move(self.energy.get()[0])
+    
+    def reset_after_flying_xas(self):
+        """Reset function for returning control from flyscanning XAS to normal energy control."""
+        _, _, sp = energy.energy_to_positions(self.position.energy,
+                                              self.selected_harmonic.get(),
+                                              0)
+        # Reset IVU gap setpoint to current energy
+        self.u_gap.ivu_sp.set(sp, timeout=5)
+        # Remove the IVU gap, which seems to unlatch some value
+        self.u_gap.ivu_move.set(1, timeout=5)
 
 
 cal_data_2026cycle2 = {
@@ -450,6 +465,20 @@ class FlyScanControl(Device):
                 return False
             status = SubscriptionStatus(self.control, disable_callback, run=False)
             self.control.put(0)
+            # return status
+            try:
+                status.wait(timeout=10)
+            except WaitTimeoutError as ex:
+                print("Timeout while disabling control of IVU!")
+                print("Trying again...")
+                print("  disabling...", end="", flush=True)
+                status = SubscriptionStatus(self.control, disable_callback, run=False)
+                self.control.put(0)
+                status.wait(timeout=10)
+                print("done")
+            except Exception as ex:
+                raise ex
+            energy.reset_after_flying_xas()
             return status
         else:
             raise ValueError(f"Unknown command: {command}. "
