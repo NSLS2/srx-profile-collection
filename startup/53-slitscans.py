@@ -710,7 +710,7 @@ def focusKB2(direction, **kwargs):
         # kwargs.setdefault('slit_gap', 0.05) # 50 um step
         kwargs.setdefault('slit_num', 21) # 25 um step
         kwargs.setdefault('slitgap_motor', jjslits.h_gap)
-        kwargs.setdefault('slit_gap', 0.05) # 50 um step
+        kwargs.setdefault('slit_gap', 0.05) # 50 um gap
 
     elif 'ver' in direction.lower():
         kwargs.setdefault('scan_motor', nano_stage.sy)
