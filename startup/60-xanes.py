@@ -26,11 +26,12 @@ from ophyd.sim import NullStatus
 
 
 _energy_check_funcs = ['xanes_plan',
-                       'xas_step',
                        'xanes_batch_plan',
                        'xanes_map',
                        'fly_multiple_passes',
-                       'xas_fly']
+                       'xas_step'
+                       'xas_fly',
+                       'point_xas']
 
 
 @append_srx_kwargs_md
@@ -92,7 +93,6 @@ def xanes_plan(erange=[], estep=[], dwell=1.,
     if reverse:
         ept = ept[::-1]
 
-    
     # Check foils and energy range
     check_energy_range_for_foils(np.min(ept), np.max(ept), energy_check=energy_check)
     # Check ROIs
@@ -330,9 +330,6 @@ def xanes_plan(erange=[], estep=[], dwell=1.,
 
     return (yield from subs_wrapper(myscan, {'all' : livecallbacks,
                                              'start' : at_scan}))
-
-# Alias
-xas_step = xanes_plan
 
 
 def xanes_batch_plan(xypos=[], erange=[], estep=[], dwell=1.0,
@@ -575,6 +572,7 @@ class FlyerIDMono(Device):
 
         # Scaler config
         # self.scaler.count_mode.put(0)  # put SIS3820 into single count (not autocount) mode
+        ### DO WE NEED TO ADD COUNT MODE IN HERE?
         self.scaler.stop_all.put(1)  # stop scaler
         ttime.sleep(0.050)
         self.scaler.nuse_all.put(2*total_points)
@@ -777,9 +775,9 @@ class FlyerIDMono(Device):
         # width_ev = width_s * speed
         # self.flying_dev.parameters.trigger_width.put(width_ev)
 
-        # print(f'Enabling fly scan')
-        st = self.flying_dev.control.set("enable")
+        # print(f'Enabling fly scan')=
         try:
+            st = self.flying_dev.control.set("enable")
             st.wait(10)
         except WaitTimeoutError as ex:
             print("Timeout while requesting control of IVU!")
@@ -802,7 +800,7 @@ class FlyerIDMono(Device):
         self.flying_dev.parameters.trigger_count_reset.put(1)
         self.flying_dev.parameters.current_scan_reset.put(1)
 
-        ttime.sleep(1.0)  # Wait 1 second because the control PV updates at 1 Hz
+        ttime.sleep(1.1)  # Wait 1 second because the control PV updates at 1 Hz
 
         # Main RUN command:
         self.flying_dev.control.run.put(1)
@@ -1015,10 +1013,10 @@ class FlyerIDMono(Device):
 
         # Unstage xspress3 detector(s).
         if self.verbose:
-            print(f"{print_now()}: before unstaging xs")
+            print(f"{print_now()}: before unstaging {self.name} and xs")
         self.unstage()
         if self.verbose:
-            print(f"{print_now()}: after unstaging xs")
+            print(f"{print_now()}: after unstaging {self.name} and xs")
 
         # Deal with the direction of energies for bi-directional scan.
         # BlueSky@SRX [27]: id_fly_device.control.scan_type.get(as_string=True)
@@ -1591,6 +1589,7 @@ def fly_multiple_passes(e_start, e_stop, e_num, dwell,  *,
     livepopup = []
     roi_pv = flyers[0].xs_detectors[0].channel01.mcaroi01.ts_total
     if plot is True:
+        yield from abs_set(flyers[0].xs_detectors[0].cam.acquire, 'Done', timeout=3)
         yield from clear_set_xs_ts(flyers[0].xs_detectors[0], num=e_num)
         # yield from mov(flyer_id_mono.xs_detectors[0].channel01.mcaroi.ts_control, 2, settle_time=0.1, timeout=1)
         # yield from mov(flyer_id_mono.xs_detectors[0].channel01.mcaroi.ts_num_points, e_num, settle_time=0.1, timeout=1)
@@ -1670,6 +1669,7 @@ def fly_multiple_passes(e_start, e_stop, e_num, dwell,  *,
                 st.wait(timeout=10)
             for n in range(num_scans):
                 print(f"\n\n*** {print_now()} Iteration #{n+1} ***\n")
+                print(f"{flyers[0]._staged=}\n{flyers[0].xs_detectors[0]._staged=}\n{flyers[0].zebra._staged=}\n{flyers[0].scaler._staged=}")
                 yield from bps.checkpoint()
 
                 # Update the timing
@@ -1680,7 +1680,10 @@ def fly_multiple_passes(e_start, e_stop, e_num, dwell,  *,
                 yield from check_shutters(shutter, "Open")
                 # if shutter is True:
                 #     yield from abs_set(shut_d.request_open, 1, wait=True, timeout=2)
-                # flyer_id_mono.scaler.erase_start.put(1)
+                # Should this be elsewhere? Should we move this after the pause is released?
+                yield from mov(flyer.scaler.count_mode, 0, timeout=3)
+                print(f"{flyer_id_mono.scaler.count_mode.get()=}")
+                flyer_id_mono.scaler.erase_start.put(1)
                 for flyer in flyers:
                     # print(f"  {flyer.name} complete...")
                     yield from bps.complete(flyer, wait=True)
@@ -1696,7 +1699,15 @@ def fly_multiple_passes(e_start, e_stop, e_num, dwell,  *,
             # yield from check_shutters(shutter, 'Close')
             # yield from mv(sclr1.count_mode, 1)
 
-        uid = yield from inner_plan()
+        # uid = yield from inner_plan()
+        # Massive try-except to look for anything else wrong!
+        try:
+            uid = yield from inner_plan()
+        except Exception as ex:
+            # Collect other potential errors
+            print("Found error!")
+            raise ex
+
         # for flyer in flyers:
         #     # yield from bps.mv(flyer.flying_dev.control, "disable")
         #     st = flyer.flying_dev.control.set("disable")
@@ -1734,20 +1745,34 @@ def fly_multiple_passes(e_start, e_stop, e_num, dwell,  *,
             if flyer.flying_dev.control.control.write_access is True:
                 print('Disabling fly mode...')
                 # st = id_fly_device.control.set("disable")
+
+
                 st = yield from abs_set(flyer.flying_dev.control, "disable")
                 try:
-                    st.wait(10)
+                    st.wait(3) # 10 second wait in disable
                 except WaitTimeoutError as ex:
                     print("Timeout while disabling control of IVU!")
                     print("Trying again...")
 
                     print("  disabling...", end="", flush=True)
-                    st = flyer.flying_dev.control.set("disable")
-                    st.wait(10)
+                    st = yield from abs_set(flyer.flying_dev.control, "disable")
+                    st.wait(3) # 10 sec wait in disable
                     print("done")
-                except Exception as ex:
-                    # Do NOT re-raise as this will break the rest of finalize_plan
-                    print(ex)
+
+                # try:
+                #     st = yield from abs_set(flyer.flying_dev.control, "disable")
+                #     st.wait(10)
+                # except WaitTimeoutError as ex:
+                #     print("Timeout while disabling control of IVU!")
+                #     print("Trying again...")
+
+                #     print("  disabling...", end="", flush=True)
+                #     st = flyer.flying_dev.control.set("disable")
+                #     st.wait(10)
+                #     print("done")
+                # except Exception as ex:
+                #     # Do NOT re-raise as this will break the rest of finalize_plan
+                #     print(ex)
 
             # Reset devices to previous state
             yield from unstage(flyer)
@@ -1755,6 +1780,7 @@ def fly_multiple_passes(e_start, e_stop, e_num, dwell,  *,
         # Erase xs time-series
         # st = yield from abs_set(xs.channel01.mcaroi.ts_control, 0)
         # st.wait(3)
+        yield from abs_set(flyers[0].xs_detectors[0].cam.acquire, 'Done', timeout=3)
         yield from clear_set_xs_ts(flyers[0].xs_detectors[0])
         yield from abs_set(flyers[0].xs_detectors[0].channel01.mcaroi.ts_control, 2, timeout=3, wait=True)
 
@@ -1842,9 +1868,8 @@ def check_energy_steps(e_start, e_stop, e_num, energy_step_check=True, verbose=F
     if verbose:
         print(f'Step size of {e_step} eV for energy.')
     if (e_step not in reasonable_steps
-        and np.round(step * 1e-1, 5) not in reasonable_steps
-        and np.round(step * 1e-2, 5) not in reasonable_steps
-        and np.round(step * 1e1, 5) not in reasonable_steps):
+        and np.round(e_step * 1e-1, 5) not in reasonable_steps
+        and np.round(e_step * 1e1, 5) not in reasonable_steps):
         step_err.append((f'Calculated step size of {e_step:.5f} eV '
                             + f'for energy does not seem reasonable.'))
     if (energy_step_check is True
@@ -1928,6 +1953,76 @@ def check_energy_range_for_rois(xs, roi_num, min_energy, max_energy):
     return roi_num
 
 
+
+
+### Coordinating functions
+
+def point_xas(*args,
+              positions=None,
+              num_scans=1,
+              scan_type='step',
+              verbose=False,
+              **kwargs):
+
+    # Default motors if they need to be changed...
+    xmotor = nano_stage.x
+    ymotor = nano_stage.y
+    zmotor = nano_stage.z
+
+    # Check positions
+    if positions is None:
+        positions = [None]
+    else:
+        if (np.all([len(pos) == 2 for pos in positions])
+            or np.all([len(pos) == 3 for pos in positions])):
+            err_str = f"Positions must be iterable of all (x, y) or all (x, y, z) coordinates."
+            raise ValueError(err_str)
+
+    # Check scan type and define how to repeat scans
+    if scan_type.lower() == 'step':
+        def _point_xas():
+            for scan in num_scans:
+                yield from xanes_plan(*args,
+                                      verbose=verbose,
+                                      **kwargs)
+    elif scan_type.lower() == 'fly':
+        def _point_xas():
+            yield from fly_multiple_passes(*args,
+                                           verbose=verbose,
+                                           num_scans=num_scans,
+                                           **kwargs)
+    else:
+        err_str = f"Only scan_types of {'step', 'fly'} are supported, not {scan_type}"
+        raise ValueError(err_str)
+
+    # Pinch of verbosity
+    if verbose:
+        msg = (f"Conducting {num_scans} scans across {len(positions)} "
+               + f"positions for a total of {len(positions) * num_scans} scans.")
+        print(msg)
+
+    # Iteration loop
+    for pos in positions:
+        if pos is None:
+            pass
+        elif len(pos) == 2:
+            yield from mov(xmotor, pos[0],
+                           ymotor, pos[1])
+        elif len(pos) == 3:
+            yield from mov(xmotor, pos[0],
+                           ymotor, pos[1],
+                           zmotor, pos[2])
+        else:
+            err_str = f"Positions must be iterable of (x, y) or (x, y, z) not of length {len(pos)}."
+            raise ValueError()
+
+        # Actual spectroscopy!
+        yield from _point_xas()
+
+
+# Aliases
+xas_step = lambda *args, **kwargs : point_xas(*args, scan_type='step', **kwargs)
+xas_fly = lambda *args, **kwargs : point_xas(*args, scan_type='step', **kwargs)
 
 
 

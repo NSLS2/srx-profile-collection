@@ -389,10 +389,15 @@ class Energy(PseudoPositioner):
         _, _, sp = energy.energy_to_positions(self.position.energy,
                                               self.selected_harmonic.get(),
                                               0)
-        # Reset IVU gap setpoint to current energy
-        self.u_gap.ivu_sp.set(sp, timeout=5)
-        # Remove the IVU gap, which seems to unlatch some value
-        self.u_gap.ivu_move.set(1, timeout=5)
+        try:
+            # Reset IVU gap setpoint to current energy
+            self.u_gap.ivu_sp.set(sp, timeout=5)
+            # Remove the IVU gap, which seems to unlatch some value
+            self.u_gap.ivu_move.set(1, timeout=5)
+        except WaitTimeoutError as ex:
+            print('Waiting for IVU control reset failed!')
+            raise ex
+        ttime.sleep(3)
 
 
 cal_data_2026cycle2 = {
@@ -463,23 +468,17 @@ class FlyScanControl(Device):
                 if value == DISABLED_VALUE:
                     return True
                 return False
-            status = SubscriptionStatus(self.control, disable_callback, run=False)
-            self.control.put(0)
-            # return status
+
             try:
-                status.wait(timeout=10)
-            except WaitTimeoutError as ex:
-                print("Timeout while disabling control of IVU!")
-                print("Trying again...")
-                print("  disabling...", end="", flush=True)
                 status = SubscriptionStatus(self.control, disable_callback, run=False)
                 self.control.put(0)
                 status.wait(timeout=10)
-                print("done")
-            except Exception as ex:
-                raise ex
-            energy.reset_after_flying_xas()
-            return status
+            except WaitTimeoutError as ex:
+                return status
+            finally:
+                # Should only take a successful satus
+                energy.reset_after_flying_xas()
+                return status
         else:
             raise ValueError(f"Unknown command: {command}. "
                              f"Allowed commands: {allowed_commands}")
