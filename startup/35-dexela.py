@@ -179,8 +179,8 @@ class SRXDexelaTransformPlugin(TransformPlugin):
 
 class SRXDexelaDetector(SingleTrigger, DexelaDetector):
     proc1 = Cpt(ProcessPlugin, 'Proc1:')
-    stats1 = Cpt(StatsPluginV33, 'Stats1:')
-    stats2 = Cpt(StatsPluginV33, 'Stats2:')
+    stats1 = Cpt(StatsPluginV33, 'Stats1:', read_attrs=['total'])
+    stats2 = Cpt(StatsPluginV33, 'Stats2:', read_attrs=['total'])
     stats3 = Cpt(StatsPluginV33, 'Stats3:')
     stats4 = Cpt(StatsPluginV33, 'Stats4:')
     stats5 = Cpt(StatsPluginV33, 'Stats5:')
@@ -240,11 +240,11 @@ class SRXDexelaDetector(SingleTrigger, DexelaDetector):
     # or as a method so we can modify this as part of a plan
     fly_next = Cpt(Signal, value=False)
 
-    proc1 = Cpt(ProcessPlugin, 'Proc1:')
-    roi1 = Cpt(ROIPlugin, 'ROI1:')
-    roi2 = Cpt(ROIPlugin, 'ROI2:')
-    stats1 = Cpt(StatsPlugin, 'Stats1:', read_attrs=['total'])
-    stats2 = Cpt(StatsPlugin, 'Stats2:', read_attrs=['total'])
+    # proc1 = Cpt(ProcessPlugin, 'Proc1:')
+    # roi1 = Cpt(ROIPlugin, 'ROI1:')
+    # roi2 = Cpt(ROIPlugin, 'ROI2:')
+    # stats1 = Cpt(StatsPlugin, 'Stats1:', read_attrs=['total'])
+    # stats2 = Cpt(StatsPlugin, 'Stats2:', read_attrs=['total'])
     # stats1.read_attrs(['total'])
 
     def __init__(self, *args, **kwargs):
