@@ -131,11 +131,11 @@ def _continuous_dark_fields(dets,
                 yield from bps.unstage(det)
             
             yield from bps.stage(det)
+            
             # Change hard-coded stage values
             # Hacky implementation!
-            yield from abs_set(det.cam.num_images, N_dark) # Swapped back
-            # yield from abs_set(det.hdf5.num_capture, det.total_points.get())
-            yield from abs_set(det.cam.trigger_mode, 'Int. Fixed Rate') # Swapped back from forced fly mode
+            yield from abs_set(det.cam.num_images, N_dark, wait=True, timeout=1) # Swapped back
+            yield from abs_set(det.cam.trigger_mode, 'Int. Fixed Rate', wait=True, timeout=1) # Swapped back from forced fly mode
         
         # Take images
         yield from bps.trigger_and_read(xrd_dets, name='dark')
