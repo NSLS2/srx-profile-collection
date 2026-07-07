@@ -158,6 +158,8 @@ def scan_and_fly_base(detectors,
        If True, try to open the shutter
     """
 
+    AD_WIP = True
+
     # It is not desirable to display plots when the plan is executed by Queue Server.
     # if is_re_worker_active():
     #     plot = False
@@ -344,12 +346,18 @@ def scan_and_fly_base(detectors,
     else:
         roi_pv = xs_.channel1.rois.roi01.value
 
-
     @stage_decorator(flying_zebra.detectors)
     def fly_each_step(motor, step, row_start, row_stop):
         if verbose:
             print("In fly_each_step...")
             toc(0, str='timing stage', log_file=log_file)
+
+        # WIP: Improving area detectors
+        if AD_WIP:
+            for d in flying_zebra.detectors:
+                if d.name in ['dexela', 'eiger']:
+                    yield from abs_set(d.cam.image_mode, 'Continuous')
+
         def move_to_start_fly():
             row_str = short_uid('row')
             yield from bps.checkpoint()
@@ -463,18 +471,35 @@ def scan_and_fly_base(detectors,
                                   log_file=log_file)
                                 )
             ## TODO: Make sure we trigger and wait for dexela first, and then trigger the zebra last
-            if d.name == 'dexela' or d.name == "eiger":
-                state = 0
-                if verbose:
-                    print(f"    [{print_now()}] {d.name} is waking up...  ")
-                while state == 0:
+            if d.name in ['dexela', 'eiger']:
+                # WIP: Improving area detectors
+                if AD_WIP:
+                    def callback(value, old_value, **kwargs):
+                        old_value = 0
+                        # value = d.hdf5.num_captured.get()
+                        return value == xnum
+                    # Overwrite st
+                    st = SubscriptionStatus(d.hdf5.num_captured, callback)
+                    # d._status = st
+                    st_list[-1] = st
+
+                # WIP: Improving area detectors
+                if AD_WIP:
+                    # This should not be needed...
+                    while d.cam.detector_state.get() == 0:
+                        yield from bps.sleep(0.05)
+                else:
+                    state = 0
+                    if verbose:
+                        print(f"    [{print_now()}] {d.name} is waking up...  ")
+                    while state == 0:
+                        yield from bps.sleep(0.1)
+                        state = d.cam.detector_state.get()
+                        # print(f"    Dexela is idle!")
                     yield from bps.sleep(0.1)
-                    state = d.cam.detector_state.get()
-                    # print(f"    Dexela is idle!")
-                yield from bps.sleep(0.1)
-                # yield from bps.sleep(0.3) # EJM quick fix 20250714
-                if verbose:
-                    print(f"    [{print_now()}] awake!")
+                    # yield from bps.sleep(0.3) # EJM quick fix 20250714
+                    if verbose:
+                        print(f"    [{print_now()}] awake!")
         yield from bps.sleep(0.1)
 
         # Creating one status object to rule them all
@@ -703,6 +728,13 @@ def scan_and_fly_base(detectors,
     # Last check before starting new scan
     yield from bps.checkpoint()
 
+    # WIP: Improving area detectors
+    if AD_WIP:
+        for d in flying_zebra.detectors:
+            if d.name in ['dexela', 'eiger']:
+                if 'cam.acquire' in d.stage_sigs:
+                    d.stage_sigs.pop('cam.acquire')
+
     @subs_decorator(livepopup)
     @subs_decorator({'start': at_scan})
     @ts_monitor_during_decorator([roi_pv])
@@ -768,6 +800,22 @@ def scan_and_fly_base(detectors,
                 yield from backlash_correction(xmotor, start, ymotor, step,
                                                move_to_value=False) # handled elsewhere
 
+            # THIS DOES NOT WORK FOR SOME REASON                
+            # if ystep == 0:
+            #     # WIP: Improving area detectors
+            #     # Initially arming detectors
+            #     for d in flying_zebra.detectors:
+            #         if d.name in ['dexela', 'eiger']:
+            #             if verbose:
+            #                 print(f'Arming {d.name}...')
+            #             yield from abs_set(d.cam.acquire, 1)
+            #             # Check
+            #             while d.cam.detector_state.get() == 0:
+            #                 yield from bps.sleep(0.05)
+            #             yield from bps.sleep(0.1)
+            #             if verbose:
+            #                 print('done!')
+
             # Do work
             # if verbose:
             #     print(f'Direction = {direction}')
@@ -805,12 +853,24 @@ def scan_and_fly_base(detectors,
     def finalize_plan():
         if shutter:
             yield from check_shutters(shutter, 'Close')
+
+        # Confirm all detectors are stopped
+        for d in flying_zebra.detectors:
+            yield from abs_set(get_me_the_cam(d).acquire, 0)
+
         yield from abs_set(scanrecord.scanning, False)
         yield from abs_set(scanrecord.time_remaining, 0)
         yield from abs_set(scanrecord.time_rem_str, time_rem_convert(0))
         # scanrecord.scanning.put(False)
         # scanrecord.time_remaining.put(0)
         # scanrecord.time_rem_str.put(time_rem_convert(0))
+
+        # WIP: Improving area detectors
+        if AD_WIP:
+            for d in flying_zebra.detectors:
+                if d.name in ['dexela', 'eiger']:
+                    d.stage_sigs['cam.acquire'] = 0
+
 
     # Setup the final scan plan
     if verbose:
