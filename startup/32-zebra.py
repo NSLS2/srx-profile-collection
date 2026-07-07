@@ -544,8 +544,9 @@ class SRXFlyer1Axis(Device):
     slow_axis = Cpt(Signal, value="VER", kind="config")
     mode = Cpt(Signal, value='position', kind='config')
 
-    _staging_delay = 0.100  # used to be 10 ms, brute force this to work
-    # _staging_delay = 0.005
+    # _staging_delay = 0.100  # used to be 10 ms, brute force this to work
+    _staging_delay = 0.010
+    _max_stage_retries = 20
 
     @property
     def encoder(self):
@@ -618,8 +619,8 @@ class SRXFlyer1Axis(Device):
             self.stage_sigs[self._encoder.pc.enc] = "Enc3"
             self.stage_sigs[self._encoder.pc.dir] = "Positive"
 
-        # self._stage_with_delay_and_check()
-        self._stage_with_delay()
+        self._stage_with_delay_and_check()
+        # self._stage_with_delay()
 
         self.root_path = self.root_path_str()
 
@@ -686,7 +687,7 @@ class SRXFlyer1Axis(Device):
         # Apply settings.
         devices_staged = []
 
-        MAX_RETRIES = 10
+        MAX_RETRIES = self._max_stage_retries
         delay_time = self._staging_delay
         successful_staging = {k : False for k in stage_sigs.keys()}
         for _ in range(MAX_RETRIES):
@@ -845,8 +846,8 @@ class SRXFlyer1Axis(Device):
 
 
     def unstage(self):
-        # self._unstage_with_delay_and_check()
-        self._unstage_with_delay()
+        self._unstage_with_delay_and_check()
+        # self._unstage_with_delay()
 
 
     def _unstage_with_delay_and_check(self):
@@ -883,7 +884,7 @@ class SRXFlyer1Axis(Device):
                 device.unstage()
                 devices_unstaged.append(device)
 
-        MAX_RETRIES = 10
+        MAX_RETRIES = self._max_stage_retries
         delay_time = self._staging_delay
         successful_unstaging = {k : False for k in self._original_vals.keys()}
         for _ in range(MAX_RETRIES):
