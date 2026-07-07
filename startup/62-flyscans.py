@@ -123,6 +123,7 @@ def scan_and_fly_base(detectors,
                       md=None,
                       snake=False,
                       vlm_snapshot=True, N_dark=10,
+                      correct_motor_backlash=True,
                       step_check=True,
                       verbose=False):
     """Read IO from SIS3820.
@@ -160,6 +161,9 @@ def scan_and_fly_base(detectors,
     # It is not desirable to display plots when the plan is executed by Queue Server.
     # if is_re_worker_active():
     #     plot = False
+
+    # First check to see if pause is requested
+    yield from bps.checkpoint()
 
     # Check if logging directory exists
     log_file = None
@@ -696,6 +700,9 @@ def scan_and_fly_base(detectors,
     else:
         livepopup = []
 
+    # Last check before starting new scan
+    yield from bps.checkpoint()
+
     @subs_decorator(livepopup)
     @subs_decorator({'start': at_scan})
     @ts_monitor_during_decorator([roi_pv])
@@ -755,6 +762,12 @@ def scan_and_fly_base(detectors,
                     direction = 1
                     start = row_stop
                     stop = row_start
+            
+            # Backlash correction
+            if ystep == 0 and correct_motor_backlash:
+                yield from backlash_correction(xmotor, start, ymotor, step,
+                                               move_to_value=False) # handled elsewhere
+
             # Do work
             # if verbose:
             #     print(f'Direction = {direction}')
