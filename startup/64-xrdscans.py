@@ -118,7 +118,7 @@ def _continuous_dark_fields(dets,
         reset_sigs.extend(original_sigs)
     
     if len(xrd_dets) > 0:
-        d_status = shut_d.read()['shut_d_request_open']['value'] == 1 # is open
+        d_status = shut_d.read()['shut_d_status']['value'] == 'Open' # is open
         if shutter: # Avoid printing banner
             yield from check_shutters(shutter, 'Close')
         print('Acquiring dark-field...')
