@@ -239,7 +239,7 @@ def backlash_correction(*args, move_to_value=True):
                         + "Proceeding without correction for this motor.")
             backlash_args.pop(-1)
     
-    print(backlash_args)
+    # print(backlash_args)
     
     # Do the move
     yield from mov(*backlash_args)
