@@ -159,6 +159,9 @@ def scan_and_fly_base(detectors,
     """
 
     AD_WIP = True
+    # AD_WIP = False
+    if verbose and AD_WIP:
+        print('Using new AD improvements!')
 
     # It is not desirable to display plots when the plan is executed by Queue Server.
     # if is_re_worker_active():
@@ -487,6 +490,8 @@ def scan_and_fly_base(detectors,
                 if AD_WIP:
                     # This should not be needed...
                     while d.cam.detector_state.get() == 0:
+                        if verbose:
+                            print(f"Waiting for {d.name} to be ready...")
                         yield from bps.sleep(0.05)
                 else:
                     state = 0
@@ -729,12 +734,29 @@ def scan_and_fly_base(detectors,
     yield from bps.checkpoint()
 
     # WIP: Improving area detectors
+    static_staging = []
     if AD_WIP:
         for d in flying_zebra.detectors:
             if d.name in ['dexela', 'eiger']:
+                # Acquire can misbehave so it gets special treatment
                 if 'cam.acquire' in d.stage_sigs:
                     d.stage_sigs.pop('cam.acquire')
-
+                # d.cam.stage_sigs['num_images'] = xnum * ynum
+                for key in ['acquire_time', 'acquire_period', 'num_images']:
+                    static_staging.append((d.cam, key))
+            if d.name == 'eiger':
+                # d.stage_sigs.pop('total_points')
+                d.cam.stage_sigs['num_triggers'] = xnum * ynum
+                d.cam.stage_sigs['num_exposures'] = xnum * ynum
+                for key in ['num_triggers', 'num_exposures',
+                            'photon_energy', 'threshold_energy',
+                            'image_mode', 'trigger_mode']:
+                    static_staging.append((d.cam, key))
+            if d.name == 'xs':
+                for key in xs.stage_sigs.keys():
+                    static_staging.append((xs, key))
+    
+    @static_staging_decorator(static_staging, AD_WIP=AD_WIP)
     @subs_decorator(livepopup)
     @subs_decorator({'start': at_scan})
     @ts_monitor_during_decorator([roi_pv])
@@ -853,7 +875,7 @@ def scan_and_fly_base(detectors,
     def finalize_plan():
         if shutter:
             yield from check_shutters(shutter, 'Close')
-
+        
         # Confirm all detectors are stopped
         for d in flying_zebra.detectors:
             yield from abs_set(get_me_the_cam(d).acquire, 0)
@@ -1569,3 +1591,69 @@ def scan_and_fly_xs2_xz(*args, extra_dets=None, **kwargs):
         extra_dets = []
     dets = [_xs] + extra_dets
     yield from scan_and_fly_base(dets, *args, **kwargs)
+
+
+
+def static_staging_decorator(static_staging, AD_WIP=True):
+    def inner_decorator(func):
+        @functools.wraps(func)
+        def func_with_static_staging(*args, **kwargs):
+            
+            # Disable behavior if not using AD_WIP
+            if not AD_WIP:
+                return (yield from func(*args, **kwargs))
+            
+            all_st = NullStatus()
+            static_staging_attrs = []
+            restore_stage_sigs = []
+            for obj, key in static_staging:
+                # First check if key exists
+                if key not in obj.stage_sigs:
+                    continue
+                else:
+                    sig = obj.stage_sigs.pop(key)
+                
+                print(f'Statically setting {key}')
+                
+                # Next parse key
+                if not isinstance(key, str):
+                    attr = key
+                elif '.' in key:
+                    key = key.split('.')
+                    if len(key) > 2: # Not worth parsing very weird stage_sigs...
+                        continue
+                    attr = getattr(getattr(obj, key[0]), key[1])
+                else:
+                    attr = getattr(obj, key)
+                
+                # Record original value
+                static_staging_attrs.append((attr, attr.get()))
+                # Record stage sig
+                restore_stage_sigs.append((obj, key, sig))
+
+                # Set value
+                all_st = all_st & (yield from abs_set(attr, sig))
+
+            # Wait for ready
+            all_st.wait(10)
+
+            try:
+                uid = yield from func(*args, **kwargs)
+            finally:
+                # Restore values
+                all_st = NullStatus()
+                for attr, val in static_staging_attrs:
+                    print(f'Statically resetting {attr.name}')
+                    all_st = all_st & (yield from abs_set(attr, val))
+                
+                # Restore stage_sigs
+                for obj, key, sig in restore_stage_sigs:
+                    obj.stage_sigs[key] = sig
+
+                # Wait for ready
+                all_st.wait(10)
+
+                return uid
+        
+        return func_with_static_staging
+    return inner_decorator
