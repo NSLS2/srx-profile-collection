@@ -739,8 +739,7 @@ def scan_and_fly_base(detectors,
         for d in flying_zebra.detectors:
             if d.name in ['dexela', 'eiger']:
                 # Acquire can misbehave so it gets special treatment
-                if 'cam.acquire' in d.stage_sigs:
-                    d.stage_sigs.pop('cam.acquire')
+                d.stage_sigs.pop('cam.acquire', None)
                 # d.cam.stage_sigs['num_images'] = xnum * ynum
                 for key in ['acquire_time', 'acquire_period', 'num_images']:
                     static_staging.append((d.cam, key))
@@ -752,9 +751,9 @@ def scan_and_fly_base(detectors,
                             'photon_energy', 'threshold_energy',
                             'image_mode', 'trigger_mode']:
                     static_staging.append((d.cam, key))
-            if d.name == 'xs':
-                for key in xs.stage_sigs.keys():
-                    static_staging.append((xs, key))
+            # if d.name == 'xs':
+            #     for key in xs.stage_sigs.keys():
+            #         static_staging.append((xs, key))
     
     @static_staging_decorator(static_staging, AD_WIP=AD_WIP)
     @subs_decorator(livepopup)
@@ -1637,6 +1636,7 @@ def static_staging_decorator(static_staging, AD_WIP=True):
             # Wait for ready
             all_st.wait(10)
 
+            uid = None
             try:
                 uid = yield from func(*args, **kwargs)
             finally:
