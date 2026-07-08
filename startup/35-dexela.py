@@ -266,7 +266,6 @@ class SRXDexelaDetector(SingleTrigger, DexelaDetector):
         # EJM: Clear counter for consistency with Xspress3
         _TIMEOUT = 2
         self.cam.array_counter.set(0, timeout=_TIMEOUT).wait()
-        self.cam
 
         # do the latching
         if self.fly_next.get():
