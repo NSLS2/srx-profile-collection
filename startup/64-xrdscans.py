@@ -48,6 +48,7 @@ def setup_xrd_dets(dets,
         xrd.cam.acquire.set(0)
         xrd.stage_sigs['total_points'] = N_images
         xrd.cam.stage_sigs['num_triggers'] = N_images
+        xrd.cam.stage_sigs['num_images'] = N_images
         xrd.hdf5.stage_sigs['num_capture'] = N_images
 
         # AD WIP
