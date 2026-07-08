@@ -323,12 +323,12 @@ class SRXEigerDetector(SingleTrigger, EigerDetector):
 
         if self._mode is SRXMode.fly:
             # AD WIP
-            self.cam.stage_sigs.pop('num_images', None)
-            self.cam.stage_sigs.pop('num_triggers', None)
+            # self.cam.stage_sigs.pop('num_images', None)
+            # self.cam.stage_sigs.pop('num_triggers', None)
             # self.cam.stage_sigs['num_images'] = 1
-            # self.cam.stage_sigs['num_triggers'] = self.total_points.get()
-            # self.cam.stage_sigs['image_mode'] = 'Multiple'
-            self.cam.stage_sigs['image_mode'] = 'Single'
+            # self.cam.stage_sigs['num_triggers'] = self.total_points.get() # set elsewhere
+            self.cam.stage_sigs['image_mode'] = 'Multiple'
+            # self.cam.stage_sigs['image_mode'] = 'Single'
             self.cam.stage_sigs['trigger_mode'] = 'External Enable'
         else:
             self.cam.stage_sigs['num_images'] = 1
