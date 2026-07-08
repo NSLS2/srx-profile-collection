@@ -158,8 +158,8 @@ def scan_and_fly_base(detectors,
        If True, try to open the shutter
     """
 
-    AD_WIP = True
-    # AD_WIP = False
+    # AD_WIP = True
+    AD_WIP = False
     if verbose and AD_WIP:
         print('Using new AD improvements!')
 
@@ -740,7 +740,6 @@ def scan_and_fly_base(detectors,
             if d.name in ['dexela', 'eiger']:
                 # Acquire can misbehave so it gets special treatment
                 d.stage_sigs.pop('cam.acquire', None)
-                # d.cam.stage_sigs['num_images'] = xnum * ynum
                 for key in ['acquire_time', 'acquire_period', 'num_images']:
                     static_staging.append((d.cam, key))
             if d.name == 'eiger':
@@ -1612,7 +1611,7 @@ def static_staging_decorator(static_staging, AD_WIP=True):
                 else:
                     sig = obj.stage_sigs.pop(key)
                 
-                print(f'Statically setting {key}')
+                # print(f'Statically setting {key}')
                 
                 # Next parse key
                 if not isinstance(key, str):
@@ -1643,7 +1642,7 @@ def static_staging_decorator(static_staging, AD_WIP=True):
                 # Restore values
                 all_st = NullStatus()
                 for attr, val in static_staging_attrs:
-                    print(f'Statically resetting {attr.name}')
+                    # print(f'Statically resetting {attr.name}')
                     all_st = all_st & (yield from abs_set(attr, val))
                 
                 # Restore stage_sigs
