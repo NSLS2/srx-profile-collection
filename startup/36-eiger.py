@@ -157,9 +157,15 @@ class EigerHDFWithFileStore(HDF5Plugin, EigerFileStoreHDF5):
                 height = self.height.get()
                 width = self.width.get()
                 # Generated shape is valid for flyscan using 'External Enable' triggering mode
-                num_triggers = self.parent.cam.num_triggers.get()
+                # num_triggers = self.parent.cam.num_triggers.get()
+                # orig_shape = v["shape"]
+                # v["shape"] = (num_triggers, height, width)
+                # print(f"Descriptor: shape of {k!r} was updated. The shape {orig_shape} was replaced by {v['shape']}")
+
+                # AD WIP
+                total_points = self.parent.total_points.get()
                 orig_shape = v["shape"]
-                v["shape"] = (num_triggers, height, width)
+                v["shape"] = (total_points, height, width)
                 print(f"Descriptor: shape of {k!r} was updated. The shape {orig_shape} was replaced by {v['shape']}")
 
         return desc
@@ -214,7 +220,6 @@ class SRXEigerDetector(SingleTrigger, EigerDetector):
     stats3 = Cpt(StatsPluginV33, 'Stats3:')
     stats4 = Cpt(StatsPluginV33, 'Stats4:')
     stats5 = Cpt(StatsPluginV33, 'Stats5:')
-    # transform1 = Cpt(TransformPlugin, 'Trans1:')
     transform1 = Cpt(SRXEigerTransformPlugin, 'Trans1:')
     roi1 = Cpt(ROIPlugin, 'ROI1:')
     roi2 = Cpt(ROIPlugin, 'ROI2:')
@@ -290,6 +295,10 @@ class SRXEigerDetector(SingleTrigger, EigerDetector):
         self.cam.ensure_nonblocking()
         self.set_paths()
 
+        # Fix some stage_sigs that are handled elsewhere
+        if 'cam.image_mode' in self.stage_sigs:
+            self.stage_sigs.pop('cam.image_mode')
+
 
     def set_paths(self):
         full_path = f'{self.path_start}{self.root_path_str}{self.path_template_str}'
@@ -305,7 +314,7 @@ class SRXEigerDetector(SingleTrigger, EigerDetector):
         # EJM: Clear counter for consistency with Xspress3
         _TIMEOUT = 2
         self.cam.array_counter.set(0, timeout=_TIMEOUT).wait()
-        total_points = self.total_points.get()
+        # total_points = self.total_points.get()
 
         # do the latching
         if self.fly_next.get():
@@ -313,9 +322,12 @@ class SRXEigerDetector(SingleTrigger, EigerDetector):
             self._mode = SRXMode.fly
 
         if self._mode is SRXMode.fly:
-            self.cam.stage_sigs['num_images'] = 1
-            self.cam.stage_sigs['num_triggers'] = total_points
-            self.cam.stage_sigs['image_mode'] = 'Multiple'
+            # AD WIP
+            # self.cam.stage_sigs['num_images'] = 1
+            # self.cam.stage_sigs['num_triggers'] = self.total_points.get()
+            # self.cam.stage_sigs['image_mode'] = 'Multiple'
+            self.cam.stage_sigs['image_mode'] = 'Single'
+
             self.cam.stage_sigs['trigger_mode'] = 'External Enable'
         else:
             self.cam.stage_sigs['num_images'] = 1
