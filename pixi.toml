@@ -1,11 +1,8 @@
 [workspace]
 channels = ["conda-forge"]
 name = "srx-profile-collection"
-platforms = ["linux-64"]
+platforms = [{ platform = "linux-64", glibc = "2.17" }]
 version = "2026.2.0"
-
-[system-requirements]
-libc = "2.17"
 
 [feature.profile.dependencies]
 blosc-hdf5-plugin = ">=1.0.1,<2"
