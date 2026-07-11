@@ -1110,15 +1110,16 @@ def screen_line(x, y):
     # ax[1].legend()
 
     std_err = RMS(d - L)
-    print(f"Standard error = {std_err}")
+    # print(f"Standard error = {std_err}")
     # Rose-criteria would be SNR=5
     # if line is normalized to 1, noise must be <0.2
     # if std_err < 0.2:
     if std_err < 0.2:
-        print("Sufficient signal!")
+        # print("Sufficient signal!")
         return True
     else:
-        print("Insufficient signal!")
+        pass
+        # print("Insufficient signal!")
 
     return False
 
@@ -1205,11 +1206,11 @@ def screen_knife_edge(uid_or_scanid):
 
         std_err = RMS(d - L)
         # test_nan(std_err, "std_err")
-        print(f"Standard error = {std_err}")
+        # print(f"Standard error = {std_err}")
         # Rose-criteria would be SNR=5
         # if line is normalized to 1, noise must be <0.2
         if std_err < 0.2:
-            print("Sufficient signal!")
+            # print("Sufficient signal!")
             # test deconvolve
             # Fd = np.fft.rfft(d)
             # FL = np.fft.rfft(L)
@@ -1223,7 +1224,8 @@ def screen_knife_edge(uid_or_scanid):
             fig2, ax2 = plt.subplots()
             ax2.plot(lsf)
         else:
-            print("Insufficient signal!")
+            pass
+            # print("Insufficient signal!")
 
         _ = input("waiting...")
         plt.close(fig)
