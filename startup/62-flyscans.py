@@ -158,8 +158,8 @@ def scan_and_fly_base(detectors,
        If True, try to open the shutter
     """
 
-    # AD_WIP = True
-    AD_WIP = False
+    AD_WIP = True
+    # AD_WIP = False
     if verbose and AD_WIP:
         print('Using new AD improvements!')
 
@@ -1635,24 +1635,31 @@ def static_staging_decorator(static_staging, AD_WIP=True):
             # Wait for ready
             all_st.wait(10)
 
-            uid = None
+            # This code is modeled after the finalize_wrapper in bluesky.preprocessors
+            cleanup = True
             try:
-                uid = yield from func(*args, **kwargs)
+                ret = yield from func(*args, **kwargs)
+            except GeneratorExit: # This is just always loaded?
+                cleanup = False
+                raise
+            except BaseException: # This one definitely is
+                raise
             finally:
-                # Restore values
-                all_st = NullStatus()
-                for attr, val in static_staging_attrs:
-                    # print(f'Statically resetting {attr.name}')
-                    all_st = all_st & (yield from abs_set(attr, val))
-                
-                # Restore stage_sigs
-                for obj, key, sig in restore_stage_sigs:
-                    obj.stage_sigs[key] = sig
+                if cleanup:
+                    # Restore values
+                    all_st = NullStatus()
+                    for attr, val in static_staging_attrs:
+                        # print(f'Statically resetting {attr.name}')
+                        all_st = all_st & (yield from abs_set(attr, val))
+                    
+                    # Restore stage_sigs
+                    for obj, key, sig in restore_stage_sigs:
+                        obj.stage_sigs[key] = sig
 
-                # Wait for ready
-                all_st.wait(10)
+                    # Wait for ready
+                    all_st.wait(10)
 
-                return uid
+            return ret
         
         return func_with_static_staging
     return inner_decorator
