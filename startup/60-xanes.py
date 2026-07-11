@@ -2119,15 +2119,15 @@ def check_energy_range_for_foils(min_energy, max_energy, energy_check=True):
     # Check for copper
     energy_err = []
     if min_energy < 8979 < max_energy:
-        if np.abs(bpm3_pos.y - 0) < 5:
+        if np.abs(bpm3_pos.y.user_readback.get() - 0) < 5:
             energy_err.append("BPM-A foil is Cu and will cause a loss of flux for the designated energy range.")
-        if np.abs(bpm4_pos.y - 0) < 5:
+        if np.abs(bpm4_pos.y.user_readback.get() - 0) < 5:
             energy_err.append("BPM-B foil is Cu and will cause a loss of flux for the designated energy range.")
 
     elif min_energy < 4966 < max_energy:
-        if np.abs(bpm3_pos.y - 25) < 5:
+        if np.abs(bpm3_pos.y.user_readback.get() - 25) < 5:
             energy_err.append("BPM-A foil is Ti and will cause a loss of flux for the designated energy range.")
-        if np.abs(bpm4_pos.y - 25) < 5:
+        if np.abs(bpm4_pos.y.user_readback.get() - 25) < 5:
             energy_err.append("BPM-B foil is Ti and will cause a loss of flux for the designated energy range.")
     
     if (energy_check is True
