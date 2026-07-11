@@ -709,7 +709,7 @@ class SRXFlyer1Axis(Device):
                     all_st = all_st & st
                 
                 try:
-                    all_st.wait(3)
+                    all_st.wait(10)
                 except WaitTimeoutError:
                     err_str = f"Error setting stage sigs on first iteration. Trying again"
                     self.log.debug(err_str)
@@ -720,7 +720,7 @@ class SRXFlyer1Axis(Device):
                                 "original settings before re-raising the "
                                 "exception.", self.name)
                     self.unstage()
-                    raise
+                    raise ex
             
             # Check all values
             for sig, val in stage_sigs.items():
@@ -908,7 +908,7 @@ class SRXFlyer1Axis(Device):
                     all_st = all_st & st
                 
                 try:
-                    all_st.wait(3)
+                    all_st.wait(10)
                 except WaitTimeoutError:
                     err_str = f"Error setting stage sigs on first iteration. Trying again"
                     self.log.debug(err_str)
@@ -919,7 +919,7 @@ class SRXFlyer1Axis(Device):
                                 "original settings before re-raising the "
                                 "exception.", self.name)
                     self.stage()
-                    raise
+                    raise ex
             
             # Check all values
             for sig, val in reversed(list(self._original_vals.items())):
