@@ -62,8 +62,11 @@ def setup_xrd_dets(dets,
 
         # Update energy thresholds
         # Should do this for merlin too...
-        xrd.cam.stage_sigs['photon_energy'] = 1e3 * np.round(energy.energy.setpoint.get())
-        xrd.cam.stage_sigs['threshold_energy'] = 1e3 * 0.5 * np.round(energy.energy.setpoint.get())
+        curr_energy = energy.energy.setpoint.get()
+        if curr_energy < 1e3:
+            curr_energy *= 1e3
+        xrd.cam.stage_sigs['photon_energy'] = np.round(curr_energy)
+        xrd.cam.stage_sigs['threshold_energy'] = np.round(0.5 * curr_energy)
         del xrd
 
 
@@ -218,9 +221,12 @@ def step_rsm_base(start, stop, num,
             ]
     original_sigs = []
     xs.mode = SRXMode.step
+    row_str = short_uid('row')
     for obj, key, value in sigs:
         original_sigs.append((obj, key, getattr(obj, key).get()))
-        yield from abs_set(getattr(obj, key), value)
+        yield from abs_set(getattr(obj, key), value, group=row_str)
+    yield from bps.wait(group=row_str, timeout=10)
+
 
     # Defining scan metadata
     md = get_stock_md(md)
