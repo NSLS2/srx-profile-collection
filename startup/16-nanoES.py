@@ -192,3 +192,63 @@ def mv_along_axis(z_end):
     yield from mvr(nano_stage.y, delta_y)
     yield from mv(nano_stage.z, z_end)
 
+
+def backlash_correction(*args, move_to_value=True):
+    """
+    Args given in same order as move commands.
+    e.g., (motor1, pos1, motor2, pos2, ...)
+    """
+
+    backlash_dict = {
+        nano_stage.x : 100,
+        nano_stage.y : 100,
+        nano_stage.z : 100,
+        nano_stage.sx : 1,
+        nano_stage.sy : 1,
+        # nano_stage.topx : 10, # No idea what this value
+        # nano_stage.topz : 10, # No idea what this value is
+    }
+
+    if len(args) % 2 != 0:
+        err_str = "Arguments should have even length given as (motor1, pos1, motor2, pos2, ...)."
+        raise ValueError(err_str)
+
+    motors = args[::2]
+    positions = args[1::2]
+
+    backlash_args = []
+    for motor, pos in zip(motors, positions):
+        # Does motor have backlash?
+        if motor not in backlash_dict:
+            continue
+        # Add the motor
+        backlash_args.append(motor)
+
+        # Parse backlash position
+        b_pos = pos - backlash_dict[motor]
+        if motor.high_limit == motor.low_limit: # No limits
+            backlash_args.append(b_pos)
+        elif motor.low_limit <= b_pos <= motor.high_limit:
+            backlash_args.append(b_pos)
+        elif b_pos < motor.low_limit:
+            backlash_args.append(motor.low_limit)
+        elif b_pos > motor.high_limit:
+            backlash_args.append(motor.high_limit)
+        else:
+            warn_str = (f"WARNING: Error determing backlash location for motor {motor.name}"
+                        + "Proceeding without correction for this motor.")
+            backlash_args.pop(-1)
+    
+    # print(backlash_args)
+    
+    # Do the move
+    yield from mov(*backlash_args)
+    yield from bps.sleep(0.1) # Settle time
+    if move_to_value:
+        yield from mov(*args)
+        
+
+        
+
+
+

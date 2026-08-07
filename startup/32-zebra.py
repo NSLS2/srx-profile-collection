@@ -229,6 +229,50 @@ class SRXZebraAND(Device):
         super().unstage()
 
 
+class SRXZebraDIV(Device):
+    input_addr = Cpt(EpicsSignalWithRBV, '_INP')
+    divisor = Cpt(EpicsSignal, '_DIV')
+
+    input_edge = FC(EpicsSignal,
+                    '{self._zebra_prefix}POLARITY:{self._edge_addr}')
+    first_pulse = FC(EpicsSignal,
+                    '{self._zebra_prefix}DIV_FIRST:{self._first_pulse_addr}')
+
+    _edge_addrs = {1: 'B8',
+                   2: 'B9',
+                   3: 'BA',
+                   4: 'BB',
+                   }
+
+    _first_pulse_addrs = {1: 'B0',
+                          2: 'B1',
+                          3: 'B2',
+                          4: 'B3',
+                          }
+
+    def stage(self):
+        super().stage()
+
+    def unstage(self):
+        super().unstage()
+
+    def __init__(self, prefix, *, index=None, parent=None,
+                 configuration_attrs=None, read_attrs=None, **kwargs):
+        if read_attrs is None:
+            read_attrs = ['input_addr', 'divisor', 'first_pulse']
+        if configuration_attrs is None:
+            configuration_attrs = []
+
+        zebra = parent
+        self.index = index
+        self._zebra_prefix = zebra.prefix
+        self._edge_addr = self._edge_addrs[index]
+        self._first_pulse_addr = self._first_pulse_addrs[index]
+
+        super().__init__(prefix, configuration_attrs=configuration_attrs,
+                         read_attrs=read_attrs, parent=parent, **kwargs)
+
+
 
 class ZebraPulse(Device):
     width = Cpt(EpicsSignalWithRBV, 'WID')
@@ -289,6 +333,10 @@ class SRXZebra(Zebra):
     pulse2 = Cpt(ZebraPulse, "PULSE2_", index=2)
     pulse3 = Cpt(ZebraPulse, "PULSE3_", index=3)
     pulse4 = Cpt(ZebraPulse, "PULSE4_", index=4)
+    div1 = Cpt(SRXZebraDIV, 'DIV1', index=1) # XF:05IDD-ES:1{Dev:Zebra1}:PULSE1_INP
+    div2 = Cpt(SRXZebraDIV, 'DIV2', index=2)
+    div3 = Cpt(SRXZebraDIV, 'DIV3', index=3)
+    div4 = Cpt(SRXZebraDIV, 'DIV4', index=4)
 
     def stage(self):
         super().stage()
@@ -496,7 +544,9 @@ class SRXFlyer1Axis(Device):
     slow_axis = Cpt(Signal, value="VER", kind="config")
     mode = Cpt(Signal, value='position', kind='config')
 
-    _staging_delay = 0.100  # used to be 10 ms, brute force this to work
+    # _staging_delay = 0.100  # used to be 10 ms, brute force this to work
+    _staging_delay = 0.010
+    _max_stage_retries = 20
 
     @property
     def encoder(self):
@@ -569,9 +619,139 @@ class SRXFlyer1Axis(Device):
             self.stage_sigs[self._encoder.pc.enc] = "Enc3"
             self.stage_sigs[self._encoder.pc.dir] = "Positive"
 
-        self._stage_with_delay()
+        self._stage_with_delay_and_check()
+        # self._stage_with_delay()
 
         self.root_path = self.root_path_str()
+
+
+    def _stage_with_delay_and_check(self):
+        # Staging taken from https://github.com/bluesky/ophyd/blob/master/ophyd/device.py
+        # Device - BlueskyInterface
+        """Stage the device for data collection.
+        This method is expected to put the device into a state where
+        repeated calls to :meth:`~BlueskyInterface.trigger` and
+        :meth:`~BlueskyInterface.read` will 'do the right thing'.
+        Staging not idempotent and should raise
+        :obj:`RedundantStaging` if staged twice without an
+        intermediate :meth:`~BlueskyInterface.unstage`.
+        This method should be as fast as is feasible as it does not return
+        a status object.
+        The return value of this is a list of all of the (sub) devices
+        stage, including it's self.  This is used to ensure devices
+        are not staged twice by the :obj:`~bluesky.run_engine.RunEngine`.
+        This is an optional method, if the device does not need
+        staging behavior it should not implement `stage` (or
+        `unstage`).
+        Returns
+        -------
+        devices : list
+            list including self and all child devices staged
+        """
+        if self._staged == Staged.no:
+            pass  # to short-circuit checking individual cases
+        elif self._staged == Staged.yes:
+            raise RedundantStaging("Device {!r} is already staged. "
+                                    "Unstage it first.".format(self))
+        elif self._staged == Staged.partially:
+            raise RedundantStaging("Device {!r} has been partially staged. "
+                                    "Maybe the most recent unstaging "
+                                    "encountered an error before finishing. "
+                                    "Try unstaging again.".format(self))
+        self.log.debug("Staging %s", self.name)
+        self._staged = Staged.partially
+
+        # Resolve any stage_sigs keys given as strings: 'a.b' -> self.a.b
+        stage_sigs = OrderedDict()
+        for k, v in self.stage_sigs.items():
+            if isinstance(k, str):
+                # Device.__getattr__ handles nested attr lookup
+                stage_sigs[getattr(self, k)] = v
+            else:
+                stage_sigs[k] = v
+
+        # Read current values, to be restored by unstage()
+        original_vals = {sig: sig.get() for sig in stage_sigs}
+
+        # We will add signals and values from original_vals to
+        # self._original_vals one at a time so that
+        # we can undo our partial work in the event of an error.
+
+        def compare_sigs(sig, val):
+            as_string = isinstance(val, str)
+            sig_val = sig.get(as_string=as_string)
+            if not as_string:
+                sig_val = type(val)(sig_val)
+            return sig_val == val
+
+        # Apply settings.
+        devices_staged = []
+
+        MAX_RETRIES = self._max_stage_retries
+        delay_time = self._staging_delay
+        successful_staging = {k : False for k in stage_sigs.keys()}
+        for _ in range(MAX_RETRIES):
+            st_list = []
+            for sig, val in stage_sigs.items():
+                if successful_staging[sig]:
+                    continue
+                self.log.debug("Setting %s to %r (original value: %r)",
+                                self.name,
+                                val, original_vals[sig])
+                st = sig.set(val)
+                st_list.append(st)
+                ttime.sleep(delay_time)
+
+            # Creating one status object to rule them all
+            if len(st_list) > 0:
+                all_st = st_list[0]
+                for st in st_list[1:]:
+                    all_st = all_st & st
+                
+                try:
+                    all_st.wait(10)
+                except WaitTimeoutError:
+                    err_str = f"Error setting stage sigs on first iteration. Trying again"
+                    self.log.debug(err_str)
+                    print(err_str)
+                except Exception as ex:
+                    self.log.debug("An exception was raised while staging %s or "
+                                "one of its children. Attempting to restore "
+                                "original settings before re-raising the "
+                                "exception.", self.name)
+                    self.unstage()
+                    raise ex
+            
+            # Check all values
+            for sig, val in stage_sigs.items():
+                # as_string = isinstance(val, str)
+                # print(f'Staging {sig}: {sig.get(as_string=as_string)} --> {val}')
+                if compare_sigs(sig, val):
+                    self._original_vals[sig] = original_vals[sig]
+                    successful_staging[sig] = True
+                # else:
+                #     print(sig)
+                #     print(sig.get(as_string=as_string), val)
+
+            # Break conditions
+            if all(successful_staging.values()):
+                devices_staged.append(self)  
+                break
+        else:
+            err_str = f'Staging {self.name} reached the maximum number of retry iterations ({MAX_RETRIES}).'
+            self.unstage()
+            raise RuntimeError(err_str)
+        
+        # Call stage() on child devices.
+        # How to ensure down propogation of behavior from above?
+        for attr in self._sub_devices:
+            device = getattr(self, attr)
+            if hasattr(device, 'stage'):
+                device.stage()
+                devices_staged.append(device)
+
+        self._staged = Staged.yes
+        return devices_staged
 
 
     def _stage_with_delay(self):
@@ -666,7 +846,101 @@ class SRXFlyer1Axis(Device):
 
 
     def unstage(self):
-        self._unstage_with_delay()
+        self._unstage_with_delay_and_check()
+        # self._unstage_with_delay()
+
+
+    def _unstage_with_delay_and_check(self):
+        # Staging taken from https://github.com/bluesky/ophyd/blob/master/ophyd/device.py
+        # Device - BlueskyInterface
+        """Unstage the device.
+        This method returns the device to the state it was prior to the
+        last `stage` call.
+        This method should be as fast as feasible as it does not
+        return a status object.
+        This method must be idempotent, multiple calls (without a new
+        call to 'stage') have no effect.
+        Returns
+        -------
+        devices : list
+            list including self and all child devices unstaged
+        """
+        self.log.debug("Unstaging %s", self.name)
+        self._staged = Staged.partially
+        devices_unstaged = []
+
+        def compare_sigs(sig, val):
+            as_string = isinstance(val, str)
+            sig_val = sig.get(as_string=as_string)
+            if not as_string:
+                sig_val = type(val)(sig_val)
+            return sig_val == val
+
+
+        # Call unstage() on child devices.
+        for attr in self._sub_devices[::-1]:
+            device = getattr(self, attr)
+            if hasattr(device, 'unstage'):
+                device.unstage()
+                devices_unstaged.append(device)
+
+        MAX_RETRIES = self._max_stage_retries
+        delay_time = self._staging_delay
+        successful_unstaging = {k : False for k in self._original_vals.keys()}
+        for _ in range(MAX_RETRIES):
+            st_list = []
+
+            # Restore original values.
+            for sig, val in reversed(list(self._original_vals.items())):
+                if successful_unstaging[sig]:
+                    continue
+                self.log.debug("Setting %s back to its original value: %r)",
+                                self.name,
+                                val)
+                st = sig.set(val)
+                st_list.append(st)
+                ttime.sleep(delay_time)
+
+            # Creating one status object to rule them all
+            if len(st_list) > 0:
+                all_st = st_list[0]
+                for st in st_list[1:]:
+                    all_st = all_st & st
+                
+                try:
+                    all_st.wait(10)
+                except WaitTimeoutError:
+                    err_str = f"Error setting stage sigs on first iteration. Trying again"
+                    self.log.debug(err_str)
+                    print(err_str)
+                except Exception as ex:
+                    self.log.debug("An exception was raised while staging %s or "
+                                "one of its children. Attempting to restore "
+                                "original settings before re-raising the "
+                                "exception.", self.name)
+                    self.stage()
+                    raise ex
+            
+            # Check all values
+            for sig, val in reversed(list(self._original_vals.items())):
+                if compare_sigs(sig, val):
+                    successful_unstaging[sig] = True
+
+            # Break conditions
+            if all(successful_unstaging.values()):
+                devices_unstaged.append(self)
+                break
+        else:
+            err_str = f'Staging {self.name} reached the maximum number of retry iterations.'
+            self.stage()
+            raise RuntimeError(err_str)
+
+        # Clear original values
+        for sig in successful_unstaging.keys():
+            self._original_vals.pop(sig)
+
+        self._staged = Staged.no
+        return devices_unstaged
 
 
     def _unstage_with_delay(self):
@@ -810,14 +1084,25 @@ class SRXFlyer1Axis(Device):
             self._encoder.pc.gate_width.put(extent + 0.050)
             ttime.sleep(t_delay)
         elif mode == 'time':
-            self._encoder.pc.gate_start.put(tacc + t_delay)
-            ttime.sleep(t_delay)
-            # self._encoder.pc.gate_step.put(extent / v)
-            self._encoder.pc.gate_step.put(extent / v + 0.100)
-            ttime.sleep(t_delay)
-            # self._encoder.pc.gate_width.put(extent / v + 0.050)
-            self._encoder.pc.gate_width.put(extent / v)
-            ttime.sleep(t_delay)
+            # For special time scans at fixed position
+            if (xstart == xstop and xnum > 0):
+                self._encoder.pc.gate_start.put(tacc + t_delay)
+                ttime.sleep(t_delay)
+                # self._encoder.pc.gate_step.put(extent / v)
+                self._encoder.pc.gate_step.put(xnum * dwell + 0.100)
+                ttime.sleep(t_delay)
+                # self._encoder.pc.gate_width.put(extent / v + 0.050)
+                self._encoder.pc.gate_width.put(xnum * dwell)
+                ttime.sleep(t_delay)
+            else:
+                self._encoder.pc.gate_start.put(tacc + t_delay)
+                ttime.sleep(t_delay)
+                # self._encoder.pc.gate_step.put(extent / v)
+                self._encoder.pc.gate_step.put(extent / v + 0.100)
+                ttime.sleep(t_delay)
+                # self._encoder.pc.gate_width.put(extent / v + 0.050)
+                self._encoder.pc.gate_width.put(extent / v)
+                ttime.sleep(t_delay)
 
 
         self._encoder.pc.pulse_start.put(0.0)
@@ -1257,7 +1542,7 @@ def export_nano_zebra_data(zebra, filepath, fastaxis):
     st = SubscriptionStatus(zs.acquire, callback=cb, run=False)
     zs.acquire.put(1)
     try:
-        st.wait(timeout=60)
+        st.wait(timeout=30)
     except WaitTimeoutError:
         print("Zebra-save timed out! Continuing...")
     except Exception as e:

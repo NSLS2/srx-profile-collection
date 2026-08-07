@@ -52,6 +52,10 @@ def setroi(roinum, element, line=None, det=None):
                                         'lb1', 'lb2', 'lg1', 'ma1']
     '''
 
+    # In keV
+    MIN_REASONABLE_ENERGY = 1.25
+    MAX_REASONABLE_ENERGY = 25
+
     cur_element = xrfC.XrfElement(element)
 
     if line is not None:
@@ -61,10 +65,16 @@ def setroi(roinum, element, line=None, det=None):
             line = None
 
     if line is None:
-        # for e in element_lines:
+        en_acceptable_lines = []
         for e in roi_lines:
+            if MIN_REASONABLE_ENERGY < cur_element.emission_line[e] < MAX_REASONABLE_ENERGY:
+                en_acceptable_lines.append(e)
+
+        for e in en_acceptable_lines:
             if cur_element.emission_line[e] < energy.energy.readback.get():
                 break
+        else:
+            e = en_acceptable_lines[0]
     else:
         e = line.lower()
 

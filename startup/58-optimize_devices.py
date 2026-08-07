@@ -576,7 +576,7 @@ def optimize_scalers(dwell=0.5,
 
 
 
-def switch_foils(foil_name='auto'):
+def switch_foils(foil_name='auto', upstream_shutter=shut_a, bpm=bpm4_pos):
 
     if foil_name not in ['auto', 'Cu', 'Ti']:
         raise ValueError("Only 'auto', 'Cu' and 'Ti' foils are supported.")
@@ -590,7 +590,7 @@ def switch_foils(foil_name='auto'):
         else:
             foil_name = 'Ti'
 
-    y = bpm4_pos.y.user_readback.get()  # Cu: y=0, Ti: y=25
+    y = bpm.y.user_readback.get()  # Cu: y=0, Ti: y=25
     if np.abs(y - 25) < 5:
         curr_foil = 'Ti'
     elif np.abs(y) < 5:
@@ -599,23 +599,23 @@ def switch_foils(foil_name='auto'):
         curr_foil = 'Unknown'
 
     if foil_name != curr_foil:
-        # Close a-shutter
-        a_open = shut_a.status.get() == 'Open'
-        if a_open: 
-            yield from abs_set(shut_a, 'Close', wait=True)
+        # Close upstream shutter
+        SHUTTER_OPEN = upstream_shutter.status.get() == 'Open'
+        if SHUTTER_OPEN: 
+            yield from abs_set(upstream_shutter, 'Close', wait=True)
             yield from bps.sleep(3)
         
         # Change foils
         if foil_name == 'Ti':
             # Move foil to Ti
-            yield from mov(bpm4_pos.y, 25, timeout=600)
+            yield from mov(bpm.y, 25, timeout=600)
         elif foil_name == 'Cu':
             # Move foil to Cu
-            yield from mov(bpm4_pos.y, 0, timeout=600)
+            yield from mov(bpm.y, 0, timeout=600)
         
-        # Open a-shutter
-        if a_open:            
-            yield from abs_set(shut_a, 'Open', wait=True)
+        # Open upstream shutter
+        if SHUTTER_OPEN:            
+            yield from abs_set(upstream_shutter, 'Open', wait=True)
             yield from bps.sleep(3)
 
     else:
@@ -624,6 +624,12 @@ def switch_foils(foil_name='auto'):
         else:
             ostr = f"{foil_name} foil already in place."
         print(ostr)
+
+
+# Switch upstream foils. Mainly to avoid copper in beamline for copper spectroscopy
+switch_upstream_foils = lambda foil_name='auto' : switch_foils(foil_name,
+                                                               upstream_shutter=shut_fe,
+                                                               bpm=bpm3_pos)
 
 
 def calibrate_compucentric_rotation(xstart, xstop, xnum,

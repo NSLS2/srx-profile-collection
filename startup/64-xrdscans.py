@@ -29,6 +29,13 @@ def setup_xrd_dets(dets,
         xrd.cam.stage_sigs['num_images'] = N_images
         xrd.stage_sigs['total_points'] = N_images
         xrd.hdf5.stage_sigs['num_capture'] = N_images
+
+        # Update energy thresholds in keV
+        curr_energy = energy.energy.setpoint.get()
+        if curr_energy > 1e3:
+            curr_energy /= 1e3
+        xrd.cam.stage_sigs['operating_energy'] = np.round(curr_energy, 3)
+
         del xrd
 
     # Setup dexela
@@ -48,17 +55,23 @@ def setup_xrd_dets(dets,
         xrd.cam.acquire.set(0)
         xrd.stage_sigs['total_points'] = N_images
         xrd.cam.stage_sigs['num_triggers'] = N_images
+        xrd.cam.stage_sigs['num_images'] = N_images
         xrd.hdf5.stage_sigs['num_capture'] = N_images
 
-        # print('New Eiger stage sigs')
+        # AD WIP
+        # xrd.cam.stage_sigs['num_images'] = N_images
+        # xrd.cam.stage_sigs['num_exposures'] = N_images        
+
         # Sets bit-depth for fly-mode, otherwise actual time
         xrd.cam.stage_sigs['acquire_time'] = dwell - 0.010 # 10 ms is a lot, but dropping too many frames
         xrd.cam.stage_sigs['acquire_period'] = dwell
 
-        # Update energy thresholds
-        # Should do this for merlin too...
-        xrd.cam.stage_sigs['photon_energy'] = 1e3 * np.round(energy.energy.setpoint.get())
-        xrd.cam.stage_sigs['threshold_energy'] = 1e3 * 0.5 * np.round(energy.energy.setpoint.get())
+        # Update energy thresholds in eV
+        curr_energy = energy.energy.setpoint.get()
+        if curr_energy < 1e3:
+            curr_energy *= 1e3
+        xrd.cam.stage_sigs['photon_energy'] = np.round(curr_energy)
+        xrd.cam.stage_sigs['threshold_energy'] = np.round(0.5 * curr_energy)
         del xrd
 
 
@@ -118,7 +131,7 @@ def _continuous_dark_fields(dets,
         reset_sigs.extend(original_sigs)
     
     if len(xrd_dets) > 0:
-        d_status = shut_d.read()['shut_d_request_open']['value'] == 1 # is open
+        d_status = shut_d.read()['shut_d_status']['value'] == 'Open' # is open
         if shutter: # Avoid printing banner
             yield from check_shutters(shutter, 'Close')
         print('Acquiring dark-field...')
@@ -131,11 +144,11 @@ def _continuous_dark_fields(dets,
                 yield from bps.unstage(det)
             
             yield from bps.stage(det)
+            
             # Change hard-coded stage values
             # Hacky implementation!
-            yield from abs_set(det.cam.num_images, N_dark) # Swapped back
-            # yield from abs_set(det.hdf5.num_capture, det.total_points.get())
-            yield from abs_set(det.cam.trigger_mode, 'Int. Fixed Rate') # Swapped back from forced fly mode
+            yield from abs_set(det.cam.num_images, N_dark, wait=True, timeout=1) # Swapped back
+            yield from abs_set(det.cam.trigger_mode, 'Int. Fixed Rate', wait=True, timeout=1) # Swapped back from forced fly mode
         
         # Take images
         yield from bps.trigger_and_read(xrd_dets, name='dark')
@@ -213,9 +226,12 @@ def step_rsm_base(start, stop, num,
             ]
     original_sigs = []
     xs.mode = SRXMode.step
+    row_str = short_uid('row')
     for obj, key, value in sigs:
         original_sigs.append((obj, key, getattr(obj, key).get()))
-        yield from abs_set(getattr(obj, key), value)
+        yield from abs_set(getattr(obj, key), value, group=row_str)
+    yield from bps.wait(group=row_str, timeout=10)
+
 
     # Defining scan metadata
     md = get_stock_md(md)
@@ -892,7 +908,7 @@ def extended_energy_rocking_curve(e_low,
         e_high /= 1000
 
     # Loose chunking at about 1000 eV
-    e_range = e_high - e_low
+    e_range = np.abs(e_high - e_low)
     e_chunks = int(np.round(e_num / e_range))
     e_vals = np.linspace(e_low, e_high, e_num)
 

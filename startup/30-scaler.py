@@ -205,7 +205,7 @@ def export_sis_data(ion, filepath, zebra):
         if channel == "time":
             zs.sis_time.put(value.astype(int))
         else:
-            getattr(zs, channel).put(value.astype(int))
+            getattr(zs, channel).put(np.asarray(value).astype(int))
 
     write_dir = os.path.dirname(filepath)
     file_name = os.path.basename(filepath)
@@ -226,7 +226,7 @@ def export_sis_data(ion, filepath, zebra):
     st = SubscriptionStatus(zs.acquire, callback=cb, run=False)
     zs.acquire.put(1)
     try:
-        st.wait(timeout=60)
+        st.wait(timeout=30)
     except WaitTimeoutError:
         print("Scaler-save timed out! Continuing...")
     except Exception as e:

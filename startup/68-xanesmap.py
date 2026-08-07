@@ -48,18 +48,24 @@ def xanes_map(erange=[], estep=[],
         yield from bps.sleep(1)
 
         print(f"  Running map...")
-        yield from nano_scan_and_fly(xstart, xstop, xnum,
-                                     ystart, ystop, ynum, dwell,
-                                     shutter=shutter, md=scan_md)
+        yield from xrf_map(xstart, xstop, xnum,
+                           ystart, ystop, ynum, dwell,
+                           shutter=shutter, md=scan_md)
+        # yield from nano_scan_and_fly(xstart, xstop, xnum,
+        #                              ystart, ystop, ynum, dwell,
+        #                              shutter=shutter, md=scan_md)
+
 
 
 # 1D xanes_map
+@append_srx_kwargs_md
 def xas_slice(start, stop, num,
               estart, estop, enum, 
-              dwell, *
+              dwell,
               fly_motor,
               extra_dets=None,
               center_scanner=True,
+              md=None,
               **kwargs):
     
     # Set energy pseudomotor as slow_axis
@@ -94,10 +100,10 @@ def xas_slice(start, stop, num,
                 yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOZ')
             case nano_stage.th:
                 yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR')
-            case nano_stage.topx:
-                yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR')
-            case nano_stage.topz:
-                yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOZ')
+            # case nano_stage.topx:
+            #     yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR')
+            # case nano_stage.topz:
+            #     yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOZ')
 
     # Determine detectors
     _xs = kwargs.pop('xs', xs)

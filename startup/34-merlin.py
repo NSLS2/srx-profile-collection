@@ -276,6 +276,7 @@ try:
     merlin = SRXMerlin('XF:05IDD-ES{Merlin:1}',
                        name='merlin',
                        read_attrs=['hdf5', 'cam', 'stats1'])
+    merlin.cam.operating_energy.set(12) # in keV
     print("done")
     merlin.hdf5.read_attrs = []
     if np.array(merlin.cam.array_size.get()).sum() == 0:

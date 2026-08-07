@@ -25,6 +25,15 @@ from ophyd.sim import NullStatus
 # warnings.filterwarnings(action="ignore", message="MSG_SIZE_TOO_LARGE")
 
 
+_energy_check_funcs = ['xanes_plan',
+                       'xanes_batch_plan',
+                       'xanes_map',
+                       'fly_multiple_passes',
+                       'xas_step'
+                       'xas_fly',
+                       'point_xas']
+
+
 @append_srx_kwargs_md
 @parameter_annotation_decorator({
     "parameters": {
@@ -38,11 +47,12 @@ def xanes_plan(erange=[], estep=[], dwell=1.,
                detune=0,
                align=False,
                align_at=None,
-               roinum=1,
+               roi_num=1,
                shutter=True,
                per_step=None,
                reverse=False,
-               vlm_snapshot=True):
+               vlm_snapshot=True,
+               energy_check=True):
     '''
     erange (list of floats): energy ranges for XANES in eV, e.g. erange = [7112-50, 7112-20, 7112+50, 7112+120]
     estep  (list of floats): energy step size for each energy range in eV, e.g. estep = [2, 1, 5]
@@ -55,7 +65,7 @@ def xanes_plan(erange=[], estep=[], dwell=1.,
     detune:  add this value to the gap of the undulator to reduce flux [keV]
     align:  perform peakup_fine before scan [bool]
     align_at:  energy at which to align, default is average of the first and last energy points
-    roinum: select the roi to be used to calculate the XANES spectrum
+    roi_num: select the roi to be used to calculate the XANES spectrum
     shutter:  instruct the scan to control the B shutter [bool]
     per_step:  use a custom function for each energy point
     '''
@@ -69,8 +79,8 @@ def xanes_plan(erange=[], estep=[], dwell=1.,
     if (len(erange)-len(estep) != 1):
         raise ValueError("The 'erange' and 'estep' lists are inconsistent; " \
                          + 'c.f., erange = [7000, 7100, 7150, 7500], estep = [2, 0.5, 5] ')
-    if (type(roinum) is not list):
-        roinum = [roinum]
+    # if (type(roinum) is not list):
+    #     roinum = [roinum]
 
     # Convert erange and estep to numpy array
     ept = np.array([])
@@ -83,32 +93,10 @@ def xanes_plan(erange=[], estep=[], dwell=1.,
     if reverse:
         ept = ept[::-1]
 
+    # Check foils and energy range
+    check_energy_range_for_foils(np.min(ept), np.max(ept), energy_check=energy_check)
     # Check ROIs
-    for ind in range(1, 4):
-        roi_name = det_xs.channel01.get_mcaroi(mcaroi_number=ind).roi_name.get()
-        if roi_name == '':
-            continue
-        roi_el, roi_line = roi_name.split('_')
-        roi_edge = roi_line[0]
-        if roi_edge == 'l':
-            roi_edge = 'l3'
-        roi_be = getbindingE(roi_el, roi_edge)
-        if ept[0] > 1e3:
-            roi_ept = ept
-        else:
-            roi_ept = ept / 1e3
-        if np.min(roi_ept) < roi_be < np.max(roi_ept):
-            if ind != roinum[0]:
-                warn_str = (f'Caution: Selected ROI number {roinum[0]} does not match the '
-                            + f'designated energy range. Switching to ROI number {ind} for {roi_name} instead.')
-                print(warn_str)
-                roinum = [ind]
-            break
-    else:
-        warn_str = ('WARNING: Selected ROIs do not match the designated energy range!'
-                    + '\nFull XRF specta are recorded, but displayed and saved data ' 
-                    + 'needs to be reprocessed with the correct ROI.')
-        banner(warn_str)
+    roi_num = check_energy_range_for_rois(det_xs, roi_num, np.min(ept), np.max(ept))
 
     # Debugging, is this needed? is this recorded in scanoutput?
     # Convert energy to bragg angle
@@ -137,7 +125,7 @@ def xanes_plan(erange=[], estep=[], dwell=1.,
     # Add user meta data
     md = get_stock_md(md)
     md['scan']['type'] = 'XAS_STEP'
-    md['scan']['ROI'] = roinum
+    md['scan']['roi_num'] = [roi_num]
     md['scan']['dwell'] = dwell
     md['scan']['scan_input'] = str(np.around(erange, 2)) + ', ' + str(np.around(estep, 2))
     md_dets = list(det)
@@ -179,11 +167,11 @@ def xanes_plan(erange=[], estep=[], dwell=1.,
     livecallbacks = []
     # Setup Raw data
     livetableitem = ['energy_energy', 'sclr_i0', 'sclr_it']
-    roi_name = 'roi{:02}'.format(roinum[0])
+    roi_name = 'roi{:02}'.format(roi_num)
 
     if hasattr(det_xs, 'cam'):
         roi_key = [
-            det_xs_channel.get_mcaroi(mcaroi_number=roinum[0]).total_rbv.name
+            det_xs_channel.get_mcaroi(mcaroi_number=roi_num).total_rbv.name
             for det_xs_channel
             in det_xs.iterate_channels()
         ]
@@ -283,9 +271,6 @@ def xanes_plan(erange=[], estep=[], dwell=1.,
 
     return (yield from subs_wrapper(myscan, {'all' : livecallbacks,
                                              'start' : at_scan}))
-
-# Alias
-xas_step = xanes_plan
 
 
 def xanes_batch_plan(xypos=[], erange=[], estep=[], dwell=1.0,
@@ -412,18 +397,28 @@ def fast_shutter_per_step(detectors, motor, step):
     # Open and close the fast shutter (Mo Foil) between XANES points
     # Open the shutter
     # yield from mv(shut_d, 0)
-    yield from mv(shut_d.request_open, 1)
+    yield from check_shutters(True, "Open")
+    # yield from mv(shut_d.request_open, 1)
     yield from bps.sleep(0.010)
     # yield from bps.sleep(1.0)
     # Step? trigger xspress3
     yield from trigger_and_read(list(detectors) + [motor])
     # Close the shutter
     # yield from mv(shut_d, 1)
-    yield from mv(shut_d.request_open, 0)
+    yield from check_shutters(True, "Close")
+    # yield from mv(shut_d.request_open, 0)
 
 
 class FlyerIDMono(Device):
-    def __init__(self, flying_dev, zebra, xs_detectors, scaler, pulse_cpt=None, pulse_width=0.01, paused_timeout=120):
+    def __init__(self,
+                 flying_dev,
+                 zebra,
+                 xs_detectors,
+                 scaler,
+                 pulse_cpt=None,
+                 pulse_width=0.01,
+                 paused_timeout=120,
+                 verbose=False):
         """Instantiate a flyer based on ID-Mono coordinated motion.
 
         Parameters
@@ -448,6 +443,8 @@ class FlyerIDMono(Device):
 
         paused_timeout : float
             the timeout to wait between the steps until the scan is interrupted if the "unpause" button is not pressed.
+        verbose : bool
+            Verbosity of functions
         """
         super().__init__("", parent=None, name="flyer_id_mono")
 
@@ -461,6 +458,7 @@ class FlyerIDMono(Device):
         
         self.scaler = scaler
         self._staging_delay = 0.010
+        self._max_stage_retries = 20
 
         # LUTs
         self.lut_u = EpicsSignal(
@@ -487,11 +485,16 @@ class FlyerIDMono(Device):
 
         self.paused_timeout = paused_timeout
         self._continue_after_pausing = True
+        self.verbose = verbose
 
         # Flyer infrastructure parameters.
         self._traj_info = {}
         self._array_size = {}
         self._datum_ids = []
+
+        # Setup micrZebra
+        self.setup_microZebra()
+
 
     def stage(self):
         # total_points = self.num_scans * self.num_triggers
@@ -511,12 +514,142 @@ class FlyerIDMono(Device):
 
         # Scaler config
         # self.scaler.count_mode.put(0)  # put SIS3820 into single count (not autocount) mode
+        ### DO WE NEED TO ADD COUNT MODE IN HERE?
         self.scaler.stop_all.put(1)  # stop scaler
         ttime.sleep(0.050)
         self.scaler.nuse_all.put(2*total_points)
         ttime.sleep(0.050)
-        self._stage_with_delay()
+        self._stage_with_delay_and_check()
+        # self._stage_with_delay()
         self.scaler.erase_start.put(1)  # This is basically triggering the detector so it should be done last
+
+    def _stage_with_delay_and_check(self):
+        # Staging taken from https://github.com/bluesky/ophyd/blob/master/ophyd/device.py
+        # Device - BlueskyInterface
+        """Stage the device for data collection.
+        This method is expected to put the device into a state where
+        repeated calls to :meth:`~BlueskyInterface.trigger` and
+        :meth:`~BlueskyInterface.read` will 'do the right thing'.
+        Staging not idempotent and should raise
+        :obj:`RedundantStaging` if staged twice without an
+        intermediate :meth:`~BlueskyInterface.unstage`.
+        This method should be as fast as is feasible as it does not return
+        a status object.
+        The return value of this is a list of all of the (sub) devices
+        stage, including it's self.  This is used to ensure devices
+        are not staged twice by the :obj:`~bluesky.run_engine.RunEngine`.
+        This is an optional method, if the device does not need
+        staging behavior it should not implement `stage` (or
+        `unstage`).
+        Returns
+        -------
+        devices : list
+            list including self and all child devices staged
+        """
+        if self._staged == Staged.no:
+            pass  # to short-circuit checking individual cases
+        elif self._staged == Staged.yes:
+            raise RedundantStaging("Device {!r} is already staged. "
+                                    "Unstage it first.".format(self))
+        elif self._staged == Staged.partially:
+            raise RedundantStaging("Device {!r} has been partially staged. "
+                                    "Maybe the most recent unstaging "
+                                    "encountered an error before finishing. "
+                                    "Try unstaging again.".format(self))
+        self.log.debug("Staging %s", self.name)
+        self._staged = Staged.partially
+
+        # Resolve any stage_sigs keys given as strings: 'a.b' -> self.a.b
+        stage_sigs = OrderedDict()
+        for k, v in self.stage_sigs.items():
+            if isinstance(k, str):
+                # Device.__getattr__ handles nested attr lookup
+                stage_sigs[getattr(self, k)] = v
+            else:
+                stage_sigs[k] = v
+
+        # Read current values, to be restored by unstage()
+        original_vals = {sig: sig.get() for sig in stage_sigs}
+
+        # We will add signals and values from original_vals to
+        # self._original_vals one at a time so that
+        # we can undo our partial work in the event of an error.
+
+        def compare_sigs(sig, val):
+            as_string = isinstance(val, str)
+            sig_val = sig.get(as_string=as_string)
+            if not as_string:
+                sig_val = type(val)(sig_val)
+            return sig_val == val
+
+        # Apply settings.
+        devices_staged = []
+
+        MAX_RETRIES = self._max_stage_retries
+        delay_time = self._staging_delay
+        successful_staging = {k : False for k in stage_sigs.keys()}
+        for _ in range(MAX_RETRIES):
+            st_list = []
+            for sig, val in stage_sigs.items():
+                if successful_staging[sig]:
+                    continue
+                self.log.debug("Setting %s to %r (original value: %r)",
+                                self.name,
+                                val, original_vals[sig])
+                st = sig.set(val)
+                st_list.append(st)
+                ttime.sleep(delay_time)
+
+            # Creating one status object to rule them all
+            if len(st_list) > 0:
+                all_st = st_list[0]
+                for st in st_list[1:]:
+                    all_st = all_st & st
+                
+                try:
+                    all_st.wait(3)
+                except WaitTimeoutError:
+                    err_str = f"Error setting stage sigs on first iteration. Trying again"
+                    self.log.debug(err_str)
+                    print(err_str)
+                except Exception as ex:
+                    self.log.debug("An exception was raised while staging %s or "
+                                "one of its children. Attempting to restore "
+                                "original settings before re-raising the "
+                                "exception.", self.name)
+                    self.unstage()
+                    raise
+            
+            # Check all values
+            for sig, val in stage_sigs.items():
+                # as_string = isinstance(val, str)
+                # print(f'Staging {sig}: {sig.get(as_string=as_string)} --> {val}')
+                if compare_sigs(sig, val):
+                    self._original_vals[sig] = original_vals[sig]
+                    successful_staging[sig] = True
+                # else:
+                #     print(sig)
+                #     print(sig.get(as_string=as_string), val)
+
+            # Break conditions
+            if all(successful_staging.values()):
+                devices_staged.append(self)  
+                break
+        else:
+            err_str = f'Staging {self.name} reached the maximum number of retry iterations ({MAX_RETRIES}).'
+            self.unstage()
+            raise RuntimeError(err_str)
+        
+        # Call stage() on child devices.
+        # How to ensure down propogation of behavior from above?
+        for attr in self._sub_devices:
+            device = getattr(self, attr)
+            if hasattr(device, 'stage'):
+                device.stage()
+                devices_staged.append(device)
+
+        self._staged = Staged.yes
+        return devices_staged
 
     def _stage_with_delay(self):
         # Staging taken from https://github.com/bluesky/ophyd/blob/master/ophyd/device.py
@@ -601,9 +734,9 @@ class FlyerIDMono(Device):
         return devices_staged
 
 
-
     def unstage(self):
-        self._unstage_with_delay()
+        self._unstage_with_delay_and_check()
+        # self._unstage_with_delay()
         for xs_det in self.xs_detectors:
             xs_det.cam.acquire.put(0)
             xs_det.hdf5.capture.put(0)  # this is to save the file is the number of collected frames is less than expected
@@ -612,10 +745,102 @@ class FlyerIDMono(Device):
 
         # print(f"{print_now()}: before unstaging scaler")
         self.scaler.stop_all.put(1)
-        # self.scaler.count_mode.put(1)
+        self.scaler.count_mode.put(1)
         self.scaler.read_attrs = ["channels.chan2", "channels.chan3", "channels.chan4"]
         # self.scaler.count_mode.put(1)  # return SIS3820 into autocount (not single count) mode
         # print(f"{print_now()}: after unstaging scaler")
+
+    def _unstage_with_delay_and_check(self):
+        # Staging taken from https://github.com/bluesky/ophyd/blob/master/ophyd/device.py
+        # Device - BlueskyInterface
+        """Unstage the device.
+        This method returns the device to the state it was prior to the
+        last `stage` call.
+        This method should be as fast as feasible as it does not
+        return a status object.
+        This method must be idempotent, multiple calls (without a new
+        call to 'stage') have no effect.
+        Returns
+        -------
+        devices : list
+            list including self and all child devices unstaged
+        """
+        self.log.debug("Unstaging %s", self.name)
+        self._staged = Staged.partially
+        devices_unstaged = []
+
+        def compare_sigs(sig, val):
+            as_string = isinstance(val, str)
+            sig_val = sig.get(as_string=as_string)
+            if not as_string:
+                sig_val = type(val)(sig_val)
+            return sig_val == val
+
+
+        # Call unstage() on child devices.
+        for attr in self._sub_devices[::-1]:
+            device = getattr(self, attr)
+            if hasattr(device, 'unstage'):
+                device.unstage()
+                devices_unstaged.append(device)
+
+        MAX_RETRIES = self._max_stage_retries
+        delay_time = self._staging_delay
+        successful_unstaging = {k : False for k in self._original_vals.keys()}
+        for _ in range(MAX_RETRIES):
+            st_list = []
+
+            # Restore original values.
+            for sig, val in reversed(list(self._original_vals.items())):
+                if successful_unstaging[sig]:
+                    continue
+                self.log.debug("Setting %s back to its original value: %r)",
+                                self.name,
+                                val)
+                st = sig.set(val)
+                st_list.append(st)
+                ttime.sleep(delay_time)
+
+            # Creating one status object to rule them all
+            if len(st_list) > 0:
+                all_st = st_list[0]
+                for st in st_list[1:]:
+                    all_st = all_st & st
+                
+                try:
+                    all_st.wait(3)
+                except WaitTimeoutError:
+                    err_str = f"Error setting stage sigs on first iteration. Trying again"
+                    self.log.debug(err_str)
+                    print(err_str)
+                except Exception as ex:
+                    self.log.debug("An exception was raised while staging %s or "
+                                "one of its children. Attempting to restore "
+                                "original settings before re-raising the "
+                                "exception.", self.name)
+                    self.stage()
+                    raise
+            
+            # Check all values
+            for sig, val in reversed(list(self._original_vals.items())):
+                if compare_sigs(sig, val):
+                    successful_unstaging[sig] = True
+
+            # Break conditions
+            if all(successful_unstaging.values()):
+                devices_unstaged.append(self)
+                break
+        else:
+            err_str = f'Staging {self.name} reached the maximum number of retry iterations.'
+            self.stage()
+            raise RuntimeError(err_str)
+
+        # Clear original values
+        for sig in successful_unstaging.keys():
+            self._original_vals.pop(sig)
+
+        self._staged = Staged.no
+        return devices_unstaged
 
     def _unstage_with_delay(self):
         # Staging taken from https://github.com/bluesky/ophyd/blob/master/ophyd/device.py
@@ -655,6 +880,7 @@ class FlyerIDMono(Device):
 
         self._staged = Staged.no
         return devices_unstaged
+
 
     def kickoff(self, *args, **kwargs):
 
@@ -713,9 +939,9 @@ class FlyerIDMono(Device):
         # width_ev = width_s * speed
         # self.flying_dev.parameters.trigger_width.put(width_ev)
 
-        # print(f'Enabling fly scan')
-        st = self.flying_dev.control.set("enable")
+        # print(f'Enabling fly scan')=
         try:
+            st = self.flying_dev.control.set("enable")
             st.wait(10)
         except WaitTimeoutError as ex:
             print("Timeout while requesting control of IVU!")
@@ -738,7 +964,7 @@ class FlyerIDMono(Device):
         self.flying_dev.parameters.trigger_count_reset.put(1)
         self.flying_dev.parameters.current_scan_reset.put(1)
 
-        ttime.sleep(1.0)  # Wait 1 second because the control PV updates at 1 Hz
+        ttime.sleep(1.1)  # Wait 1 second because the control PV updates at 1 Hz
 
         # Main RUN command:
         self.flying_dev.control.run.put(1)
@@ -746,7 +972,8 @@ class FlyerIDMono(Device):
         self.status = self.flying_dev.control.scan_in_progress
 
         def callback(value, old_value, **kwargs):
-            # print(f'{print_now()} in kickoff: {old_value} ---> {value}')
+            if self.verbose:
+                print(f'{print_now()} in kickoff: {old_value} ---> {value}')
             if int(round(old_value)) == 0 and int(round(value)) == 1:
                 return True
             return False
@@ -884,19 +1111,25 @@ class FlyerIDMono(Device):
         ttime.sleep(self.pulse_width + 0.1)
 
         orig_read_attrs = self.scaler.read_attrs
-        self.scaler.read_attrs = ['mca01', 'mca02', 'mca03', 'mca04']
+        self.scaler.read_attrs = ['mca_channels.mca01', 'mca_channels.mca02', 'mca_channels.mca03', 'mca_channels.mca04']
         # print(orig_read_attrs)
 
         total_points = self.num_scans * self.num_triggers
 
-        print(f"{print_now()}: before while loop in collect scaler data")
+        if self.verbose:
+            print(f"{print_now()}: before while loop in collect scaler data")
         flag_collecting_data = 0
         while (flag_collecting_data < 5):
-            scaler_mca_data = self.scaler.read()
-            i0_time = scaler_mca_data[f"{self.scaler.name}_mca01"]['value']
-            i0 = scaler_mca_data[f"{self.scaler.name}_mca02"]['value']
-            im = scaler_mca_data[f"{self.scaler.name}_mca03"]['value']
-            it = scaler_mca_data[f"{self.scaler.name}_mca04"]['value']
+            i0_time = self.scaler.mca_channels.mca01.read()['sclr_mca_name']['value']
+            i0 = self.scaler.mca_channels.mca02.read()['sclr_mca_name']['value']
+            im = self.scaler.mca_channels.mca03.read()['sclr_mca_name']['value']
+            it = self.scaler.mca_channels.mca04.read()['sclr_mca_name']['value']
+
+            # scaler_mca_data = self.scaler.read()
+            # i0_time = scaler_mca_data[f"{self.scaler.name}_mca01"]['value']
+            # i0 = scaler_mca_data[f"{self.scaler.name}_mca02"]['value']
+            # im = scaler_mca_data[f"{self.scaler.name}_mca03"]['value']
+            # it = scaler_mca_data[f"{self.scaler.name}_mca04"]['value']
 
             # print(f'{i0_time.shape[0]}\t?=\t{2*self.num_triggers}')
             if i0_time.shape[0] == 2*self.num_triggers:
@@ -904,7 +1137,8 @@ class FlyerIDMono(Device):
             flag_collecting_data += 1
             ttime.sleep(0.2)
             # print(f'({flag_collecting_data+1}/5) Waiting to collect all scaler data...')
-        print(f"{print_now()}: after while loop in collect scaler data")
+        if self.verbose:
+            print(f"{print_now()}: after while loop in collect scaler data")
 
         self.scaler.read_attrs = orig_read_attrs
         # print(self.scaler.read_attrs)
@@ -942,11 +1176,11 @@ class FlyerIDMono(Device):
         # print(f"{print_now()}: before unstage of xs in collect")
 
         # Unstage xspress3 detector(s).
-        print(f"{print_now()}: before unstaging xs")
+        if self.verbose:
+            print(f"{print_now()}: before unstaging {self.name} and xs")
         self.unstage()
-        print(f"{print_now()}: after unstaging xs")
-
-        # print(f"{print_now()}: after unstage of xs in collect")
+        if self.verbose:
+            print(f"{print_now()}: after unstaging {self.name} and xs")
 
         # Deal with the direction of energies for bi-directional scan.
         # BlueSky@SRX [27]: id_fly_device.control.scan_type.get(as_string=True)
@@ -1046,19 +1280,21 @@ class FlyerIDMono(Device):
             #     'filled': filled,
             #     'descriptor': 'scan_000',
             # }
-
-        print(f"{print_now()}: after docs emitted in collect")
-
+        if self.verbose:
+            print(f"{print_now()}: after docs emitted in collect")
 
     def collect_asset_docs(self):
-        print(f"{print_now()}: before collecting asset docs from xs in collect_asset_docs")
+        if self.verbose:
+            print(f"{print_now()}: before collecting asset docs from xs in collect_asset_docs")
         for xs_det in self.xs_detectors:
             yield from xs_det.collect_asset_docs()
-        print(f"{print_now()}: after collecting asset docs from xs in collect_asset_docs")
+        if self.verbose:
+            print(f"{print_now()}: after collecting asset docs from xs in collect_asset_docs")
 
     def stop(self):
         # I don't think this is running on stop :-(
-        print(f"{print_now()}: I am running the stop function...")
+        if self.verbose:
+            print(f"{print_now()}: I am running the stop function...")
         self._continue_after_pausing = False
 
         # Abort any active scan
@@ -1080,8 +1316,8 @@ class FlyerIDMono(Device):
         print('Resetting the scaler...')
         yield from mv(sclr1.count_mode, 1)
         sclr1.read_attrs = ["channels.chan2", "channels.chan3", "channels.chan4"]
-        print(f"{print_now()}: I am leaving the stop function...")
-        pass
+        if self.verbose:
+            print(f"{print_now()}: I am leaving the stop function...")
 
     def abort(self):
         self.stop()
@@ -1094,6 +1330,7 @@ class FlyerIDMono(Device):
         e_cal = energy.etoulookup.t
         Umin = min(u_cal)
         Umax = max(u_cal)
+        # print(f'{Umin=}, {Umax=}')
 
         # Define an easy variable to call
         u2e = energy.utoelookup
@@ -1101,6 +1338,8 @@ class FlyerIDMono(Device):
         # Make new PV values
         uRBV = np.linspace(Umin, Umax, N, dtype=float)
         eRBV = u2e(uRBV).astype(float)
+
+        # print(uRBV, eRBV)
 
         # Output
         if self.lut_u.write_access:
@@ -1112,6 +1351,52 @@ class FlyerIDMono(Device):
         else:
             print(f"No write access to LUT-Energy\n{eRBV=}")
 
+        # print(self.lut_e, self.lut_u)
+        # Check
+        # print(np.floor(self.lut_u.get())))
+        # print(np.floor(uRBV*1000))
+        if np.any(np.floor(self.lut_u.get()) != np.floor(uRBV*1000)):
+            print('WARNING: Undulator lookup table failed to update properly!')
+        if np.any(np.floor(self.lut_e.get()) != np.floor(eRBV*1000)):
+            print('WARNING: Energy lookup table failed to update properly!')
+    
+    
+    def setup_microZebra(self):
+
+        # Poor-man's stage sigs
+        sigs = [
+                # And1
+                (microZebra.and1, 'use1', 1),
+                (microZebra.and1, 'use2', 1),
+                (microZebra.and1, 'use3', 0),
+                (microZebra.and1, 'use4', 0),
+                (microZebra.and1, 'input_source1', 36),
+                (microZebra.and1, 'input_source2', 54),
+                (microZebra.and1, 'invert1', 0),
+                (microZebra.and1, 'invert2', 1),
+                # Or1
+                (microZebra.or1, 'use1', 1),
+                (microZebra.or1, 'use2', 1),
+                (microZebra.or1, 'use3', 0),
+                (microZebra.or1, 'use4', 0),
+                (microZebra.or1, 'input_source1', 52),
+                (microZebra.or1, 'input_source2', 53),
+                (microZebra.or1, 'invert1', 0),
+                (microZebra.or1, 'invert2', 0),
+                # DIV1
+                (microZebra.div1, 'input_addr', 4),
+                (microZebra.div1, 'input_edge', 0),
+                (microZebra.div1, 'divisor', 2),
+                (microZebra.div1, 'first_pulse', 0),
+                # output
+                (microZebra.output2.ttl, 'addr', 32),
+                ]
+        
+        # Set everything twice for good measure
+        for _ in range(2):
+            for obj, key, value in sigs:
+                getattr(obj, key).put(value)
+                ttime.sleep(0.1)
 
 
 def setup_zebra_for_xas(flyer):
@@ -1203,8 +1488,12 @@ setup_zebra_for_xas(flyer_id_mono)
 
 
 # Helper functions for quick vis:
-def plot_flyer_id_mono_data(uid_or_scanid, e_min=None, e_max=None, fname=None, root='/home/xf05id1/current_user_data/', num_channels=7, plot=True):
+def plot_flyer_id_mono_data(uid_or_scanid,
+                            e_min=None, e_max=None,
+                            fname=None, root='/home/xf05id1/current_user_data/',
+                            num_channels=7, plot=True, stream=None):
     hdr = db[uid_or_scanid]
+    run = c[uid_or_scanid]
     stream_names = hdr.stream_names
     stream_names.remove('baseline')
 
@@ -1212,43 +1501,52 @@ def plot_flyer_id_mono_data(uid_or_scanid, e_min=None, e_max=None, fname=None, r
         fig, ax = plt.subplots()
 
 
-    for stream in sorted(stream_names):
-        if 'monitor' in stream:
-            continue
-        tbl = hdr.table(stream_name=stream)
+    if stream is None:
+        for stream in sorted(stream_names):
+            if 'scan' in stream:
+                tbl = hdr.table(stream_name=stream)
+                break
 
         if (e_min is None):
-            e_min = xs.channel1.rois.roi01.bin_low.get()
+            e_min = xs.channel01.mcaroi01.min_x.get()
         if (e_max is None):
-            e_max = xs.channel1.rois.roi01.bin_high.get()
+            e_max = e_min + xs.channel01.mcaroi01.size_x.get()
 
         fname = f"scan{hdr.start['scan_id']}_{stream}.txt"
         fname = root + fname
 
-        d = []
+        data = []
+        # print(stream)
         for i in range(num_channels):
-            d.append(np.array(list(hdr.data(f'xs_id_mono_fly_channel{i+1:02}', stream_name=stream)))[:, e_min:e_max].sum(axis=1))
-        d = np.array(d)
+            # d.append(np.array(list(hdr.data(f'xs_id_mono_fly_channel{i+1:02}', stream_name=stream)))[:, e_min:e_max].sum(axis=1))
+            # print(f'xs_id_mono_fly_channel{i+1:02}')
+            data.append(run[stream]['data'][f'xs_id_mono_fly_channel{i+1:02}'][0, :, e_min:e_max].sum(axis=-1))
+        data = np.array(data)
 
-        i0 = np.array(tbl['i0'])
-        energy = np.array(tbl['energy'])
+        # i0 = np.array(tbl['i0'][0])
+        # energy = np.array(tbl['energy'][0])
+        i0 = run[stream]['data']['i0'].read().squeeze()
+        energy = run[stream]['data']['energy'].read().squeeze()
 
-        spectrum_unnormalized = d.sum(axis=0)
+        spectrum_unnormalized = data.sum(axis=0)
         spectrum = spectrum_unnormalized / i0
 
-        res = np.vstack((energy, i0, spectrum_unnormalized, spectrum))
+        # res = np.vstack((energy, i0, spectrum_unnormalized, spectrum))
 
         if (plot):
             ax.plot(energy, spectrum, label=stream)
             ax.set(xlabel='Energy [eV]', ylabel='Normalized Spectrum [Arb]')
-        np.savetxt(fname, res.T)
+        # np.savetxt(fname, res.T)
 
     if (plot):
         ax.legend()
-    return res
+    # return res
 
 # Export data function
-def export_flyer_id_mono_data(uid_or_scanid, roi=1, e_min=None, e_max=None, fname=None, root='/home/xf05id1/test_flyingID/', flyer=flyer_id_mono):
+def export_flyer_id_mono_data(uid_or_scanid,
+                              roi=1, e_min=None, e_max=None,
+                              fname=None, root='/home/xf05id1/test_flyingID/',
+                              flyer=flyer_id_mono):
     hdr = c[uid_or_scanid]
     scan_streams = list(hdr)
     scan_streams.remove('baseline')
@@ -1322,6 +1620,7 @@ def export_flyer_id_mono_data(uid_or_scanid, roi=1, e_min=None, e_max=None, fnam
 
         print('  Complete!')
 
+# Unused
 def flying_xas(num_passes=1, shutter=True, md=None):
     v = flyer_id_mono.flying_dev.parameters.speed.get()
     w = flyer_id_mono.flying_dev.parameters.trigger_width.get()
@@ -1340,20 +1639,43 @@ def flying_xas(num_passes=1, shutter=True, md=None):
         "flyers": {"default": "['flyer_id_mono']"},
     }
 })
-def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
-                        num_scans=1, scan_type='uni', shutter=True, plot=False,
+def fly_multiple_passes(e_start, e_stop, e_num, dwell,  *,
+                        e_width=None, num_scans=1, scan_type='uni', shutter=True, plot=True,
                         flyers=[flyer_id_mono], harmonic=1, roi_num=1,
-                        vlm_snapshot=True, md=None):
+                        vlm_snapshot=True, md=None, energy_check=True, energy_step_check=True,
+                        verbose=False):
     """This is a modified version of bp.fly to support multiple passes of the flyer."""
+
+    # Convert to eV
+    if e_start < 1000:
+        e_start /= 1000
+    if e_stop < 1000:
+        e_stop /= 1000
+
+    # Trajectory math
+    e_step = (e_stop - e_start) / (e_num - 1)
+    if e_width is None:
+        e_width = e_step
+    v = e_width / dwell
+    dt = e_width / v
+
+    # Set trajectory values
     flyer_id_mono.flying_dev.parameters.first_trigger.put(e_start)
     flyer_id_mono.flying_dev.parameters.last_trigger.put(e_stop)
     flyer_id_mono.flying_dev.parameters.trigger_width.put(e_width)
-    flyer_id_mono.flying_dev.parameters.num_triggers.put(num_pts)
-    flyer_id_mono._traj_info['num_triggers'] = num_pts
+    flyer_id_mono.flying_dev.parameters.num_triggers.put(e_num)
+    flyer_id_mono.flying_dev.parameters.speed.put(v)
+    flyer_id_mono._traj_info['num_triggers'] = e_num
     flyer_id_mono._traj_info['energy_start'] = e_start
     flyer_id_mono._traj_info['energy_stop'] = e_stop
     flyer_id_mono._traj_info['energy_width'] = e_width
 
+    # Setup verbosity
+    for flyer in flyers:
+        if hasattr(flyer, 'verbose'):
+            flyer.verbose = verbose
+
+    # More parameters
     if 'uni' in scan_type.lower():
         scan_type = 'unidirectional'
         flyer_id_mono.flying_dev.control.scan_type.put(0)
@@ -1363,36 +1685,49 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
     else:
         raise ValueError(f'Unknown scan type! {scan_type}')
 
-    v = e_width / dwell
-    flyer_id_mono.flying_dev.parameters.speed.put(v)
-    e_step = (e_stop - e_start) / (num_pts- 1)
-    dt = e_width / v
-
-    if (abs(e_step) <= e_width):
+    # Guard block for pulse width larger than step size
+    if (abs(e_step) < e_width):
         raise ValueError('Cannot have energy collection widths larger than energy step!')
+    
+    # Check energy step size
+    check_energy_steps(e_start, e_stop, e_num,
+                       energy_step_check=energy_step_check, verbose=verbose)
+    # Check foils and energy range
+    check_energy_range_for_foils(np.min([e_start, e_stop]), np.max([e_start, e_stop]),
+                                 energy_check=energy_check)
+    # Check ROIs
+    roi_num = check_energy_range_for_rois(flyers[0].xs_detectors[0], roi_num,
+                                          np.min([e_start, e_stop]), np.max([e_start, e_stop]))
 
     # Get a harmonic value (assuming no detuning)
     if harmonic < 3:
         harmonic = 3
         # _, _, ugap = energy.energy_to_positions(e_start/1000, harmonic, 0)
-        _, _, ugap = energy.energy_to_positions(e_stop/1000, harmonic, 0)
+        _, _, ugap = energy.energy_to_positions(e_start/1000, harmonic, 0)
         while True:
             # _, _, ugap = energy.energy_to_positions(e_start/1000, harmonic+2, 0)
-            _, _, ugap = energy.energy_to_positions(e_stop/1000, harmonic+2, 0)
+            _, _, ugap = energy.energy_to_positions(e_start/1000, harmonic+2, 0)
             # if ugap < energy.u_gap.low_limit:
             if ugap < np.amin(flyer_id_mono.lut_u.get()):
                 break
             harmonic += 2
 
-    # set harmonic
+            # Guard block
+            if harmonic > 50:
+                err_str = f"Harmonic could not be resolved! Please set explicitly."
+                raise RuntimeError(err_str)
+
+    # Set harmonic
     flyer_id_mono.flying_dev.parameters.harmonic.put(harmonic)
 
     md = get_stock_md(md)
     md['scan']['type'] = 'XAS_FLY'
-    # md['scan']['energy'] = list(np.linspace(e_start, e_stop, num=num_pts))
-    md['scan']['num_points'] = num_pts
-    md['scan']['scan_input'] = [e_start, e_stop, e_width, dwell, num_pts]
-    md['scan']['sample_name'] = ''
+    # md['scan']['energy'] = list(np.linspace(e_start, e_stop, num=e_num))
+    md['scan']['num_points'] = e_num
+    # md['scan']['scan_input'] = [e_start, e_stop, e_width, dwell, e_num]
+    md['scan']['scan_input'] = [e_start, e_stop, e_num, dwell]
+    md['scan']['e_width'] = e_width
+    # md['scan']['sample_name'] = ''
     md['scan']['dwell'] = dwell
     md['scan']['num_scans'] = num_scans
     md['scan']['harmonic'] = harmonic
@@ -1413,26 +1748,40 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
             dets.append(flying_xs)
             yield from bps.mv(flying_xs.fly_next, True)
     # md['scan']['detectors'] = d
-    get_det_md(md, dets)
+    # get_det_md(md, dets)
+    md_dets = list(dets)
+    if vlm_snapshot is True:
+        md_dets = md_dets + [nano_vlm]
+    get_det_md(md, md_dets)
 
     livepopup = []
-    roi_pv = flyer_id_mono.xs_detectors[0].channel01.mcaroi01.ts_total
+    roi_pv = flyers[0].xs_detectors[0].channel01.mcaroi01.ts_total
     if plot is True:
-        yield from mov(flyer_id_mono.xs_detectors[0].channel01.mcaroi.ts_control, 2, settle_time=0.1, timeout=1)
-        yield from mov(flyer_id_mono.xs_detectors[0].channel01.mcaroi.ts_num_points, num_pts, settle_time=0.1, timeout=1)
-        yield from mov(flyer_id_mono.xs_detectors[0].channel01.mcaroi.ts_control, 0, settle_time=0.1, timeout=1)
+        yield from abs_set(flyers[0].xs_detectors[0].cam.acquire, 'Done', timeout=3)
+        yield from clear_set_xs_ts(flyers[0].xs_detectors[0], num=e_num)
+        # yield from mov(flyer_id_mono.xs_detectors[0].channel01.mcaroi.ts_control, 2, settle_time=0.1, timeout=1)
+        # yield from mov(flyer_id_mono.xs_detectors[0].channel01.mcaroi.ts_num_points, e_num, settle_time=0.1, timeout=1)
+        # yield from mov(flyer_id_mono.xs_detectors[0].channel01.mcaroi.ts_control, 0, settle_time=0.1, timeout=1)
 
         livepopup = [SRX1DTSFlyerPlot(roi_pv.name,
                                       xstart=e_start,
-                                      xstep=(e_stop-e_start) / (num_pts-1),
+                                      xstep=(e_stop-e_start) / (e_num-1),
                                       xlabel="Energy (eV)")]
-
 
     # Set the currect pulse length for zebra1 - microZebra
     yield from bps.mov(microZebra.pulse1.width, dwell, timeout=3)
     yield from bps.mov(microZebra.pulse2.width, dwell, timeout=3)
+    # # Reset xs time-series
+    # st = yield from abs_set(flyers[0].xs_detectors[0].channel01.mcaroi.ts_control, 0)
+    # st.wait(3)
+
+    def at_scan(name, doc):
+        time_rem = num_scans * (dwell * e_num) + 30
+        scanrecord.time_remaining.put(time_rem / 3600.)
+        scanrecord.time_rem_str.put(time_rem_convert(time_rem))
 
     @subs_decorator(livepopup)
+    @subs_decorator({'start': at_scan})
     @ts_monitor_during_decorator([roi_pv])
     def plan():
         # # yield from check_shutters(shutter, 'Open')
@@ -1483,102 +1832,368 @@ def fly_multiple_passes(e_start, e_stop, e_width, dwell, num_pts, *,
                 # print(f"  Kicking off {flyer}...")
                 flyer.pulse_width = dwell
                 yield from bps.mv(flyer.flying_dev.parameters.num_scans, num_scans)
-                yield from bps.kickoff(flyer, wait=True)
+                # yield from bps.kickoff(flyer, wait=True)
+                st = yield from bps.kickoff(flyer)
+                st.wait(timeout=10)
             for n in range(num_scans):
                 print(f"\n\n*** {print_now()} Iteration #{n+1} ***\n")
+                print(f"{flyers[0]._staged=}\n{flyers[0].xs_detectors[0]._staged=}\n{flyers[0].zebra._staged=}\n{flyers[0].scaler._staged=}")
                 yield from bps.checkpoint()
-                if shutter is True:
-                    yield from abs_set(shut_d.request_open, 1, wait=True, timeout=2)
-                # flyer_id_mono.scaler.erase_start.put(1)
+
+                # Update the timing
+                time_rem = (num_scans - n) * (dwell * e_num) + 30
+                yield from abs_set(scanrecord.time_remaining, time_rem / 3600.)
+                yield from abs_set(scanrecord.time_rem_str, time_rem_convert(time_rem))
+
+                yield from check_shutters(shutter, "Open")
+                # if shutter is True:
+                #     yield from abs_set(shut_d.request_open, 1, wait=True, timeout=2)
+                # Should this be elsewhere? Should we move this after the pause is released?
+                yield from mov(flyer.scaler.count_mode, 0, timeout=3)
+                print(f"{flyer_id_mono.scaler.count_mode.get()=}")
+                flyer_id_mono.scaler.erase_start.put(1)
                 for flyer in flyers:
                     # print(f"  {flyer.name} complete...")
                     yield from bps.complete(flyer, wait=True)
-                if shutter is True:
-                    yield from abs_set(shut_d.request_open, 0, wait=False)
+                yield from check_shutters(shutter, "Close")
+                # if shutter is True:
+                #     yield from abs_set(shut_d.request_open, 0, wait=False)
                 for flyer in flyers:
                     # print(f"  {flyer} collect...", end='', flush=True)
                     yield from bps.collect(flyer)
                     # print("done")
                 # This is a work around until the flyer can be rewritten
                 yield Msg("nuke_the_cache", flyer_id_mono)
-            yield from check_shutters(shutter, 'Close')
-            yield from mv(sclr1.count_mode, 1)
+            # yield from check_shutters(shutter, 'Close')
+            # yield from mv(sclr1.count_mode, 1)
 
-        uid = yield from inner_plan()
-        for flyer in flyers:
-            # yield from bps.mv(flyer.flying_dev.control, "disable")
-            st = flyer.flying_dev.control.set("disable")
-            try:
-                st.wait(10)
-            except WaitTimeoutError as ex:
-                print("Timeout while disabling control of IVU!")
-                print("Trying again...")
+        # uid = yield from inner_plan()
+        # Massive try-except to look for anything else wrong!
+        try:
+            uid = yield from inner_plan()
+        except Exception as ex:
+            # Collect other potential errors
+            print("Found error!")
+            raise ex
 
-                print("  disabling...", end="", flush=True)
-                st = self.flying_dev.control.set("disable")
-                st.wait(10)
-                print("done")
-            except Exception as ex:
-                raise ex
+        # for flyer in flyers:
+        #     # yield from bps.mv(flyer.flying_dev.control, "disable")
+        #     st = flyer.flying_dev.control.set("disable")
+        #     try:
+        #         st.wait(10)
+        #     except WaitTimeoutError as ex:
+        #         print("Timeout while disabling control of IVU!")
+        #         print("Trying again...")
 
+        #         print("  disabling...", end="", flush=True)
+        #         st = flyer.flying_dev.control.set("disable")
+        #         st.wait(10)
+        #         print("done")
+        #     except Exception as ex:
+        #         raise ex
+                
+        # # Reset energy motion
+        # yield from reset_after_flying_xas()
+        
         return uid
+    
+    def finalize_plan():
+        # First, turn off beam
+        yield from check_shutters(shutter, 'Close')
+
+        # Next, remove control
+        for flyer in flyers:
+            if flyer.flying_dev.control.scan_in_progress.get() == 1:
+                if flyer.flying_dev.control.abort.write_access is True:
+                    # print('Aborting any active scans...')
+                    yield from abs_set(flyer.flying_dev.control.abort, 1)
+                    # yield from mov(id_fly_device.control.abort, 1, timeout=10)
+
+            # Disable flying mode
+            if flyer.flying_dev.control.control.write_access is True:
+                print('Disabling fly mode...')
+                # st = id_fly_device.control.set("disable")
 
 
-    return (yield from plan())
+                st = yield from abs_set(flyer.flying_dev.control, "disable")
+                try:
+                    st.wait(3) # 10 second wait in disable
+                except WaitTimeoutError as ex:
+                    print("Timeout while disabling control of IVU!")
+                    print("Trying again...")
 
+                    print("  disabling...", end="", flush=True)
+                    st = yield from abs_set(flyer.flying_dev.control, "disable")
+                    st.wait(3) # 10 sec wait in disable
+                    print("done")
+
+                # try:
+                #     st = yield from abs_set(flyer.flying_dev.control, "disable")
+                #     st.wait(10)
+                # except WaitTimeoutError as ex:
+                #     print("Timeout while disabling control of IVU!")
+                #     print("Trying again...")
+
+                #     print("  disabling...", end="", flush=True)
+                #     st = flyer.flying_dev.control.set("disable")
+                #     st.wait(10)
+                #     print("done")
+                # except Exception as ex:
+                #     # Do NOT re-raise as this will break the rest of finalize_plan
+                #     print(ex)
+
+            # Reset devices to previous state
+            yield from unstage(flyer)
+
+        # Erase xs time-series
+        # st = yield from abs_set(xs.channel01.mcaroi.ts_control, 0)
+        # st.wait(3)
+        yield from abs_set(flyers[0].xs_detectors[0].cam.acquire, 'Done', timeout=3)
+        yield from clear_set_xs_ts(flyers[0].xs_detectors[0])
+        yield from abs_set(flyers[0].xs_detectors[0].channel01.mcaroi.ts_control, 2, timeout=3, wait=True)
+
+        # Update scanrecord
+        yield from abs_set(scanrecord.scanning, False)
+        yield from abs_set(scanrecord.time_remaining, 0)
+        yield from abs_set(scanrecord.time_rem_str, time_rem_convert(0))
+
+    final_plan = finalize_wrapper(plan(), finalize_plan())
+    return (yield from final_plan)
+
+    # return (yield from plan())
+
+# Now unused
 def flying_xas_reset():
     # Abort any active scan
     if id_fly_device.control.scan_in_progress.get() == 1:
         if id_fly_device.control.abort.write_access is True:
             print('Aborting any active scans...')
-            yield from mov(id_fly_device.control.abort, 1, timeout=10)
+            yield from abs_set(id_fly_device.control.abort, 1)
+            # yield from mov(id_fly_device.control.abort, 1, timeout=10)
 
     # Disable flying mode
     if flyer_id_mono.flying_dev.control.control.write_access is True:
-       print('Disabling fly mode...')
-       st = id_fly_device.control.set("disable")
-       st.wait(timeout=10)
+        print('Disabling fly mode...')
+        # st = id_fly_device.control.set("disable")
+        st = yield from abs_set(id_fly_device.control, "disable")
+        st.wait(timeout=10)
 
     # Unstage flyer
     print('Unstaging the flyer...')
-    yield from unstage(flyer_id_mono)
+    # yield from unstage(flyer_id_mono)
+    yield from flyer_id_mono.unstage()
 
     # Reset scaler count mode
     print('Reinitializing the scaler...')
-    sclr1 = SRXScaler("XF:05IDD-ES:1{Sclr:1}", name="sclr1")
+    # sclr1 = SRXScaler("XF:05IDD-ES:1{Sclr:1}", name="sclr1")
     sclr1.read_attrs = ["channels.chan2", "channels.chan3", "channels.chan4"]
     yield from mov(sclr1.count_mode, 1, timeout=10)
 
-
+# Now unused
 def reset_after_flying_xas():
     ivu_sp = EpicsSignal("SR:C5-ID:G1{IVU21:1-Ax:Gap}-Mtr-SP")
     ivu_rb = EpicsSignal("SR:C5-ID:G1{IVU21:1-Ax:Gap}-Mtr.RBV")
     ivu_move = EpicsSignal("SR:C5-ID:G1{IVU21:1-Ax:Gap}-Mtr-Go")
 
-    ivu_energy = energy.undulator_energy(harmonic=energy.selected_harmonic.get())
+    # ivu_energy = energy.undulator_energy(harmonic=energy.selected_harmonic.get())
     bragg_energy = energy.position.energy
 
-    if np.abs(ivu_energy - bragg_energy) > 0.005:  # keV
-        print(f"Undulator energy: {ivu_energy:3.3f} keV")
-        print(f"Bragg energy:     {bragg_energy:3.3f} keV")
+    # if np.abs(ivu_energy - bragg_energy) > 0.005:  # keV
+    #     print(f"Undulator energy: {ivu_energy:3.3f} keV")
+    #     print(f"Bragg energy:     {bragg_energy:3.3f} keV")
 
-        _, _, sp = energy.energy_to_positions(bragg_energy, energy.selected_harmonic.get(), 0)
+    _, _, sp = energy.energy_to_positions(bragg_energy, energy.selected_harmonic.get(), 0)
 
-        def cb_gap_move(*, value, old_value, **kwargs):
-            value = sp
-            old_value = ivu_rb.get()
-            if np.abs(value - old_value) < 3:
-                return True
-            return False
+    def cb_gap_move(*, value, old_value, **kwargs):
+        value = sp
+        old_value = ivu_rb.get()
+        if np.abs(value - old_value) < 3:
+            return True
+        return False
 
-        st = SubscriptionStatus(ivu_rb, cb_gap_move, run=True)
-        yield from mov(ivu_sp, sp, timeout=5)
-        yield from mov(ivu_move, 1)
+    st = SubscriptionStatus(ivu_rb, cb_gap_move, run=True)
+    yield from mov(ivu_sp, sp, timeout=5)
+    yield from mov(ivu_move, 1)
 
-        try:
-            st.wait(timeout=10)
-        except WaitTimeoutError:
-            print("Timeout error!")
+    try:
+        st.wait(timeout=10)
+    except WaitTimeoutError:
+        print("Timeout error!")
+
+
+# Check functions
+
+def check_energy_steps(e_start, e_stop, e_num, energy_step_check=True, verbose=False):
+
+    # Check for reasonable step sizes
+    if e_num != 1:
+        e_step = np.abs((e_stop - e_start) / (e_num - 1))
+    else:
+        e_step = 0
+
+    reasonable_steps = {0, 1, 1.25, 2, 2.5, 3, 4, 5, 6, 7, 7.5, 8, 9}
+    step_err = []
+    if verbose:
+        print(f'Step size of {e_step} eV for energy.')
+    if (e_step not in reasonable_steps
+        and np.round(e_step * 1e-1, 5) not in reasonable_steps
+        and np.round(e_step * 1e1, 5) not in reasonable_steps):
+        step_err.append((f'Calculated step size of {e_step:.5f} eV '
+                            + f'for energy does not seem reasonable.'))
+    if (energy_step_check is True
+        and len(step_err) > 0):
+        step_err.insert(0, 'Suspected unreasonable step size')
+        step_err.append(f'Reasonable step sizes are as follows multiplied by a power of 10:\n\t{reasonable_steps}')
+        step_err.append("Adjust number of points to achieve a reasonable step size or"
+                        + " set the 'energy_step_check' keyword argument to False.")
+        # There may be more robust ways of finding the highest level plan name
+        if RE._plan.__name__ in _energy_check_funcs:
+            raise ValueError('\n'.join(step_err))
+        else:
+            print('\n'.join(step_err))
+
+
+def check_energy_range_for_foils(min_energy, max_energy, energy_check=True):
+
+    # Convert to eV
+    if min_energy < 1000:
+        min_energy = min_energy * 1000
+    if max_energy < 1000:
+        max_energy = max_energy * 1000
+
+    # Check for copper
+    energy_err = []
+    if min_energy < 8979 < max_energy:
+        if np.abs(bpm3_pos.y.user_readback.get() - 0) < 5:
+            energy_err.append("BPM-A foil is Cu and will cause a loss of flux for the designated energy range.")
+        if np.abs(bpm4_pos.y.user_readback.get() - 0) < 5:
+            energy_err.append("BPM-B foil is Cu and will cause a loss of flux for the designated energy range.")
+
+    elif min_energy < 4966 < max_energy:
+        if np.abs(bpm3_pos.y.user_readback.get() - 25) < 5:
+            energy_err.append("BPM-A foil is Ti and will cause a loss of flux for the designated energy range.")
+        if np.abs(bpm4_pos.y.user_readback.get() - 25) < 5:
+            energy_err.append("BPM-B foil is Ti and will cause a loss of flux for the designated energy range.")
+    
+    if (energy_check is True
+        and len(energy_err) > 0):
+        energy_err.insert(0, 'Energy Range Error:')
+        energy_err.append("Switch BPM foils or set the 'energy_check' keyword argument to False.")
+        # There may be more robust ways of finding the highest level plan name
+        if RE._plan.__name__ in _energy_check_funcs:
+            raise ValueError('\n\t'.join(energy_err))
+        else:
+            print('\n\t'.join(energy_err))
+
+
+def check_energy_range_for_rois(xs, roi_num, min_energy, max_energy):
+
+    # Convert to eV
+    if min_energy < 1000:
+        min_energy = min_energy * 1000
+    if max_energy < 1000:
+        max_energy = max_energy * 1000
+
+    # Check ROIs
+    for ind in range(1, 4):
+        roi_name = xs.channel01.get_mcaroi(mcaroi_number=ind).roi_name.get()
+        if roi_name == '':
+            continue
+        roi_el, roi_line = roi_name.split('_')
+        roi_edge = roi_line[0]
+        if roi_edge == 'l':
+            roi_edge = 'l3'
+        roi_be = getbindingE(roi_el, roi_edge)
+
+        if min_energy < roi_be < max_energy:
+            if ind != roi_num:
+                warn_str = (f'Caution: Selected ROI number {roi_num} does not match the '
+                            + f'designated energy range. Switching to ROI number {ind} for {roi_name} instead.')
+                print(warn_str)
+                roi_num = ind
+            break
+    else:
+        warn_str = ('WARNING: Selected ROIs do not match the designated energy range!'
+                    + '\nFull XRF specta are recorded, but displayed and saved data ' 
+                    + 'needs to be reprocessed with the correct ROI.')
+        banner(warn_str)
+    
+    return roi_num
+
+
+
+
+### Coordinating functions
+
+def point_xas(*args,
+              positions=None,
+              num_scans=1,
+              scan_type='step',
+              verbose=False,
+              **kwargs):
+
+    # Default motors if they need to be changed...
+    xmotor = nano_stage.x
+    ymotor = nano_stage.y
+    zmotor = nano_stage.z
+
+    # Check positions
+    if positions is None:
+        positions = [None]
+    else:
+        if (np.all([len(pos) == 2 for pos in positions])
+            or np.all([len(pos) == 3 for pos in positions])):
+            err_str = f"Positions must be iterable of all (x, y) or all (x, y, z) coordinates."
+            raise ValueError(err_str)
+
+    # Check scan type and define how to repeat scans
+    if scan_type.lower() == 'step':
+        def _point_xas():
+            for scan in num_scans:
+                yield from xanes_plan(*args,
+                                      verbose=verbose,
+                                      **kwargs)
+    elif scan_type.lower() == 'fly':
+        def _point_xas():
+            yield from fly_multiple_passes(*args,
+                                           verbose=verbose,
+                                           num_scans=num_scans,
+                                           **kwargs)
+    else:
+        err_str = f"Only scan_types of {'step', 'fly'} are supported, not {scan_type}"
+        raise ValueError(err_str)
+
+    # Pinch of verbosity
+    if verbose:
+        msg = (f"Conducting {num_scans} scans across {len(positions)} "
+               + f"positions for a total of {len(positions) * num_scans} scans.")
+        print(msg)
+
+    # Iteration loop
+    for pos in positions:
+        if pos is None:
+            pass
+        elif len(pos) == 2:
+            yield from mov(xmotor, pos[0],
+                           ymotor, pos[1])
+        elif len(pos) == 3:
+            yield from mov(xmotor, pos[0],
+                           ymotor, pos[1],
+                           zmotor, pos[2])
+        else:
+            err_str = f"Positions must be iterable of (x, y) or (x, y, z) not of length {len(pos)}."
+            raise ValueError()
+
+        # Actual spectroscopy!
+        yield from _point_xas()
+
+
+# Aliases
+xas_step = lambda *args, **kwargs : point_xas(*args, scan_type='step', **kwargs)
+xas_fly = lambda *args, **kwargs : point_xas(*args, scan_type='step', **kwargs)
+
+
+
 
 """
 TODO: All scan directions and modes (uni/bi-directional), DONE

@@ -82,7 +82,7 @@ EpicsSignal.wait_for_connection = wait_for_connection
 
 if if_touch_beamline():
     # Case of real beamline:
-    timeout = 2  # seconds
+    timeout = 10  # seconds # Switched from 2 to 10 for ReadTimeoutErrors - EJM
     going = "Going"
 else:
     # Case of CI:
@@ -107,21 +107,21 @@ nslsii.configure_base(
 # This is a workaround until the flyer can be rewritten
 if 'nuke_the_cache' not in RE.commands:
     async def _nuke_cache(msg, *, self = RE):
-        print(f"{print_now()}: Nuking cache...")
+        # print(f"{print_now()}: Nuking cache...")
         run_key = msg.run
         obj = msg.obj
-        print(f"{print_now()}:   {run_key=}")
-        print(f"{print_now()}:   {obj=}")
+        # print(f"{print_now()}:   {run_key=}")
+        # print(f"{print_now()}:   {obj=}")
         if (
                 current_run := self._run_bundlers.get(run_key, key_absence_sentinel := object())
         ) is key_absence_sentinel:
             current_run = None
         if current_run is not None:
-            print(f"{print_now()}:   {current_run._describe_collect_cache=} popping!")
+            # print(f"{print_now()}:   {current_run._describe_collect_cache=} popping!")
             if obj in current_run._describe_collect_cache.keys():
-                print("obj in keys()")
+                # print("obj in keys()")
                 current_run._describe_collect_cache.pop(obj)
-            print(f"{print_now()}:   {current_run._describe_collect_cache=}")
+            # print(f"{print_now()}:   {current_run._describe_collect_cache=}")
 
     RE.register_command('nuke_the_cache', _nuke_cache)
 

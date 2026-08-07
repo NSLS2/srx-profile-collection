@@ -123,6 +123,7 @@ def scan_and_fly_base(detectors,
                       md=None,
                       snake=False,
                       vlm_snapshot=True, N_dark=10,
+                      correct_motor_backlash=True,
                       step_check=True,
                       verbose=False):
     """Read IO from SIS3820.
@@ -157,9 +158,17 @@ def scan_and_fly_base(detectors,
        If True, try to open the shutter
     """
 
+    AD_WIP = True
+    # AD_WIP = False
+    if verbose and AD_WIP:
+        print('Using new AD improvements!')
+
     # It is not desirable to display plots when the plan is executed by Queue Server.
     # if is_re_worker_active():
     #     plot = False
+
+    # First check to see if pause is requested
+    yield from bps.checkpoint()
 
     # Check if logging directory exists
     log_file = None
@@ -179,7 +188,10 @@ def scan_and_fly_base(detectors,
         raise ValueError('Cannot fly through a pixel size of zero!')
 
     # Get the scan speed
-    v = ((xstop - xstart) / (xnum - 1)) / dwell  # compute "stage speed"
+    if (xstart == xstop and xnum != 1):
+        v = xmotor.velocity.get()
+    else:
+        v = ((xstop - xstart) / (xnum - 1)) / dwell  # compute "stage speed"
     if (np.abs(v) > xmotor.velocity.high_limit):
         raise ValueError(f'Desired motor velocity too high\n' \
                          f'Max velocity: {xmotor.velocity.high_limit}')
@@ -340,12 +352,18 @@ def scan_and_fly_base(detectors,
     else:
         roi_pv = xs_.channel1.rois.roi01.value
 
-
     @stage_decorator(flying_zebra.detectors)
     def fly_each_step(motor, step, row_start, row_stop):
         if verbose:
             print("In fly_each_step...")
             toc(0, str='timing stage', log_file=log_file)
+
+        # WIP: Improving area detectors
+        if AD_WIP:
+            for d in flying_zebra.detectors:
+                if d.name in ['dexela', 'eiger']:
+                    yield from abs_set(d.cam.image_mode, 'Continuous', wait=True, timeout=5)
+
         def move_to_start_fly():
             row_str = short_uid('row')
             yield from bps.checkpoint()
@@ -459,18 +477,37 @@ def scan_and_fly_base(detectors,
                                   log_file=log_file)
                                 )
             ## TODO: Make sure we trigger and wait for dexela first, and then trigger the zebra last
-            if d.name == 'dexela' or d.name == "eiger":
-                state = 0
-                if verbose:
-                    print(f"    [{print_now()}] {d.name} is waking up...  ")
-                while state == 0:
+            if d.name in ['dexela', 'eiger']:
+                # WIP: Improving area detectors
+                if AD_WIP:
+                    def callback(value, old_value, **kwargs):
+                        old_value = 0
+                        # value = d.hdf5.num_captured.get()
+                        return value == xnum
+                    # Overwrite st
+                    st = SubscriptionStatus(d.hdf5.num_captured, callback)
+                    # d._status = st
+                    st_list[-1] = st
+
+                # WIP: Improving area detectors
+                if AD_WIP:
+                    # This should not be needed...
+                    while d.cam.detector_state.get() == 0:
+                        if verbose:
+                            print(f"Waiting for {d.name} to be ready...")
+                        yield from bps.sleep(0.05)
+                else:
+                    state = 0
+                    if verbose:
+                        print(f"    [{print_now()}] {d.name} is waking up...  ")
+                    while state == 0:
+                        yield from bps.sleep(0.1)
+                        state = d.cam.detector_state.get()
+                        # print(f"    Dexela is idle!")
                     yield from bps.sleep(0.1)
-                    state = d.cam.detector_state.get()
-                    # print(f"    Dexela is idle!")
-                yield from bps.sleep(0.1)
-                # yield from bps.sleep(0.3) # EJM quick fix 20250714
-                if verbose:
-                    print(f"    [{print_now()}] awake!")
+                    # yield from bps.sleep(0.3) # EJM quick fix 20250714
+                    if verbose:
+                        print(f"    [{print_now()}] awake!")
         yield from bps.sleep(0.1)
 
         # Creating one status object to rule them all
@@ -696,6 +733,33 @@ def scan_and_fly_base(detectors,
     else:
         livepopup = []
 
+    # Last check before starting new scan
+    yield from bps.checkpoint()
+
+    # WIP: Improving area detectors
+    static_staging = []
+    if AD_WIP:
+        for d in flying_zebra.detectors:
+            if d.name in ['dexela', 'eiger']:
+                # Acquire can misbehave so it gets special treatment
+                d.stage_sigs.pop('cam.acquire', None)
+                for key in ['acquire_time', 'acquire_period', 'num_images']:
+                    static_staging.append((d.cam, key))
+            if d.name == 'eiger':
+                # d.stage_sigs.pop('total_points')
+                d.cam.stage_sigs['num_triggers'] = xnum * ynum
+                d.cam.stage_sigs['num_exposures'] = xnum * ynum
+                for key in ['num_triggers', 'num_exposures',
+                            'photon_energy', 'threshold_energy',
+                            'image_mode', 'trigger_mode']:
+                    static_staging.append((d.cam, key))
+            if d.name == 'merlin':
+                static_staging.append((d.cam, 'operating_energy'))
+            # if d.name == 'xs':
+            #     for key in xs.stage_sigs.keys():
+            #         static_staging.append((xs, key))
+    
+    @static_staging_decorator(static_staging, AD_WIP=AD_WIP)
     @subs_decorator(livepopup)
     @subs_decorator({'start': at_scan})
     @ts_monitor_during_decorator([roi_pv])
@@ -755,6 +819,28 @@ def scan_and_fly_base(detectors,
                     direction = 1
                     start = row_stop
                     stop = row_start
+            
+            # Backlash correction
+            if ystep == 0 and correct_motor_backlash:
+                yield from backlash_correction(xmotor, start, ymotor, step,
+                                               move_to_value=False) # handled elsewhere
+
+            # THIS DOES NOT WORK FOR SOME REASON                
+            # if ystep == 0:
+            #     # WIP: Improving area detectors
+            #     # Initially arming detectors
+            #     for d in flying_zebra.detectors:
+            #         if d.name in ['dexela', 'eiger']:
+            #             if verbose:
+            #                 print(f'Arming {d.name}...')
+            #             yield from abs_set(d.cam.acquire, 1)
+            #             # Check
+            #             while d.cam.detector_state.get() == 0:
+            #                 yield from bps.sleep(0.05)
+            #             yield from bps.sleep(0.1)
+            #             if verbose:
+            #                 print('done!')
+
             # Do work
             # if verbose:
             #     print(f'Direction = {direction}')
@@ -792,12 +878,24 @@ def scan_and_fly_base(detectors,
     def finalize_plan():
         if shutter:
             yield from check_shutters(shutter, 'Close')
+        
+        # Confirm all detectors are stopped
+        for d in flying_zebra.detectors:
+            yield from abs_set(get_me_the_cam(d).acquire, 0)
+
         yield from abs_set(scanrecord.scanning, False)
         yield from abs_set(scanrecord.time_remaining, 0)
         yield from abs_set(scanrecord.time_rem_str, time_rem_convert(0))
         # scanrecord.scanning.put(False)
         # scanrecord.time_remaining.put(0)
         # scanrecord.time_rem_str.put(time_rem_convert(0))
+
+        # WIP: Improving area detectors
+        if AD_WIP:
+            for d in flying_zebra.detectors:
+                if d.name in ['dexela', 'eiger']:
+                    d.stage_sigs['cam.acquire'] = 0
+
 
     # Setup the final scan plan
     if verbose:
@@ -824,112 +922,6 @@ def scan_and_fly_base(detectors,
         print('Timeout stopping time series at end of scan.')
 
     return uid
-
-
-def nano_scan_and_fly(xstart, xstop, xnum, ystart, ystop, ynum, dwell, *, extra_dets=None, center=True, **kwargs):
-    kwargs.setdefault('xmotor', nano_stage.sx)
-    kwargs.setdefault('ymotor', nano_stage.sy)
-    kwargs.setdefault('vlm_snapshot', True)
-    kwargs.setdefault('flying_zebra', nano_flying_zebra)
-    yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR', wait=True)
-    yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOVER')
-
-    _xs = kwargs.pop('xs', xs)
-    if extra_dets is None:
-        extra_dets = []
-    dets = [_xs] + extra_dets
-    if center:
-        yield from move_to_scanner_center(timeout=10)
-    yield from scan_and_fly_base(dets, xstart, xstop, xnum, ystart, ystop, ynum, dwell, **kwargs)
-    if center:
-        yield from move_to_scanner_center(timeout=10)
-
-
-def nano_y_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
-    kwargs.setdefault('xmotor', nano_stage.sy)
-    kwargs.setdefault('ymotor', nano_stage.sx)
-    kwargs.setdefault('vlm_snapshot', True)
-    kwargs.setdefault('flying_zebra', nano_flying_zebra)
-    yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOVER', wait=True)
-    yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOHOR')
-
-    _xs = kwargs.pop('xs', xs)
-    if extra_dets is None:
-        extra_dets = []
-    dets = [_xs] + extra_dets
-
-    if center:
-        yield from move_to_scanner_center(timeout=10)
-    yield from scan_and_fly_base(dets, *args, **kwargs)
-    if center:
-        yield from move_to_scanner_center(timeout=10)
-
-
-
-def nano_z_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
-    kwargs.setdefault('xmotor', nano_stage.sz)
-    kwargs.setdefault('ymotor', nano_stage.sx)
-    kwargs.setdefault('vlm_snapshot', True)
-    kwargs.setdefault('flying_zebra', nano_flying_zebra)
-    yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOZ')
-
-    _xs = kwargs.pop('xs', xs)
-    if extra_dets is None:
-        extra_dets = []
-    dets = [_xs] + extra_dets
-
-    if center:
-        yield from move_to_scanner_center(timeout=10)
-    yield from scan_and_fly_base(dets, *args, **kwargs)
-    if center:
-        yield from move_to_scanner_center(timeout=10)
-
-
-def coarse_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
-    kwargs.setdefault('xmotor', nano_stage.x)
-    kwargs.setdefault('ymotor', nano_stage.y)
-    kwargs.setdefault('vlm_snapshot', True)
-    kwargs.setdefault('flying_zebra', nano_flying_zebra_coarse)
-    yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR')
-    yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOVER')
-
-    _xs = kwargs.pop('xs', xs)
-    if extra_dets is None:
-        extra_dets = []
-    dets = [_xs] + extra_dets
-
-    if center:
-        yield from move_to_scanner_center(timeout=10)
-    yield from scan_and_fly_base(dets, *args, **kwargs)
-    if center:
-        yield from move_to_scanner_center(timeout=10)
-
-
-def coarse_y_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
-    '''
-    Convenience wrapper for scanning Y as the fast axis.
-    Call scan_and_fly_base, forcing slow and fast axes to be X and Y.
-    In this function, the first three scan parameters are for the *fast axis*,
-    i.e., the vertical, and the second three for the *slow axis*, horizontal.
-    '''
-
-    kwargs.setdefault('xmotor', nano_stage.y)
-    kwargs.setdefault('ymotor', nano_stage.x)
-    kwargs.setdefault('vlm_snapshot', True)
-    kwargs.setdefault('flying_zebra', nano_flying_zebra_coarse)
-    yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOVER')
-    yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOHOR')
-
-    _xs = kwargs.pop('xs', xs)
-    if extra_dets is None:
-        extra_dets = []
-    dets = [_xs] + extra_dets
-
-    if center:
-        yield from move_to_scanner_center(timeout=10)
-    yield from scan_and_fly_base(dets, *args, **kwargs)
-    if center:
-        yield from move_to_scanner_center(timeout=10)
 
 
 # New alias
@@ -1027,7 +1019,18 @@ def xrf_map(xstart, xstop, xnum,
             kwargs['ymotor'] = nano_stage.y
             yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR')
             yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOVER')
-    
+    elif resolution.lower() == "time":
+        kwargs.setdefault("flying_zebra", nano_flying_zebra_coarse)
+        fly_start, fly_stop, fly_num = xstart, xstart, xnum
+        step_start, step_stop, step_num = ystart, ystart, ynum
+        kwargs['xmotor'] = nano_stage.sx
+        kwargs['ymotor'] = nano_stage.sy
+        kwargs['delta'] = 0
+        yield from abs_set(kwargs['flying_zebra'].fast_axis, "NANOHOR")
+        yield from abs_set(kwargs['flying_zebra'].slow_axis, "NANOVER")
+        center = False
+        kwargs['correct_motor_backlash'] = False
+
     # Determine detectors
     _xs = kwargs.pop('xs', xs)
     if extra_dets is None:
@@ -1307,6 +1310,118 @@ def rel_xrf_map2(*args, **kwargs):
     yield from xrf_map2(*args, **kwargs)
 
 
+### Deprecated ###
+
+@srx_deprecated(xrf_map)
+def nano_scan_and_fly(xstart, xstop, xnum, ystart, ystop, ynum, dwell, *, extra_dets=None, center=True, **kwargs):
+    kwargs.setdefault('xmotor', nano_stage.sx)
+    kwargs.setdefault('ymotor', nano_stage.sy)
+    kwargs.setdefault('vlm_snapshot', True)
+    kwargs.setdefault('flying_zebra', nano_flying_zebra)
+    yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR', wait=True)
+    yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOVER')
+
+    _xs = kwargs.pop('xs', xs)
+    if extra_dets is None:
+        extra_dets = []
+    dets = [_xs] + extra_dets
+    if center:
+        yield from move_to_scanner_center(timeout=10)
+    yield from scan_and_fly_base(dets, xstart, xstop, xnum, ystart, ystop, ynum, dwell, **kwargs)
+    if center:
+        yield from move_to_scanner_center(timeout=10)
+
+
+@srx_deprecated(xrf_map)
+def nano_y_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
+    kwargs.setdefault('xmotor', nano_stage.sy)
+    kwargs.setdefault('ymotor', nano_stage.sx)
+    kwargs.setdefault('vlm_snapshot', True)
+    kwargs.setdefault('flying_zebra', nano_flying_zebra)
+    yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOVER', wait=True)
+    yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOHOR')
+
+    _xs = kwargs.pop('xs', xs)
+    if extra_dets is None:
+        extra_dets = []
+    dets = [_xs] + extra_dets
+
+    if center:
+        yield from move_to_scanner_center(timeout=10)
+    yield from scan_and_fly_base(dets, *args, **kwargs)
+    if center:
+        yield from move_to_scanner_center(timeout=10)
+
+
+# xrf_map does not replace this behavior, so this one is not deprecated
+def nano_z_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
+    kwargs.setdefault('xmotor', nano_stage.sz)
+    kwargs.setdefault('ymotor', nano_stage.sx)
+    kwargs.setdefault('vlm_snapshot', True)
+    kwargs.setdefault('flying_zebra', nano_flying_zebra)
+    yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOZ')
+
+    _xs = kwargs.pop('xs', xs)
+    if extra_dets is None:
+        extra_dets = []
+    dets = [_xs] + extra_dets
+
+    if center:
+        yield from move_to_scanner_center(timeout=10)
+    yield from scan_and_fly_base(dets, *args, **kwargs)
+    if center:
+        yield from move_to_scanner_center(timeout=10)
+
+
+@srx_deprecated(xrf_map)
+def coarse_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
+    kwargs.setdefault('xmotor', nano_stage.x)
+    kwargs.setdefault('ymotor', nano_stage.y)
+    kwargs.setdefault('vlm_snapshot', True)
+    kwargs.setdefault('flying_zebra', nano_flying_zebra_coarse)
+    yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR')
+    yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOVER')
+
+    _xs = kwargs.pop('xs', xs)
+    if extra_dets is None:
+        extra_dets = []
+    dets = [_xs] + extra_dets
+
+    if center:
+        yield from move_to_scanner_center(timeout=10)
+    yield from scan_and_fly_base(dets, *args, **kwargs)
+    if center:
+        yield from move_to_scanner_center(timeout=10)
+
+
+@srx_deprecated(xrf_map)
+def coarse_y_scan_and_fly(*args, extra_dets=None, center=True, **kwargs):
+    '''
+    Convenience wrapper for scanning Y as the fast axis.
+    Call scan_and_fly_base, forcing slow and fast axes to be X and Y.
+    In this function, the first three scan parameters are for the *fast axis*,
+    i.e., the vertical, and the second three for the *slow axis*, horizontal.
+    '''
+
+    kwargs.setdefault('xmotor', nano_stage.y)
+    kwargs.setdefault('ymotor', nano_stage.x)
+    kwargs.setdefault('vlm_snapshot', True)
+    kwargs.setdefault('flying_zebra', nano_flying_zebra_coarse)
+    yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOVER')
+    yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOHOR')
+
+    _xs = kwargs.pop('xs', xs)
+    if extra_dets is None:
+        extra_dets = []
+    dets = [_xs] + extra_dets
+
+    if center:
+        yield from move_to_scanner_center(timeout=10)
+    yield from scan_and_fly_base(dets, *args, **kwargs)
+    if center:
+        yield from move_to_scanner_center(timeout=10)
+
+
 # This class is not used in this file
 class LiveZebraPlot(CallbackBase):
     """
@@ -1490,3 +1605,79 @@ def scan_and_fly_xs2_xz(*args, extra_dets=None, **kwargs):
         extra_dets = []
     dets = [_xs] + extra_dets
     yield from scan_and_fly_base(dets, *args, **kwargs)
+
+
+
+def static_staging_decorator(static_staging, AD_WIP=True):
+    def inner_decorator(func):
+        @functools.wraps(func)
+        def func_with_static_staging(*args, **kwargs):
+            
+            # Disable behavior if not using AD_WIP
+            if not AD_WIP:
+                return (yield from func(*args, **kwargs))
+            
+            all_st = NullStatus()
+            static_staging_attrs = []
+            restore_stage_sigs = []
+            for obj, key in static_staging:
+                # First check if key exists
+                if key not in obj.stage_sigs:
+                    continue
+                else:
+                    sig = obj.stage_sigs.pop(key)
+                
+                # print(f'Statically setting {key}')
+                
+                # Next parse key
+                if not isinstance(key, str):
+                    attr = key
+                elif '.' in key:
+                    key = key.split('.')
+                    if len(key) > 2: # Not worth parsing very weird stage_sigs...
+                        continue
+                    attr = getattr(getattr(obj, key[0]), key[1])
+                else:
+                    attr = getattr(obj, key)
+                
+                # Record original value
+                static_staging_attrs.append((attr, attr.get()))
+                # Record stage sig
+                restore_stage_sigs.append((obj, key, sig))
+
+                # Set value
+                all_st = all_st & (yield from abs_set(attr, sig))
+
+            # Wait for ready
+            all_st.wait(10)
+            yield from bps.sleep(0.1)
+
+            # This code is modeled after the finalize_wrapper in bluesky.preprocessors
+            cleanup = True
+            try:
+                ret = yield from func(*args, **kwargs)
+            except GeneratorExit: # This is just always loaded?
+                cleanup = False
+                raise
+            except BaseException: # This one definitely is
+                raise
+            finally:
+                if cleanup:
+                    # Restore values
+                    all_st = NullStatus()
+                    for attr, val in static_staging_attrs:
+                        # print(f'Statically resetting {attr.name}')
+                        all_st = all_st & (yield from abs_set(attr, val))
+                    
+                    # Restore stage_sigs
+                    for obj, key, sig in restore_stage_sigs:
+                        obj.stage_sigs[key] = sig
+
+                    # Wait for ready
+                    all_st.wait(10)
+                    yield from bps.sleep(0.1)
+
+            return ret
+        
+        return func_with_static_staging
+    return inner_decorator

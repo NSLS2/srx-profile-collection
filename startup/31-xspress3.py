@@ -650,6 +650,34 @@ except Exception as ex:
     print(ex, end="\n\n")
 
 
+def clear_set_xs_ts(xs, num=None):
+
+    MAX_ITER = 10
+    num_iter = 0
+    while True:
+        # Perform cleanup, at least once
+        yield from abs_set(xs.channel01.mcaroi.ts_control, 2, timeout=3, wait=True)
+        if num is not None:
+            yield from abs_set(xs.channel01.mcaroi.ts_num_points, num, timeout=3, wait=True)
+        yield from abs_set(xs.channel01.mcaroi.ts_control, 0, timeout=3, wait=True)
+
+        # Some adjustments. Always wait a bit
+        yield from bps.sleep(0.1)
+        num_iter += 1
+
+        # Check for success. Both num points and that data is clear
+        if (xs.channel01.mcaroi.ts_current_point.get() == 0
+            and len(xs.channel01.mcaroi01.ts_total.get()) == 0):
+            break
+    
+        # Check for too many iterations
+        elif num_iter >= MAX_ITER:
+            err_str = f"{xs.name} time-series failed to reset within {MAX_ITER} iterations!"
+            raise RuntimeError(err_str)
+        
+
+
+
 def rechunk_fluor(uid):
     """
     Improve the fluor chunk shapes.
