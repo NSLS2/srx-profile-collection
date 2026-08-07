@@ -1084,14 +1084,25 @@ class SRXFlyer1Axis(Device):
             self._encoder.pc.gate_width.put(extent + 0.050)
             ttime.sleep(t_delay)
         elif mode == 'time':
-            self._encoder.pc.gate_start.put(tacc + t_delay)
-            ttime.sleep(t_delay)
-            # self._encoder.pc.gate_step.put(extent / v)
-            self._encoder.pc.gate_step.put(extent / v + 0.100)
-            ttime.sleep(t_delay)
-            # self._encoder.pc.gate_width.put(extent / v + 0.050)
-            self._encoder.pc.gate_width.put(extent / v)
-            ttime.sleep(t_delay)
+            # For special time scans at fixed position
+            if (xstart == xstop and xnum > 0):
+                self._encoder.pc.gate_start.put(tacc + t_delay)
+                ttime.sleep(t_delay)
+                # self._encoder.pc.gate_step.put(extent / v)
+                self._encoder.pc.gate_step.put(xnum * dwell + 0.100)
+                ttime.sleep(t_delay)
+                # self._encoder.pc.gate_width.put(extent / v + 0.050)
+                self._encoder.pc.gate_width.put(xnum * dwell)
+                ttime.sleep(t_delay)
+            else:
+                self._encoder.pc.gate_start.put(tacc + t_delay)
+                ttime.sleep(t_delay)
+                # self._encoder.pc.gate_step.put(extent / v)
+                self._encoder.pc.gate_step.put(extent / v + 0.100)
+                ttime.sleep(t_delay)
+                # self._encoder.pc.gate_width.put(extent / v + 0.050)
+                self._encoder.pc.gate_width.put(extent / v)
+                ttime.sleep(t_delay)
 
 
         self._encoder.pc.pulse_start.put(0.0)
@@ -1531,7 +1542,7 @@ def export_nano_zebra_data(zebra, filepath, fastaxis):
     st = SubscriptionStatus(zs.acquire, callback=cb, run=False)
     zs.acquire.put(1)
     try:
-        st.wait(timeout=60)
+        st.wait(timeout=30)
     except WaitTimeoutError:
         print("Zebra-save timed out! Continuing...")
     except Exception as e:
