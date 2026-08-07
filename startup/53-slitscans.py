@@ -1116,6 +1116,7 @@ def screen_line(x, y):
     # if std_err < 0.2:
     # print('Adjusted screen line')
     if std_err < 0.2:
+    # if std_err < 0.15:
         # print("Sufficient signal!")
         return True
     else:
