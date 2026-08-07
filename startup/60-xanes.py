@@ -98,65 +98,6 @@ def xanes_plan(erange=[], estep=[], dwell=1.,
     # Check ROIs
     roi_num = check_energy_range_for_rois(det_xs, roi_num, np.min(ept), np.max(ept))
 
-    # Check foils and energy range
-    # min_energy = min(ept)
-    # max_energy = max(ept)
-    # # Convert to eV
-    # if max_energy < 1000:
-    #     min_energy *= 1000
-    #     max_energy *= 1000
-    
-    # # Check for copper
-    # energy_err = []
-    # if min_energy < 8979 < max_energy:
-    #     if np.abs(bpm3_pos.y - 0) < 5:
-    #         energy_err.append("BPM-A foil is Cu and will cause a loss of flux for the designated energy range.")
-    #     if np.abs(bpm4_pos.y - 0) < 5:
-    #         energy_err.append("BPM-B foil is Cu and will cause a loss of flux for the designated energy range.")
-
-    # elif min_energy < 4966 < max_energy:
-    #     if np.abs(bpm3_pos.y - 25) < 5:
-    #         energy_err.append("BPM-A foil is Ti and will cause a loss of flux for the designated energy range.")
-    #     if np.abs(bpm4_pos.y - 25) < 5:
-    #         energy_err.append("BPM-B foil is Ti and will cause a loss of flux for the designated energy range.")
-    
-    # if (energy_check is True
-    #     and len(energy_err) > 0):
-    #     energy_err.insert(0, 'Energy Range Error:')
-    #     energy_err.append("Switch BPM foils or set the 'energy_check' keyword argument to False.")
-    #     # There may be more robust ways of finding the highest level plan name
-    #     if RE._plan.__name__ in _energy_check_funcs:
-    #         raise ValueError('\n\t'.join(energy_err))
-    #     else:
-    #         print('\n\t'.join(energy_err))
-
-    # Check ROIs
-    # for ind in range(1, 4):
-    #     roi_name = det_xs.channel01.get_mcaroi(mcaroi_number=ind).roi_name.get()
-    #     if roi_name == '':
-    #         continue
-    #     roi_el, roi_line = roi_name.split('_')
-    #     roi_edge = roi_line[0]
-    #     if roi_edge == 'l':
-    #         roi_edge = 'l3'
-    #     roi_be = getbindingE(roi_el, roi_edge)
-    #     if ept[0] > 1000:
-    #         roi_ept = ept
-    #     else:
-    #         roi_ept = ept / 1000
-    #     if np.min(roi_ept) < roi_be < np.max(roi_ept):
-    #         if ind != roi_num:
-    #             warn_str = (f'Caution: Selected ROI number {roi_num} does not match the '
-    #                         + f'designated energy range. Switching to ROI number {ind} for {roi_name} instead.')
-    #             print(warn_str)
-    #             roi_num = ind
-    #         break
-    # else:
-    #     warn_str = ('WARNING: Selected ROIs do not match the designated energy range!'
-    #                 + '\nFull XRF specta are recorded, but displayed and saved data ' 
-    #                 + 'needs to be reprocessed with the correct ROI.')
-    #     banner(warn_str)
-
     # Debugging, is this needed? is this recorded in scanoutput?
     # Convert energy to bragg angle
     egap = np.array(())
@@ -1807,7 +1748,11 @@ def fly_multiple_passes(e_start, e_stop, e_num, dwell,  *,
             dets.append(flying_xs)
             yield from bps.mv(flying_xs.fly_next, True)
     # md['scan']['detectors'] = d
-    get_det_md(md, dets)
+    # get_det_md(md, dets)
+    md_dets = list(dets)
+    if vlm_snapshot is True:
+        md_dets = md_dets + [nano_vlm]
+    get_det_md(md, md_dets)
 
     livepopup = []
     roi_pv = flyers[0].xs_detectors[0].channel01.mcaroi01.ts_total
