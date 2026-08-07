@@ -188,7 +188,10 @@ def scan_and_fly_base(detectors,
         raise ValueError('Cannot fly through a pixel size of zero!')
 
     # Get the scan speed
-    v = ((xstop - xstart) / (xnum - 1)) / dwell  # compute "stage speed"
+    if (xstart == xstop and xnum != 1):
+        v = xmotor.velocity.get()
+    else:
+        v = ((xstop - xstart) / (xnum - 1)) / dwell  # compute "stage speed"
     if (np.abs(v) > xmotor.velocity.high_limit):
         raise ValueError(f'Desired motor velocity too high\n' \
                          f'Max velocity: {xmotor.velocity.high_limit}')
@@ -359,7 +362,7 @@ def scan_and_fly_base(detectors,
         if AD_WIP:
             for d in flying_zebra.detectors:
                 if d.name in ['dexela', 'eiger']:
-                    yield from abs_set(d.cam.image_mode, 'Continuous')
+                    yield from abs_set(d.cam.image_mode, 'Continuous', wait=True, timeout=5)
 
         def move_to_start_fly():
             row_str = short_uid('row')
@@ -750,6 +753,8 @@ def scan_and_fly_base(detectors,
                             'photon_energy', 'threshold_energy',
                             'image_mode', 'trigger_mode']:
                     static_staging.append((d.cam, key))
+            if d.name == 'merlin':
+                static_staging.append((d.cam, 'operating_energy'))
             # if d.name == 'xs':
             #     for key in xs.stage_sigs.keys():
             #         static_staging.append((xs, key))
@@ -1014,7 +1019,18 @@ def xrf_map(xstart, xstop, xnum,
             kwargs['ymotor'] = nano_stage.y
             yield from abs_set(kwargs['flying_zebra'].fast_axis, 'NANOHOR')
             yield from abs_set(kwargs['flying_zebra'].slow_axis, 'NANOVER')
-    
+    elif resolution.lower() == "time":
+        kwargs.setdefault("flying_zebra", nano_flying_zebra_coarse)
+        fly_start, fly_stop, fly_num = xstart, xstart, xnum
+        step_start, step_stop, step_num = ystart, ystart, ynum
+        kwargs['xmotor'] = nano_stage.sx
+        kwargs['ymotor'] = nano_stage.sy
+        kwargs['delta'] = 0
+        yield from abs_set(kwargs['flying_zebra'].fast_axis, "NANOHOR")
+        yield from abs_set(kwargs['flying_zebra'].slow_axis, "NANOVER")
+        center = False
+        kwargs['correct_motor_backlash'] = False
+
     # Determine detectors
     _xs = kwargs.pop('xs', xs)
     if extra_dets is None:
@@ -1634,6 +1650,7 @@ def static_staging_decorator(static_staging, AD_WIP=True):
 
             # Wait for ready
             all_st.wait(10)
+            yield from bps.sleep(0.1)
 
             # This code is modeled after the finalize_wrapper in bluesky.preprocessors
             cleanup = True
@@ -1658,6 +1675,7 @@ def static_staging_decorator(static_staging, AD_WIP=True):
 
                     # Wait for ready
                     all_st.wait(10)
+                    yield from bps.sleep(0.1)
 
             return ret
         
