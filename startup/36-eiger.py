@@ -133,8 +133,8 @@ class EigerHDFWithFileStore(HDF5Plugin, EigerFileStoreHDF5):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.stage_sigs.update([('compression', 'szip'),
-                                ('queue_size', 10000)])
+        # self.stage_sigs.update([('compression', 'szip'),
+        #                         ('queue_size', 10000)])
 
     def stage(self):
         if np.array(self.array_size.get()).sum() == 0:
@@ -353,8 +353,10 @@ try:
                              read_attrs=['hdf5'])
     eiger.hdf5.read_attrs = []
     eiger.cam.auto_summation.set('Enable')
-    eiger.cam.photon_energy.set(10000)
-    eiger.cam.threshold_energy.set(5000)
+    eiger.cam.photon_energy.set(12000) # in eV
+    eiger.cam.threshold_energy.set(6000)
+    eiger.hdf5.compression.set('szip') # presumption that these will not be changed
+    eiger.hdf5.queue_size.set(10000) # presumption that these will not be changed
     if np.array(eiger.cam.array_size.get()).sum() == 0:
         print("  Warmup...", end="", flush=True)
         eiger.hdf5.warmup()
