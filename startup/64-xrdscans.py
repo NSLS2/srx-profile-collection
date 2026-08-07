@@ -29,6 +29,13 @@ def setup_xrd_dets(dets,
         xrd.cam.stage_sigs['num_images'] = N_images
         xrd.stage_sigs['total_points'] = N_images
         xrd.hdf5.stage_sigs['num_capture'] = N_images
+
+        # Update energy thresholds in keV
+        curr_energy = energy.energy.setpoint.get()
+        if curr_energy > 1e3:
+            curr_energy /= 1e3
+        xrd.cam.stage_sigs['operating_energy'] = np.round(curr_energy, 3)
+
         del xrd
 
     # Setup dexela
@@ -55,13 +62,11 @@ def setup_xrd_dets(dets,
         # xrd.cam.stage_sigs['num_images'] = N_images
         # xrd.cam.stage_sigs['num_exposures'] = N_images        
 
-        # print('New Eiger stage sigs')
         # Sets bit-depth for fly-mode, otherwise actual time
         xrd.cam.stage_sigs['acquire_time'] = dwell - 0.010 # 10 ms is a lot, but dropping too many frames
         xrd.cam.stage_sigs['acquire_period'] = dwell
 
-        # Update energy thresholds
-        # Should do this for merlin too...
+        # Update energy thresholds in eV
         curr_energy = energy.energy.setpoint.get()
         if curr_energy < 1e3:
             curr_energy *= 1e3
@@ -903,7 +908,7 @@ def extended_energy_rocking_curve(e_low,
         e_high /= 1000
 
     # Loose chunking at about 1000 eV
-    e_range = e_high - e_low
+    e_range = np.abs(e_high - e_low)
     e_chunks = int(np.round(e_num / e_range))
     e_vals = np.linspace(e_low, e_high, e_num)
 
