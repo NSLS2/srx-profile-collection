@@ -175,6 +175,8 @@ def fit_knife_edge(scanid=-1, fluor_key='xs_fluor', use_trans=False, normalize=T
             break
         else:
             ttime.sleep(0.1)
+    else:
+        print('Data could not be loaded completely after 60 sec!')
     
     # Calculate gradient
     dydx = np.gradient(y, x)
