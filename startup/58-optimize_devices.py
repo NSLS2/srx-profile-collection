@@ -261,7 +261,8 @@ def plot_all_peakup(scanid=-1):
 
 
 def optimize_scalers(dwell=0.5,
-                     scalers=['im', 'i0'],
+                    #  scalers=['im', 'i0'],
+                     scalers=['i0'],
                      upper_target=2E6,
                      lower_target=50,
                      shutter=True,
