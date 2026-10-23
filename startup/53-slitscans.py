@@ -1036,7 +1036,7 @@ def slit_nano_scan_map_cal(uid, orthogonality=False,
             defocus, # Amount to translate sample focus
             (delta_theta_quad, # Amount to change overall pitch angle
              delta_fine_pitch, # Amount to change fine pitch actuator  
-            delta_focal_plane_z)) # Amount to translate sample focus to compensate pitch angle change
+             delta_focal_plane_z)) # Amount to translate sample focus to compensate pitch angle change
 
 
 
@@ -1115,7 +1115,7 @@ def screen_line(x, y):
     # if line is normalized to 1, noise must be <0.2
     # if std_err < 0.2:
     # print('Adjusted screen line')
-    if std_err < 0.2:
+    if std_err < 0.19:
     # if std_err < 0.15:
         # print("Sufficient signal!")
         return True
