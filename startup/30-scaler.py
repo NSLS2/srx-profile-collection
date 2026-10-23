@@ -203,7 +203,7 @@ def export_sis_data(ion, filepath, zebra):
     
     for channel, value in channel_values.items():
         if channel == "time":
-            zs.sis_time.put(value.astype(int))
+            zs.sis_time.put(np.asarray(value).astype(int))
         else:
             getattr(zs, channel).put(np.asarray(value).astype(int))
 
