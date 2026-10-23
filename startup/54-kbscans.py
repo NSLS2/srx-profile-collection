@@ -150,6 +150,11 @@ def fit_knife_edge(scanid=-1, fluor_key='xs_fluor', use_trans=False, normalize=T
     # Get the data, iterate for a minute waiting for inserter
     t0 = ttime.monotonic()
     while ttime.monotonic() - t0 < 60: # Only wait for a minute
+        # Redefine to maybe knock something loose
+        bs_run = c[int(scanid)]
+        ds = bs_run['stream0']['data']
+        ds_keys = list(ds.keys())
+
         if (use_trans == True):
             y = ds['it'].read() / ds['im'].read()
         else:
