@@ -1322,6 +1322,45 @@ class FlyerIDMono(Device):
     def abort(self):
         self.stop()
 
+    # def update_lut(self):
+    #     # Make some assumptions:
+    #     N = 20  # Number of points in LUT
+    #     # Define the "knot" values from the calibration
+    #     u_cal = energy.utoelookup.t
+    #     e_cal = energy.etoulookup.t
+    #     Umin = min(u_cal)
+    #     Umax = max(u_cal)
+    #     # print(f'{Umin=}, {Umax=}')
+
+    #     # Define an easy variable to call
+    #     u2e = energy.utoelookup
+
+    #     # Make new PV values
+    #     uRBV = np.linspace(Umin, Umax, N, dtype=float)
+    #     eRBV = u2e(uRBV).astype(float)
+
+    #     # print(uRBV, eRBV)
+
+    #     # Output
+    #     if self.lut_u.write_access:
+    #         self.lut_u.put(uRBV*1000)
+    #     else:
+    #         print(f"No write access to LUT-Gap\n{uRBV=}")
+    #     if self.lut_e.write_access:
+    #         self.lut_e.put(eRBV*1000)
+    #     else:
+    #         print(f"No write access to LUT-Energy\n{eRBV=}")
+
+    #     # print(self.lut_e, self.lut_u)
+    #     # Check
+    #     # print(np.floor(self.lut_u.get())))
+    #     # print(np.floor(uRBV*1000))
+    #     if np.any(np.floor(self.lut_u.get()) != np.floor(uRBV*1000)):
+    #         print('WARNING: Undulator lookup table failed to update properly!')
+    #     if np.any(np.floor(self.lut_e.get()) != np.floor(eRBV*1000)):
+    #         print('WARNING: Energy lookup table failed to update properly!')
+
+
     def update_lut(self):
         # Make some assumptions:
         N = 20  # Number of points in LUT
@@ -1339,25 +1378,32 @@ class FlyerIDMono(Device):
         uRBV = np.linspace(Umin, Umax, N, dtype=float)
         eRBV = u2e(uRBV).astype(float)
 
-        # print(uRBV, eRBV)
-
-        # Output
-        if self.lut_u.write_access:
-            self.lut_u.put(uRBV*1000)
+        N_retries = 10
+        i = 1
+        # Try to write undulator lookup
+        while i <= N_retries - 1:
+            if np.all(np.floor(self.lut_u.get()) == np.floor(uRBV*1000)):
+                break
+            else:
+                if self.lut_u.write_access:
+                    self.lut_u.put(uRBV*1000)
+                else:
+                    print(f"No write access to LUT-Gap\n{uRBV=}")
+                    break
         else:
-            print(f"No write access to LUT-Gap\n{uRBV=}")
-        if self.lut_e.write_access:
-            self.lut_e.put(eRBV*1000)
-        else:
-            print(f"No write access to LUT-Energy\n{eRBV=}")
-
-        # print(self.lut_e, self.lut_u)
-        # Check
-        # print(np.floor(self.lut_u.get())))
-        # print(np.floor(uRBV*1000))
-        if np.any(np.floor(self.lut_u.get()) != np.floor(uRBV*1000)):
             print('WARNING: Undulator lookup table failed to update properly!')
-        if np.any(np.floor(self.lut_e.get()) != np.floor(eRBV*1000)):
+
+        # Try to write enegy lookup
+        while i <= N_retries - 1:
+            if np.all(np.floor(self.lut_e.get()) == np.floor(eRBV*1000)):
+                break
+            else:
+                if self.lut_e.write_access:
+                    self.lut_e.put(eRBV*1000)
+                else:
+                    print(f"No write access to LUT-Energy\n{eRBV=}")
+                    break
+        else:
             print('WARNING: Energy lookup table failed to update properly!')
     
     
@@ -1484,6 +1530,7 @@ flyer_id_mono = FlyerIDMono(flying_dev=id_fly_device,
                             scaler=sclr1,
                             pulse_cpt='pulse1',
                             pulse_width=0.05)
+# flyer_id_mono.update_lut()
 setup_zebra_for_xas(flyer_id_mono)
 
 
@@ -1903,11 +1950,11 @@ def fly_multiple_passes(e_start, e_stop, e_num, dwell,  *,
 
         # Next, remove control
         for flyer in flyers:
-            if flyer.flying_dev.control.scan_in_progress.get() == 1:
-                if flyer.flying_dev.control.abort.write_access is True:
-                    # print('Aborting any active scans...')
-                    yield from abs_set(flyer.flying_dev.control.abort, 1)
-                    # yield from mov(id_fly_device.control.abort, 1, timeout=10)
+            # if flyer.flying_dev.control.scan_in_progress.get() == 1:
+            #     if flyer.flying_dev.control.abort.write_access is True:
+            #         # print('Aborting any active scans...')
+            #         yield from abs_set(flyer.flying_dev.control.abort, 1)
+            #         # yield from mov(id_fly_device.control.abort, 1, timeout=10)
 
             # Disable flying mode
             if flyer.flying_dev.control.control.write_access is True:
