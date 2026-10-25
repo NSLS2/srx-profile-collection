@@ -30,7 +30,7 @@ include the undulator (and energy axis) and front end slits.
 
 
 # Constants
-ANG_OVER_EV = 12.3984
+ANG_OVER_EV = 12.3984  # keV A
 
 
 # Signals
@@ -538,6 +538,71 @@ class IDFlyDevice(Device):
     # Fly scan parameters
     energy_motor = Cpt(EpicsMotor, 'FlyScan-Mtr')
     id_energy = Cpt(EpicsSignal, 'FlyEnergyID-RB')
+
+    def energy_to_bragg(self, E):
+        """
+        Calculate the Bragg angle (in degrees) for a given energy.
+
+        This calculation uses the parameters set in the flyer device
+        This is an alternative to energy.energy_to_positions.
+
+        Parameters
+        ----------
+        E : array_like
+            The energy in keV (or eV)
+
+        Returns
+        -------
+        float or np.ndarray
+            The calculated Bragg angle in degrees
+        """
+        # Make an array and check that units are in keV
+        energy = np.asarray(E).astype(float)
+        if np.any(energy > 1000):
+            energy /= 1000 # Convert from eV to keV
+
+        # Calculate the corresponding angle
+        lam = ANG_OVER_EV / energy  # ANG_OVER_EV [keV A]
+        result = np.rad2deg(np.arcsin(lam / (2 * self.hdcm_parameters.d111)))
+
+        # Return single value, or array
+        return result.item() if result.ndim == 0 else result
+
+
+    def calculate_trajectory(self, E0, E1, dE, dwell):
+        """
+        Calculates the angular velocity (deg/s) over a range of energies.
+
+        Parameters:
+        E0 (float): Starting energy [keV or eV]
+        E1 (float): Ending energy [keV or eV]
+        dE (float): Energy step size [keV or eV]
+        dwell (float): Time dwell per energy point [s]
+
+        Returns:
+        numpy.ndarray: Angular velocity in degrees for each point of the scan [deg/s]
+        """
+        # Check input values
+        # Assume if E0 is in eV, than all values are
+        if E0 > 1000:
+            E0 /= 1000
+            E1 /= 1000
+            dE /= 1000
+        # Check direction/sign of dE
+        step = abs(dE) if E0 < E1 else -abs(dE)
+
+        # Create energy points with a step directed toward E1
+        count = int(abs((E1 - E0) / step)) + 1
+        Epts = E0 + step * np.arange(count)
+
+        # Create Bragg points and calculate the angular velocity.
+        Bpts = self.energy_to_bragg(Epts)
+        Edot = step / dwell
+        secB = 1 / np.cos(np.deg2rad(Bpts))
+        Bdot = ANG_OVER_EV / (2 * self.hdcm_parameters.d11) * (-Epts.astype(float)**-2) * secB * Edot
+
+        # Return the velocity at each point of the scan
+        return np.rad2deg(Bdot)
 
 
 try:
