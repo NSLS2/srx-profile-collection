@@ -564,6 +564,7 @@ class IDFlyDevice(Device):
         # Calculate the corresponding angle
         lam = ANG_OVER_EV / energy  # ANG_OVER_EV [keV A]
         result = np.rad2deg(np.arcsin(lam / (2 * self.hdcm_parameters.d111)))
+        result = result - self.hdcm_parameters.delta_bragg
 
         # Return single value, or array
         return result.item() if result.ndim == 0 else result
