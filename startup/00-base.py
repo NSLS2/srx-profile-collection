@@ -18,8 +18,7 @@ from IPython.terminal.prompts import Prompts, Token
 from ophyd.signal import DEFAULT_CONNECTION_TIMEOUT, EpicsSignal, EpicsSignalBase
 from redis_json_dict import RedisJSONDict
 from tiled.client import from_profile, from_uri
-from bluesky.callbacks.buffer import BufferingWrapper
-from bluesky_tiled_plugins import TiledInserter
+from bluesky_tiled_plugins import BufferingWrapper, TiledInserter
 
 
 # Start to list warnings that we don't want to see - or just hide them from users
@@ -150,10 +149,30 @@ RE.unsubscribe(0)
 
 # Define tiled catalog
 srx_raw = from_profile("srx", api_key=os.environ["TILED_BLUESKY_WRITING_API_KEY_SRX"])
+TILED_BACKUP_ROOT = "/nsls2/data/srx/shared/config/bluesky/tiled_backup"
 tiled_inserter = TiledInserter(srx_raw, 'srx',
-                               backup_directory='/tmp/tiled_backup',
+                               backup_directory=f"{TILED_BACKUP_ROOT}/raw",
                                backup_dictionary=None)
 tiled_inserter = BufferingWrapper(tiled_inserter)
+
+
+def flush_tiled(timeout=30):
+    '''Block until all buffered documents have been written to Tiled.
+
+    Call this before reading a just-acquired run back from Tiled: documents
+    are buffered, so Tiled's view may lag behind Bluesky. Flushes every
+    writer buffer, so it stays correct regardless of which writers are
+    subscribed to RE.
+
+    Raises RuntimeError if a buffer does not drain within ``timeout``
+    seconds or its worker thread has died.
+    '''
+    for label, buffer in (("raw", tiled_inserter),):
+        if not buffer.flush(timeout):
+            raise RuntimeError(
+                f"Tiled {label} buffer was not flushed within {timeout} s "
+                "(timed out or its worker thread died)."
+            )
 
 # c = tiled_reading_client = from_uri(
 #         "https://tiled.nsls2.bnl.gov/api/v1/metadata/srx/raw",
