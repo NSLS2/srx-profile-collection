@@ -46,10 +46,11 @@ def test_fly_scan1():
     RE.preprocessors.clear()
     uid, = RE(nano_scan_and_fly(-5, 5, 11, 0, 2, 3, 0.1, shutter=False))
     print("Fly scan complete")
-    print("Reading scan from databroker: 'primary' stream")
-    db[uid].table(fill=True)
-    print("Reading scan from databroker: 'stream0' stream")
-    db[uid].table(stream_name="stream0", fill=True)
+    flush_tiled()  # wait for buffered documents to reach Tiled
+    print("Reading scan from Tiled: 'primary' stream")
+    c[uid]["primary"]["data"].read()
+    print("Reading scan from Tiled: 'stream0' stream")
+    c[uid]["stream0"]["data"].read()
     print("Loading data using PyXRF")
     from pyxrf.api import make_hdf
     dir_name = "/tmp/acceptance_tests"
@@ -68,10 +69,11 @@ def test_fly_scan2():
     RE.preprocessors.clear()
     uid, = RE(nano_y_scan_and_fly(-5, 5, 11, 0, 2, 3, 0.1, shutter=False))
     print("Fly scan complete")
-    print("Reading scan from databroker: 'primary' stream")
-    db[uid].table(fill=True)
-    print("Reading scan from databroker: 'stream0' stream")
-    db[uid].table(stream_name="stream0", fill=True)
+    flush_tiled()  # wait for buffered documents to reach Tiled
+    print("Reading scan from Tiled: 'primary' stream")
+    c[uid]["primary"]["data"].read()
+    print("Reading scan from Tiled: 'stream0' stream")
+    c[uid]["stream0"]["data"].read()
     print("Loading data using PyXRF")
     from pyxrf.api import make_hdf
     dir_name = "/tmp/acceptance_tests"
@@ -88,10 +90,11 @@ def test_step_scan():
     print("Starting fly scan test 2")
     uid, = RE(nano_xrf(-5, 5, 1, 0, 2, 1, 0.1, shutter=False))
     print("Fly scan complete")
-    print("Reading scan from databroker: 'primary' stream")
-    db[uid].table(fill=True)
-    print("Reading scan from databroker: 'stream0' stream")
-    db[uid].table(stream_name="stream0", fill=True)
+    flush_tiled()  # wait for buffered documents to reach Tiled
+    print("Reading scan from Tiled: 'primary' stream")
+    c[uid]["primary"]["data"].read()
+    print("Reading scan from Tiled: 'stream0' stream")
+    c[uid]["stream0"]["data"].read()
     print("Loading data using PyXRF")
     from pyxrf.api import make_hdf
     dir_name = "/tmp/acceptance_tests"

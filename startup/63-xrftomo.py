@@ -20,6 +20,10 @@ def haz_angles(a, b, n):
 def calc_com(run_start_uid, roi=None):
     print('Centering sample using center of mass...')
 
+    # Wait for the buffered documents to reach Tiled before reading the run
+    # back (the retry loop below remains as defense in depth).
+    flush_tiled()
+
     # Get the header
     h = c[run_start_uid]
     scan_doc = h.start["scan"]

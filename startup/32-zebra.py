@@ -571,7 +571,7 @@ class SRXFlyer1Axis(Device):
     def sclr(self):
         return self._sis
 
-    def __init__(self, dets, sclr1, zebra, *, reg=db.reg, **kwargs):
+    def __init__(self, dets, sclr1, zebra, *, reg=None, **kwargs):  # reg is unused; kept for API compatibility
         super().__init__("", parent=None, **kwargs)
         self._mode = "idle"
         self._dets = dets
