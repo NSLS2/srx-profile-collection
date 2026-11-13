@@ -692,6 +692,8 @@ def rechunk_fluor(uid):
     STREAM_NAME='stream0'
     FIELD_NAME='xs_fluor'
 
+    flush_tiled()  # wait for buffered documents to reach Tiled
+
     # Find the shape of the fluor data.
     run = tiled_reading_client[uid]
     fluor_shape = run[STREAM_NAME]["data"][FIELD_NAME].shape

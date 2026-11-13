@@ -6,8 +6,14 @@ from bluesky.callbacks import CallbackBase,LivePlot
 from xray_vision.backend.mpl.cross_section_2d import CrossSection
 
 # Try-except only hear for testing. Can be removed after validation.
+_start_doc_cache = {}
+
+
 def cb_print_scaninfo(name, doc):
     if name == "start":
+        # Keep only the most recent start document (used by the stop banner)
+        _start_doc_cache.clear()
+        _start_doc_cache[doc['uid']] = doc
         try:
             str1 = f"Scan Type:  {doc['scan']['type']}"
         except KeyError:
@@ -18,10 +24,10 @@ def cb_print_scaninfo(name, doc):
         str3 = f"Start Time: {ttime.ctime(doc['time'])}"
         banner([str1, str2, str3])
     elif name == "stop":
-        try:
-            start_doc = db[doc['run_start']].start
-        except:
-            start_doc = None
+        # Look the start document up in the local cache: the legacy Mongo
+        # broker is disconnected and Tiled lags behind Bluesky (documents
+        # are buffered).
+        start_doc = _start_doc_cache.get(doc['run_start'])
 
         if start_doc is not None:
             try:
