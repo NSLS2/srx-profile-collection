@@ -539,7 +539,7 @@ class SRXFlyer1Axis(Device):
         read_path = formatter(f'{self.root_path}{self.read_path_template}')
         return filename, read_path, write_path
 
-    KNOWN_DETS = {"xs", "xs2", "xs4", "merlin", "dexela", "eiger"}
+    KNOWN_DETS = {"xs", "xs2", "xs4", "merlin", "dexela", "eiger", "nano_vlm"}
     fast_axis = Cpt(Signal, value="HOR", kind="config")
     slow_axis = Cpt(Signal, value="VER", kind="config")
     mode = Cpt(Signal, value='position', kind='config')
@@ -1062,6 +1062,12 @@ class SRXFlyer1Axis(Device):
                     decrement = (pxsize / dwell) * 0.001
                 else:
                     decrement = (pxsize / dwell) * 0.0001
+
+            # WIP: nano_vlm
+            if 'nano_vlm' in [d.name for d in self.detectors]:
+                decrement = 0.01 # 10 ms
+            # decrement = 0.01
+
             # 0.1 ms delay between pulses
             # decrement = (pxsize / dwell) * 0.001
             if decrement < 1e-5:
