@@ -244,6 +244,9 @@ def scan_and_fly_base(detectors,
     dets_by_name = {d.name : d
                     for d in detectors}
     setup_xrd_dets(detectors, dwell, xnum)
+    setup_flying_cameras(detectors, dwell, xnum)
+    if 'nano_vlm' in dets_by_name:
+        vlm_snapshot = False
 
     # If delta is None, set delta based on time for acceleration
     # EJM edit
@@ -477,7 +480,7 @@ def scan_and_fly_base(detectors,
                                   log_file=log_file)
                                 )
             ## TODO: Make sure we trigger and wait for dexela first, and then trigger the zebra last
-            if d.name in ['dexela', 'eiger']:
+            if d.name in ['dexela', 'eiger', 'nano_vlm']:
                 # WIP: Improving area detectors
                 if AD_WIP:
                     def callback(value, old_value, **kwargs):
@@ -587,8 +590,13 @@ def scan_and_fly_base(detectors,
             # st_xs.wait(timeout=xnum*dwell + 20)
             # print(f"{ttime.time()-t0_st_xs}")
             # print('Waiting for all_st...', end="")
+
             t0_st_xs = ttime.time()
-            all_st.wait(timeout=xnum*dwell + 20)
+            # all_st.wait(timeout=xnum*dwell + 20)
+            # EJM Hot-fix 10/27/2026
+            all_st.wait(timeout=20) # fixed time at 20 sec when it should be done
+
+
             # print(f"{ttime.time()-t0_st_xs}")
             # xs.hdf5.capture.set("Done")
             # while True:
@@ -895,6 +903,11 @@ def scan_and_fly_base(detectors,
             for d in flying_zebra.detectors:
                 if d.name in ['dexela', 'eiger']:
                     d.stage_sigs['cam.acquire'] = 0
+
+        if 'nano_vlm' in dets_by_name:
+            nano_vlm.cam.acquire.set(1)
+            nano_vlm.tiff.kind = 'normal'
+            nano_vlm.hdf5.kind = 'omitted'
 
 
     # Setup the final scan plan
