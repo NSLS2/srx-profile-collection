@@ -655,11 +655,17 @@ def clear_set_xs_ts(xs, num=None):
     MAX_ITER = 10
     num_iter = 0
     while True:
-        # Perform cleanup, at least once
-        yield from abs_set(xs.channel01.mcaroi.ts_control, 2, timeout=3, wait=True)
-        if num is not None:
-            yield from abs_set(xs.channel01.mcaroi.ts_num_points, num, timeout=3, wait=True)
-        yield from abs_set(xs.channel01.mcaroi.ts_control, 0, timeout=3, wait=True)
+        try:
+            # Perform cleanup, at least once
+            yield from abs_set(xs.channel01.mcaroi.ts_control, 2, timeout=3, wait=True)
+            if num is not None:
+                yield from abs_set(xs.channel01.mcaroi.ts_num_points, num, timeout=3, wait=True)
+            yield from abs_set(xs.channel01.mcaroi.ts_control, 0, timeout=3, wait=True)
+        except FailedStatus as ex:
+            print('FailedStatus on resetting xs time-series. Trying again...')
+        except Exception as ex:
+            print(ex)
+            print('Trying again...')
 
         # Some adjustments. Always wait a bit
         yield from bps.sleep(0.1)
