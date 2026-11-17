@@ -1314,8 +1314,8 @@ class FlyerIDMono(Device):
 
         #reset scaler count mode
         print('Resetting the scaler...')
-        yield from mv(sclr1.count_mode, 1)
-        sclr1.read_attrs = ["channels.chan2", "channels.chan3", "channels.chan4"]
+        yield from mv(self.scaler.count_mode, 1)
+        self.scaler.read_attrs = ["channels.chan2", "channels.chan3", "channels.chan4"]
         if self.verbose:
             print(f"{print_now()}: I am leaving the stop function...")
 
@@ -1897,8 +1897,8 @@ def fly_multiple_passes(e_start, e_stop, e_num, dwell,  *,
                 #     yield from abs_set(shut_d.request_open, 1, wait=True, timeout=2)
                 # Should this be elsewhere? Should we move this after the pause is released?
                 yield from mov(flyer.scaler.count_mode, 0, timeout=3)
-                print(f"{flyer_id_mono.scaler.count_mode.get()=}")
-                flyer_id_mono.scaler.erase_start.put(1)
+                # flyer_id_mono.scaler.erase_start.put(1)
+                yield from mov(flyer.scaler.erase_start, 1, timeout=3)
                 for flyer in flyers:
                     # print(f"  {flyer.name} complete...")
                     yield from bps.complete(flyer, wait=True)
