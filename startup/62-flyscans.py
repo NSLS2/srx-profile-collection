@@ -904,6 +904,7 @@ def scan_and_fly_base(detectors,
                 if d.name in ['dexela', 'eiger']:
                     d.stage_sigs['cam.acquire'] = 0
 
+        # Resetting after flying with nano_vlm
         if 'nano_vlm' in dets_by_name:
             nano_vlm.cam.acquire.set(1)
             nano_vlm.tiff.kind = 'normal'
