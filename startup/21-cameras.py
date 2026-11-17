@@ -160,6 +160,41 @@ def _camera_snapshot(cameras=[nano_vlm]):
 
     if len(cameras) > 0:
         print('Acquiring camera snapshot...')
+
+        # Cameras must be staged, for triggering. This is likely with incorrect values
+        # Record relevant staging and overwrite with our own
+        for cam in cameras:
+            cam._original_stage_sigs = OrderedDict()
+            for obj in [cam, cam.cam, cam.tiff, cam.hdf5]:
+                cam._original_stage_sigs[obj] = obj.stage_sigs
+
+            # New values. Everything will be reverted later
+            cam.cam.array_counter.set(0)
+            # Camera
+            cam.stage_sigs['cam.acquire'] = cam.cam.acquire.get()
+            cam.stage_sigs['cam.image_mode'] = 0 # Single
+            cam.cam.stage_sigs['trigger_mode'] = 0 # Internal
+            cam.cam.stage_sigs['num_images'] = 1
+            # Remove any dwell times to match current live feed
+            for name in ['acquire_time', 'acquire_period', 'array_counter']:
+                if name in cam.cam.stage_sigs:
+                    cam.cam.stage_sigs.pop(name)
+                if f'cam.{name}' in cam.stage_sigs:
+                    cam.stage_sigs.pop(f'cam.{name}')
+
+            # File saving
+            cam.hdf5.kind = 'omitted'
+            cam.hdf5.stage_sigs['num_capture'] = 0
+            cam.hdf5.stage_sigs['enable'] = 0
+            cam.hdf5.stage_sigs['capture'] = 0
+            cam.hdf5.stage_sigs['file_write_mode'] = 'Stream'
+
+            cam.tiff.kind = 'normal'
+            cam.tiff.stage_sigs['num_capture'] = 1
+            cam.tiff.stage_sigs['enable'] = 1
+            cam.tiff.stage_sigs['capture'] = 1
+            cam.tiff.stage_sigs['file_write_mode'] = 'Stream'
+            
         # Unstaging as precautionary measure. Likely all cameras are unstaged
         staging_list = [cam._staged == Staged.yes for cam in cameras]
         for staged, cam in zip(staging_list, cameras):
@@ -169,24 +204,35 @@ def _camera_snapshot(cameras=[nano_vlm]):
         
         # Snapshot!
         # Should even work with different dwell times
-        # yield from bps.trigger_and_read(cameras, name='camera_snapshot')
+        cleanup = True
         try:
+            # yield from bps.trigger_and_read(cameras, name='camera_snapshot')
             yield from mod_trigger_and_read(cameras,
                                             name='camera_snapshot',
                                             timeout=10) # 10 seconds
         except WaitForTimeoutError:
             warn_str = "WARNING: Camera snapshot failed to trigger in designated time. Continuing without..."
             print(warn_str)
-        except Exception as e:
-            print(e)
-            raise(e)
+        except GeneratorExit: # This is just always loaded?
+            cleanup = False
+            raise
+        except BaseException: # This one definitely is
+            raise
+        finally:
+            if cleanup:
+                # Precautionary unstaging
+                for staged, cam in zip(staging_list, cameras):
+                    yield from bps.unstage(cam)
+                    if staged:
+                        yield from bps.stage(cam)
 
-        # Precautionary unstaging
-        for staged, cam in zip(staging_list, cameras):
-            yield from bps.unstage(cam)
-            if staged:
-                yield from bps.stage(cam)
-        
+                # Revert stage sigs
+                for cam in cameras:
+                    for obj, stage_sigs in cam._original_stage_sigs.items():
+                        obj.stage_sigs = stage_sigs
+                    del cam._original_stage_sigs
+
+        # Only necessary if everything works!
         # Clear descripter cache
         for cam in cameras:
             yield Msg("clear_describe_cache", cam)
@@ -276,7 +322,7 @@ def setup_flying_cameras(dets,
         det.cam.acquire.set(0)
         det.cam.array_counter.set(0)
 
-        det.cam.stage_sigs['image_mode'] = 2 # continuous
+        det.stage_sigs['cam.image_mode'] = 2 # continuous
         det.cam.stage_sigs['trigger_mode'] = 1 # bulb
 
         # det.cam.stage_sigs['acquire_period'] = 0.05
@@ -286,8 +332,15 @@ def setup_flying_cameras(dets,
         # det.stage_sigs['total_points'] = N_images
         det.cam.stage_sigs['array_counter'] = 0
 
+        # File saving
         det.hdf5.kind = 'normal'
         det.hdf5.stage_sigs['num_capture'] = N_images
+        det.hdf5.stage_sigs['enable'] = 1
+        det.hdf5.stage_sigs['capture'] = 1
+        det.hdf5.stage_sigs['file_write_mode'] = 'Stream'
 
         det.tiff.kind = 'omitted'
+        det.tiff.stage_sigs['num_capture'] = 0
         det.tiff.stage_sigs['enable'] = 0
+        det.tiff.stage_sigs['capture'] = 0
+        det.tiff.stage_sigs['file_write_mode'] = 'Stream'
