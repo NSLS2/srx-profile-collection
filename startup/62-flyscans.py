@@ -188,66 +188,15 @@ def scan_and_fly_base(detectors,
         raise ValueError('Cannot fly through a pixel size of zero!')
 
     # Get the scan speed
-    if (xstart == xstop and xnum != 1):
-        v = xmotor.velocity.get()
-    else:
-        v = ((xstop - xstart) / (xnum - 1)) / dwell  # compute "stage speed"
-    if (np.abs(v) > xmotor.velocity.high_limit):
-        raise ValueError(f'Desired motor velocity too high\n' \
-                         f'Max velocity: {xmotor.velocity.high_limit}')
-    elif (np.abs(v) < xmotor.velocity.low_limit):
-        raise ValueError(f'Desired motor velocity too low\n' \
-                         f'Min velocity: {xmotor.velocity.low_limit}')
-    else:
-        xmotor.stage_sigs[xmotor.velocity] = v
+    check_motor_velocity(xmotor, xstart, xstop, xnum,
+                         dwell, verbose=verbose)
 
     # Check for reasonable step sizes
-    xstep, ystep = 0, 0
-    if xnum != 1:
-        xstep = np.abs(np.round(xstop - xstart, 6) / (xnum - 1))
-    if ynum != 1:
-        ystep = np.abs(np.round(ystop - ystart, 6) / (ynum - 1))
-    reasonable_steps = {0, 1, 1.25, 2, 2.5, 3, 4, 5, 6, 7, 7.5, 8, 9}
-    step_err = []
-    for step, motor in ([xstep, xmotor], [ystep, ymotor]):
-        if verbose:
-            print(f'Step size of {step} {motor.motor_egu.get()} for {motor.name}.')
-        if (step not in reasonable_steps
-            and step * 1e-1 not in reasonable_steps
-            and step * 1e-2 not in reasonable_steps
-            and step * 1e1 not in reasonable_steps
-            and step * 1e2 not in reasonable_steps
-            and step * 1e3 not in reasonable_steps):
-            step_err.append((f'Calculated step size of {step:.5f} {motor.motor_egu.get()} '
-                             + f'for motor {motor.name} does not seem reasonable.'))
-    if (step_check is True
-        and len(step_err) > 0):
-        step_err.insert(0, 'Suspected unreasonable step size')
-        step_err.append(f'Reasonable step sizes are as follows multiplied by a power of 10:\n\t{reasonable_steps}')
-        step_err.append("Adjust number of points to achieve a reasonable step size or"
-                        + " set the 'step_check' keyword argument to False.")
-        # There may be more robust ways of finding the highest level plan name
-        if RE._plan.__name__ in _step_check_funcs:
-            raise ValueError('\n'.join(step_err))
-        else:
-            print('\n'.join(step_err))
+    check_motor_steps(xmotor, xstart, xstop, xnum,
+                      ymotor, ystart, ystop, ynum,
+                      step_check=step_check,
+                      verbose=verbose)
     
-    # Set xs.mode to fly.
-    for det in detectors:
-        if isinstance(det, CommunitySrxXspress3Detector):
-            det.mode = SRXMode.fly
-
-    # Assign detectors to flying_zebra, this may fail
-    flying_zebra.detectors = detectors
-    # Setup detectors, combine the zebra, sclr, and the just set detector list
-    detectors = (flying_zebra.encoder, flying_zebra.sclr) + flying_zebra.detectors
-    dets_by_name = {d.name : d
-                    for d in detectors}
-    setup_xrd_dets(detectors, dwell, xnum)
-    setup_flying_cameras(detectors, dwell, xnum)
-    if 'nano_vlm' in dets_by_name:
-        vlm_snapshot = False
-
     # If delta is None, set delta based on time for acceleration
     # EJM edit
     MIN_DELTA = 1.00  # default value
@@ -264,41 +213,29 @@ def scan_and_fly_base(detectors,
     row_stop = xstop + delta + (pxsize / 2)
 
     # Check motor limits
-    limit_err = []
-    xlow, _, _, xhigh = sorted([row_start, row_stop, xstart, xstop])
-    ylow, yhigh = sorted([ystart, ystop])
-    if xmotor.low_limit != xmotor.high_limit:
-        if xlow < xmotor.low_limit: # For low to high flying
-            if row_start == xlow:
-                limit_err.append((f'Flying axis motor {xmotor.name} row start value of {row_start} exceeds motor limits.'
-                                + f'\nDifference with specified start value of {xstart} is {row_start - xstart:.3f}.'))
-            elif row_stop == xlow:
-                limit_err.append((f'Flying axis motor {xmotor.name} row stop value of {row_stop} exceeds motor limits.'
-                                + f'\nDifference with specified stop value of {xstop} is {row_stop - xstop:.3f}.'))       
-            else:
-                limit_err.append(f'Flying axis motor {xmotor.name} value of {xlow} exceeds motor limits.')
-        if xhigh > xmotor.high_limit: # For high to low flying
-            if row_start == xhigh:
-                limit_err.append((f'Flying axis motor {xmotor.name} row start value of {row_start} exceeds motor limits.'
-                                + f'\nDifference with specified start value of {xstart} is {row_start - xstart:.3f}.'))
-            elif row_stop == xhigh:
-                limit_err.append((f'Flying axis motor {xmotor.name} row stop value of {row_stop} exceeds motor limits.'
-                                + f'\nDifference with specified stop value of {xstop} is {row_stop - xstop:.3f}.')) 
-            else:
-                limit_err.append(f'Flying axis motor {xmotor.name} value of {xhigh} exceeds motor limits.')
+    check_motor_range(xmotor, row_start, row_stop, xstart, xstop,
+                      ystart, ystop, ymotor,
+                      verbose=verbose)
 
-    if ymotor.low_limit != ymotor.high_limit:         
-        if ylow < ymotor.low_limit: # Simple comparison
-            limit_err.append(f'Slow axis motor {ymotor.name} value of {ylow} exceeds motor limits.')
-        if yhigh > ymotor.high_limit: # Simple comparison
-            limit_err.append(f'Slow axis motor {ymotor.name} value of {yhigh} exceeds motor limits.')
+    # Set xs.mode to fly.
+    for det in detectors:
+        if isinstance(det, CommunitySrxXspress3Detector):
+            det.mode = SRXMode.fly
 
-    if len(limit_err) > 0:
-        limit_err.insert(0, 'Stage Limit Error')
-        limit_err.append('Adjust the scan range to fit within the motor limits.')
-        limit_err.append(f'\t{xmotor.name} limits: ({xmotor.low_limit}, {xmotor.high_limit})')
-        limit_err.append(f'\t{ymotor.name} limits: ({ymotor.low_limit}, {ymotor.high_limit})')
-        raise ValueError('\n'.join(limit_err))
+    # Assign detectors to flying_zebra, this may fail
+    flying_zebra.detectors = detectors
+    # Setup detectors, combine the zebra, sclr, and the just set detector list
+    detectors = (flying_zebra.encoder, flying_zebra.sclr) + flying_zebra.detectors
+    dets_by_name = {d.name : d
+                    for d in detectors}
+    setup_xrd_dets(detectors, dwell, xnum)
+    setup_flying_cameras(detectors, dwell, xnum)
+
+    # VLM snapshot does not make sense if flying with the VLM
+    if 'nano_vlm' in dets_by_name:
+        vlm_snapshot = False
+        if verbose:
+            print('VLM snapshot disabled for flying with VLM.')
 
     # Scan metadata
     md = get_stock_md(md)
@@ -938,7 +875,8 @@ def scan_and_fly_base(detectors,
     return uid
 
 
-# New alias
+### User-friendly scans ###
+
 def xrf_map(xstart, xstop, xnum,
             ystart, ystop, ynum, 
             dwell,
@@ -1622,6 +1560,111 @@ def scan_and_fly_xs2_xz(*args, extra_dets=None, **kwargs):
 
 
 
+
+### Support Functions ###
+
+# Function to check motor range and fail before scanning
+def check_motor_range(xmotor, row_start, row_stop, xstart, xstop,
+                      ystart, ystop, ymotor,
+                      verbose=True):
+
+    # Check motor limits
+    limit_err = []
+    xlow, _, _, xhigh = sorted([row_start, row_stop, xstart, xstop])
+    ylow, yhigh = sorted([ystart, ystop])
+    if xmotor.low_limit != xmotor.high_limit:
+        if xlow < xmotor.low_limit: # For low to high flying
+            if row_start == xlow:
+                limit_err.append((f'Flying axis motor {xmotor.name} row start value of {row_start} exceeds motor limits.'
+                                + f'\nDifference with specified start value of {xstart} is {row_start - xstart:.3f}.'))
+            elif row_stop == xlow:
+                limit_err.append((f'Flying axis motor {xmotor.name} row stop value of {row_stop} exceeds motor limits.'
+                                + f'\nDifference with specified stop value of {xstop} is {row_stop - xstop:.3f}.'))       
+            else:
+                limit_err.append(f'Flying axis motor {xmotor.name} value of {xlow} exceeds motor limits.')
+        if xhigh > xmotor.high_limit: # For high to low flying
+            if row_start == xhigh:
+                limit_err.append((f'Flying axis motor {xmotor.name} row start value of {row_start} exceeds motor limits.'
+                                + f'\nDifference with specified start value of {xstart} is {row_start - xstart:.3f}.'))
+            elif row_stop == xhigh:
+                limit_err.append((f'Flying axis motor {xmotor.name} row stop value of {row_stop} exceeds motor limits.'
+                                + f'\nDifference with specified stop value of {xstop} is {row_stop - xstop:.3f}.')) 
+            else:
+                limit_err.append(f'Flying axis motor {xmotor.name} value of {xhigh} exceeds motor limits.')
+
+    if ymotor.low_limit != ymotor.high_limit:         
+        if ylow < ymotor.low_limit: # Simple comparison
+            limit_err.append(f'Slow axis motor {ymotor.name} value of {ylow} exceeds motor limits.')
+        if yhigh > ymotor.high_limit: # Simple comparison
+            limit_err.append(f'Slow axis motor {ymotor.name} value of {yhigh} exceeds motor limits.')
+
+    if len(limit_err) > 0:
+        limit_err.insert(0, 'Stage Limit Error')
+        limit_err.append('Adjust the scan range to fit within the motor limits.')
+        limit_err.append(f'\t{xmotor.name} limits: ({xmotor.low_limit}, {xmotor.high_limit})')
+        limit_err.append(f'\t{ymotor.name} limits: ({ymotor.low_limit}, {ymotor.high_limit})')
+        raise ValueError('\n'.join(limit_err))
+    
+
+# Function ot check motor velocity and fail before scanning
+def check_motor_velocity(xmotor, xstart, xstop, xnum,
+                         dwell,
+                         verbose=True):
+    
+    # Get the scan speed
+    if (xstart == xstop and xnum != 1):
+        v = xmotor.velocity.get()
+    else:
+        v = ((xstop - xstart) / (xnum - 1)) / dwell  # compute "stage speed"
+    if (np.abs(v) > xmotor.velocity.high_limit):
+        raise ValueError(f'Desired motor velocity too high\n' \
+                         f'Max velocity: {xmotor.velocity.high_limit}')
+    elif (np.abs(v) < xmotor.velocity.low_limit):
+        raise ValueError(f'Desired motor velocity too low\n' \
+                         f'Min velocity: {xmotor.velocity.low_limit}')
+    else:
+        xmotor.stage_sigs[xmotor.velocity] = v
+
+
+# Function to check motor steps and fail before scanning, if not in a batch
+def check_motor_steps(xmotor, xstart, xstop, xnum,
+                      ymotor, ystart, ystop, ynum,
+                      step_check=True,
+                      verbose=False):
+
+    # Check for reasonable step sizes
+    xstep, ystep = 0, 0
+    if xnum != 1:
+        xstep = np.abs(np.round(xstop - xstart, 6) / (xnum - 1))
+    if ynum != 1:
+        ystep = np.abs(np.round(ystop - ystart, 6) / (ynum - 1))
+    reasonable_steps = {0, 1, 1.25, 2, 2.5, 3, 4, 5, 6, 7, 7.5, 8, 9}
+    step_err = []
+    for step, motor in ([xstep, xmotor], [ystep, ymotor]):
+        if verbose:
+            print(f'Step size of {step} {motor.motor_egu.get()} for {motor.name}.')
+        if (step not in reasonable_steps
+            and step * 1e-1 not in reasonable_steps
+            and step * 1e-2 not in reasonable_steps
+            and step * 1e1 not in reasonable_steps
+            and step * 1e2 not in reasonable_steps
+            and step * 1e3 not in reasonable_steps):
+            step_err.append((f'Calculated step size of {step:.5f} {motor.motor_egu.get()} '
+                             + f'for motor {motor.name} does not seem reasonable.'))
+    if (step_check is True
+        and len(step_err) > 0):
+        step_err.insert(0, 'Suspected unreasonable step size')
+        step_err.append(f'Reasonable step sizes are as follows multiplied by a power of 10:\n\t{reasonable_steps}')
+        step_err.append("Adjust number of points to achieve a reasonable step size or"
+                        + " set the 'step_check' keyword argument to False.")
+        # There may be more robust ways of finding the highest level plan name
+        if RE._plan.__name__ in _step_check_funcs:
+            raise ValueError('\n'.join(step_err))
+        else:
+            print('\n'.join(step_err))
+
+
+# Function for tiered staging of detectors
 def static_staging_decorator(static_staging, AD_WIP=True):
     def inner_decorator(func):
         @functools.wraps(func)
