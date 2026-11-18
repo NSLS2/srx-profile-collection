@@ -214,7 +214,7 @@ def scan_and_fly_base(detectors,
 
     # Check motor limits
     check_motor_range(xmotor, row_start, row_stop, xstart, xstop,
-                      ystart, ystop, ymotor,
+                      ymotor, ystart, ystop,
                       verbose=verbose)
 
     # Set xs.mode to fly.
@@ -1565,7 +1565,8 @@ def scan_and_fly_xs2_xz(*args, extra_dets=None, **kwargs):
 
 # Function to check motor range and fail before scanning
 def check_motor_range(xmotor, row_start, row_stop, xstart, xstop,
-                      ystart, ystop, ymotor,
+                      ymotor, ystart, ystop,
+                      ext=0.5,
                       verbose=True):
 
     # Check motor limits
@@ -1573,7 +1574,7 @@ def check_motor_range(xmotor, row_start, row_stop, xstart, xstop,
     xlow, _, _, xhigh = sorted([row_start, row_stop, xstart, xstop])
     ylow, yhigh = sorted([ystart, ystop])
     if xmotor.low_limit != xmotor.high_limit:
-        if xlow < xmotor.low_limit: # For low to high flying
+        if xlow < (xmotor.low_limit + ext): # For low to high flying
             if row_start == xlow:
                 limit_err.append((f'Flying axis motor {xmotor.name} row start value of {row_start} exceeds motor limits.'
                                 + f'\nDifference with specified start value of {xstart} is {row_start - xstart:.3f}.'))
@@ -1582,7 +1583,7 @@ def check_motor_range(xmotor, row_start, row_stop, xstart, xstop,
                                 + f'\nDifference with specified stop value of {xstop} is {row_stop - xstop:.3f}.'))       
             else:
                 limit_err.append(f'Flying axis motor {xmotor.name} value of {xlow} exceeds motor limits.')
-        if xhigh > xmotor.high_limit: # For high to low flying
+        if xhigh > (xmotor.high_limit - ext): # For high to low flying
             if row_start == xhigh:
                 limit_err.append((f'Flying axis motor {xmotor.name} row start value of {row_start} exceeds motor limits.'
                                 + f'\nDifference with specified start value of {xstart} is {row_start - xstart:.3f}.'))
@@ -1593,16 +1594,17 @@ def check_motor_range(xmotor, row_start, row_stop, xstart, xstop,
                 limit_err.append(f'Flying axis motor {xmotor.name} value of {xhigh} exceeds motor limits.')
 
     if ymotor.low_limit != ymotor.high_limit:         
-        if ylow < ymotor.low_limit: # Simple comparison
+        if ylow < (ymotor.low_limit + ext): # Simple comparison
             limit_err.append(f'Slow axis motor {ymotor.name} value of {ylow} exceeds motor limits.')
-        if yhigh > ymotor.high_limit: # Simple comparison
+        if yhigh > (ymotor.high_limit - ext): # Simple comparison
             limit_err.append(f'Slow axis motor {ymotor.name} value of {yhigh} exceeds motor limits.')
 
     if len(limit_err) > 0:
         limit_err.insert(0, 'Stage Limit Error')
-        limit_err.append('Adjust the scan range to fit within the motor limits.')
+        limit_err.append('Adjust the scan range to fit within the motor limits and safety factor.')
         limit_err.append(f'\t{xmotor.name} limits: ({xmotor.low_limit}, {xmotor.high_limit})')
         limit_err.append(f'\t{ymotor.name} limits: ({ymotor.low_limit}, {ymotor.high_limit})')
+        limit_err.append(f'\tWith safety factor of {ext} in motor units.')
         raise ValueError('\n'.join(limit_err))
     
 
