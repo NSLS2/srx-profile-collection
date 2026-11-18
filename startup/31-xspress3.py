@@ -684,6 +684,8 @@ def clear_set_xs_ts(xs, num=None):
 
 
 
+# Unused
+# This function was used to convert old data for tiled
 def rechunk_fluor(uid):
     """
     Improve the fluor chunk shapes.

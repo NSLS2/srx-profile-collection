@@ -83,8 +83,10 @@ def export_merlin_from_tiled(scanid=-1, wd=None):
     if wd is None:
         wd = "."
 
+    flush_tiled()  # wait for buffered documents to reach Tiled
+
     # Get all documents for a run
-    run = c[int(scanid)]
+    run = c[scanid] if isinstance(scanid, str) else c[int(scanid)]
     scanid = int(run.start["scan_id"])
 
     docs = [doc for doc in run.documents() if "resource" in doc[0]]

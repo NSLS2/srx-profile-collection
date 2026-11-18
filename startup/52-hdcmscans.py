@@ -363,13 +363,14 @@ def ic_energy_batch(estart, estop, npts,
             yield from bps.sleep(10)
             yield from peakup_fine(shutter=False)
             yield from bps.sleep(10)
-            yield from count([sclr1], num=count_pts)
+            uid = yield from count([sclr1], num=count_pts)
 
             if (outfile is not None):
-                tbl = db[-1].table()
-                icm_mean = tbl['sclr_im'].mean
-                ic0_mean = tbl['sclr_i0'].mean
-                ict_mean = tbl['sclr_it'].mean
+                flush_tiled()  # wait for buffered documents to reach Tiled
+                tbl = c[uid]["primary"]["data"]
+                icm_mean = tbl['sclr_im'].read().mean()
+                ic0_mean = tbl['sclr_i0'].read().mean()
+                ict_mean = tbl['sclr_it'].read().mean()
                 ion_chamber_fp.write('%8.0f, %d, %d, %d\n' % (i, icm_mean, ic0_mean, ict_mean))
 
         # Close the shutter

@@ -1590,10 +1590,12 @@ def plot_flyer_id_mono_data(uid_or_scanid,
     # return res
 
 # Export data function
+# This function has been moved to Prefect and should only be used when Prefect fails
 def export_flyer_id_mono_data(uid_or_scanid,
                               roi=1, e_min=None, e_max=None,
                               fname=None, root='/home/xf05id1/test_flyingID/',
                               flyer=flyer_id_mono):
+    flush_tiled()  # wait for buffered documents to reach Tiled
     hdr = c[uid_or_scanid]
     scan_streams = list(hdr)
     scan_streams.remove('baseline')

@@ -20,6 +20,10 @@ def haz_angles(a, b, n):
 def calc_com(run_start_uid, roi=None):
     print('Centering sample using center of mass...')
 
+    # Wait for the buffered documents to reach Tiled before reading the run
+    # back (the retry loop below remains as defense in depth).
+    flush_tiled()
+
     # Get the header
     h = c[run_start_uid]
     scan_doc = h.start["scan"]
@@ -157,7 +161,10 @@ def nano_tomo(x0, x1, nx, y0, y1, ny, ct, th=None,
     def cb_calc_com(name, doc):
         nonlocal x0, x1, y0, y1
         run_start_uid = doc['run_start']
-        x0, x1, y0, y1 = calc_com(run_start_uid, roi=roi)
+        try:
+            x0, x1, y0, y1 = calc_com(run_start_uid, roi=roi)
+        except RuntimeError as ex:
+            print(f"The center of mass calculation cannot be run because tiled inserter is falling behind")
         
         # Transpose data
         if fly_on_y:
@@ -250,7 +257,10 @@ def scan_coarsez(x0, x1, nx, y0, y1, ny, ct, z_list,
     def cb_calc_com(name, doc):
         nonlocal x0, x1, y0, y1
         run_start_uid = doc['run_start']
-        x0, x1, y0, y1 = calc_com(run_start_uid, roi=roi)
+        try:
+            x0, x1, y0, y1 = calc_com(run_start_uid, roi=roi)
+        except RuntimeError as ex:
+            print(f"The center of mass calculation cannot be run because tiled inserter is falling behind")
 
         # Transpose data
         if fly_on_y:

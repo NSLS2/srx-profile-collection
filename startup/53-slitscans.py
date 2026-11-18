@@ -63,6 +63,7 @@ def ssa_hcen_scan(start, stop, num,
 
     # Do the fitting
     if fit_data:
+        flush_tiled()  # wait for buffered documents to reach Tiled
         ssa_hcen_scan_fit_data(ret, plotme)
 
 
@@ -144,6 +145,7 @@ def measure_SSA_FWHM():
     uid = yield from subs_wrapper(scan([xbpm2], slt_ssa.h_gap, 0, 0.2, 41),
                                   LivePlot(key, x='slt_ssa_h_gap_readback'))
 
+    flush_tiled()  # wait for buffered documents to reach Tiled
     tbl = c[uid]["primary"]["data"]
     x = tbl["slt_ssa_h_gap_readback"].read()
     d = tbl[key].read()
@@ -339,7 +341,7 @@ def slit_nanoflyscan_cal(scan_id_list=[], interp_range=None, orthogonality=False
     delta_fine_pitch = 0.0 # unit: um
  
     for idx, scan_id in enumerate(scan_id_list):
-        bs_run = c[int(scan_id)]
+        bs_run = c[scan_id] if isinstance(scan_id, str) else c[int(scan_id)]
         scan_id = int(bs_run.start['scan_id'])
 
         # Get the information from the previous scan
@@ -524,10 +526,12 @@ def focusKB(direction, **kwargs):
     # print(*kwargs)
     uids = yield from subs_wrapper(slit_nanoflyscan(**kwargs), plotme)
 
-    # Fit the data
-    # N = len(uids)
-    scanids = np.linspace(-N, -1, num=N)
-    slit_nanoflyscan_cal(scan_id_list=scanids, interp_range=scanids[2:-2].astype('int'), orthogonality=False, plotme=plotme)
+    # Fit the data: look the runs up by their uids. Tiled may lag behind
+    # Bluesky (documents are buffered), so positional lookups like c[-1]
+    # could silently resolve to the wrong runs.
+    flush_tiled()  # wait for buffered documents to reach Tiled
+    idx = np.arange(N)
+    slit_nanoflyscan_cal(scan_id_list=list(uids), interp_range=idx[2:-2], orthogonality=False, plotme=plotme)
 
 
 def plot_slit_scans(start_id, N):
@@ -576,7 +580,7 @@ def orth_slit_nanoflyscan_cal(scan_id_list=[], slit_range=[], from_RE=[], orthog
     delta_fine_pitch = 0.0 # unit: um
 
     for idx, scan_id in enumerate(scan_id_list):
-        bs_run = c[int(scan_id)]
+        bs_run = c[scan_id] if isinstance(scan_id, str) else c[int(scan_id)]
         scan_id = int(bs_run.start['scan_id'])
 
         # Get the information from the previous scan
@@ -749,6 +753,7 @@ def focusKB2(direction, **kwargs):
 
     uid = yield from slit_nano_scan_map(**kwargs)
 
+    flush_tiled()  # wait for buffered documents to reach Tiled
     return slit_nano_scan_map_cal(uid, **cal_kwargs)
 
 # Function to use the scan_and_fly_base framework from 62-flyscans for easier data acquisition

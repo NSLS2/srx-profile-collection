@@ -9,6 +9,7 @@ def xrf_map_test():
     uid, = RE(xrf_map(-10, 10, 51, -2, 2, 21, 0.1, sample_name='test', shutter=False))
     print("Scan complete.")
     print("Reading data from Tiled")
+    flush_tiled()  # wait for buffered documents to reach Tiled
     data = c[uid]
     print(data)
     print("Successfully read data from Tiled")

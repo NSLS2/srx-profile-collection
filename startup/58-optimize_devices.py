@@ -695,6 +695,7 @@ def calibrate_compucentric_rotation(xstart, xstop, xnum,
     # return (yield from final_plan)
     uid = yield from final_plan
 
+    flush_tiled()  # wait for buffered documents to reach Tiled
     fit_compucentric_rotation_calibration(uid, roi=roi)
 
 

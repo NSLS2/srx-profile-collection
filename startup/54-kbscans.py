@@ -33,14 +33,14 @@ def nano_knife_edge(motor, start, stop, stepsize, dwell,
         plotme = LivePlot('')
         @subs_decorator(plotme)
         def _plan():
-            yield from xrf_map(start, stop, num,
+            return (yield from xrf_map(start, stop, num,
                                y0, y0, 1, dwell,
                                shutter=shutter, vlm_snapshot=False,
-                               resolution='nano', **kwargs)
+                               resolution='nano', **kwargs))
             # yield from nano_scan_and_fly(start, stop, num,
             #                              y0, y0, 1, dwell,
             #                              shutter=shutter, vlm_snapshot=False, **kwargs)
-        yield from _plan()
+        uid = yield from _plan()
     elif (motor.name == 'nano_stage_sy'):
         fly = True
         pos = 'enc2'
@@ -49,14 +49,14 @@ def nano_knife_edge(motor, start, stop, stepsize, dwell,
         plotme = LivePlot('')
         @subs_decorator(plotme)
         def _plan():
-            yield from xrf_map(x0, x0, 1,
+            return (yield from xrf_map(x0, x0, 1,
                                start, stop, num, dwell,
                                shutter=shutter, vlm_snapshot=False,
-                               resolution='nano', fly_on_y=True, **kwargs)
+                               resolution='nano', fly_on_y=True, **kwargs))
             # yield from nano_y_scan_and_fly(start, stop, num,
             #                                x0, x0, 1, dwell,
             #                                shutter=shutter, vlm_snapshot=False, **kwargs)
-        yield from _plan()
+        uid = yield from _plan()
     elif (motor.name == 'nano_stage_x'):
         fly = False
         pos = motor.name
@@ -82,8 +82,8 @@ def nano_knife_edge(motor, start, stop, stepsize, dwell,
 
         if (shutter):
             yield from mov(shut_b, 'Open')
-        yield from subs_wrapper(scan(dets, motor, start, stop, num),
-                                {'all' : livecallbacks})
+        uid = yield from subs_wrapper(scan(dets, motor, start, stop, num),
+                                      {'all' : livecallbacks})
         if (shutter):
             yield from mov(shut_b, 'Close')
     elif (motor.name == 'nano_stage_y'):
@@ -99,16 +99,18 @@ def nano_knife_edge(motor, start, stop, stepsize, dwell,
                                       motor.name))
         if (shutter):
             yield from mov(shut_b, 'Open')
-        yield from subs_wrapper(scan(dets, motor, start, stop, num),
-                                {'all' : livecallbacks})
+        uid = yield from subs_wrapper(scan(dets, motor, start, stop, num),
+                                      {'all' : livecallbacks})
         if (shutter):
             yield from mov(shut_b, 'Close')
     else:
         print(f'{motor.name} is not implemented in this scan.')
         return
 
-    # Always return parameters
-    return fit_knife_edge(scanid=db[-1].start['scan_id'],
+    # Always return parameters: look the run up by its uid. Tiled may lag
+    # behind Bluesky (documents are buffered)
+    flush_tiled()  # wait for buffered documents to reach Tiled
+    return fit_knife_edge(scanid=uid,
                           plot=plot,
                           plotme=plotme,
                           normalize=normalize,
@@ -125,7 +127,7 @@ def fit_knife_edge(scanid=-1, fluor_key='xs_fluor', use_trans=False, normalize=T
                    plot=True, plot_guess=False, plotme=None,
                    bin_low=None, bin_high=None):
     # Get the scanid
-    bs_run = c[int(scanid)]
+    bs_run = c[scanid] if isinstance(scanid, str) else c[int(scanid)]
     id_str = bs_run.start['scan_id']
     # if 'FLY' in bs_run.start['scan']['type']:
     #     fly = True
@@ -146,42 +148,27 @@ def fit_knife_edge(scanid=-1, fluor_key='xs_fluor', use_trans=False, normalize=T
     # Get the information from the previous scan
     ds = bs_run['stream0']['data']
     ds_keys = list(ds.keys())
-    
-    # Get the data, iterate for a minute waiting for inserter
-    t0 = ttime.monotonic()
-    while ttime.monotonic() - t0 < 60: # Only wait for a minute
-        # Redefine to maybe knock something loose
-        bs_run = c[int(scanid)]
-        ds = bs_run['stream0']['data']
-        ds_keys = list(ds.keys())
 
-        if (use_trans == True):
-            y = ds['it'].read() / ds['im'].read()
-        else:
-            if bin_low is None:
-                bin_low = xs.channel01.mcaroi01.min_x.get()
-            if bin_high is None:
-                bin_high = xs.channel01.mcaroi01.min_x.get() + xs.channel01.mcaroi01.size_x.get()
-            d = ds[fluor_key][..., bin_low:bin_high].sum(axis=(-2, -1)).squeeze()
-            if 'i0' in ds_keys:
-                I0 = ds['i0'].read().squeeze()
-            elif 'sclr_i0' in ds_keys:
-                I0 = ds['sclr_i0'].read().squeeze()
-            else:
-                raise KeyError
-            if (normalize):
-                y = np.array(d / I0).astype(np.float64)
-            else:
-                y = d.astype(np.float64)
-        x = ds[pos].read().squeeze().astype(np.float64)
-        
-        # Check for data
-        if len(x) != 0 and len(y) != 0:
-            break
-        else:
-            ttime.sleep(0.1)
+    # Get the data
+    if (use_trans == True):
+        y = ds['it'].read() / ds['im'].read()
     else:
-        print('Data could not be loaded completely after 60 sec!')
+        if bin_low is None:
+            bin_low = xs.channel01.mcaroi01.min_x.get()
+        if bin_high is None:
+            bin_high = xs.channel01.mcaroi01.min_x.get() + xs.channel01.mcaroi01.size_x.get()
+        d = ds[fluor_key][..., bin_low:bin_high].sum(axis=(-2, -1)).squeeze()
+        if 'i0' in ds_keys:
+            I0 = ds['i0'].read().squeeze()
+        elif 'sclr_i0' in ds_keys:
+            I0 = ds['sclr_i0'].read().squeeze()
+        else:
+            raise KeyError
+        if (normalize):
+            y = np.array(d / I0).astype(np.float64)
+        else:
+            y = d.astype(np.float64)
+    x = ds[pos].read().squeeze().astype(np.float64)
     
     # Calculate gradient
     dydx = np.gradient(y, x)
