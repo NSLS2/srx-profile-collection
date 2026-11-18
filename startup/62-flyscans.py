@@ -199,7 +199,7 @@ def scan_and_fly_base(detectors,
     
     # If delta is None, set delta based on time for acceleration
     # EJM edit
-    MIN_DELTA = 1.00  # default value
+    MIN_DELTA = 0.200  # default value
     if (delta is None):
         v = ((xstop - xstart) / (xnum - 1)) / dwell  # compute "stage speed"
         t_acc = xmotor.acceleration.get()  # acceleration time
