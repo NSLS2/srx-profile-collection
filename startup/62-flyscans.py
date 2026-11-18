@@ -993,12 +993,14 @@ def xrf_map(xstart, xstop, xnum,
 
     if center:
         yield from move_to_scanner_center(timeout=10)
-    yield from scan_and_fly_base(dets,
-                                 fly_start, fly_stop, fly_num,
-                                 step_start, step_stop, step_num, dwell,
-                                 **kwargs)
+    uid = yield from scan_and_fly_base(dets,
+                                       fly_start, fly_stop, fly_num,
+                                       step_start, step_stop, step_num, dwell,
+                                       **kwargs)
     if center:
         yield from move_to_scanner_center(timeout=10)
+
+    return uid
     
     # def plan():
     #     if center:
@@ -1144,13 +1146,13 @@ def xrf_map2(xstart, xstop, xnum,
         ystart, ystop = get_coords(ystart, ystop, fine_motors[1])
         pos_start = [motor.user_setpoint.get() for motor in fine_motors]
         def inner_map():
-            yield from nano_xrf(xstart, xstop, xnum,
-                                ystart, ystop, ynum,
-                                dwell,
-                                extra_dets=extra_dets,
-                                xmotor=fine_motors[0],
-                                ymotor=fine_motors[1],
-                                **kwargs)
+            uid = yield from nano_xrf(xstart, xstop, xnum,
+                                      ystart, ystop, ynum,
+                                      dwell,
+                                      extra_dets=extra_dets,
+                                      xmotor=fine_motors[0],
+                                      ymotor=fine_motors[1],
+                                      **kwargs)
     elif scan_type == 'auto':
         if max([x_range, y_range]) <= REASONABLE_SCANNER_STAGE_EXTENT:
             resolution = 'nano'
@@ -1229,19 +1231,21 @@ def xrf_map2(xstart, xstop, xnum,
         dets = [_xs] + extra_dets
 
         def inner_map():
-            yield from scan_and_fly_base(dets,
+            uid = yield from scan_and_fly_base(dets,
                                          fly_start, fly_stop, fly_num,
                                          step_start, step_stop, step_num, dwell,
                                          **kwargs)
+            return uid
             
     def centered_map():
         if center_scanner and resolution == 'coarse':
         # if center_scanner:
             yield from move_to_scanner_center(timeout=10)
-        yield from inner_map()
+        uid = yield from inner_map()
         if center_scanner and resolution == 'coarse':
         # if center_scanner:
             yield from move_to_scanner_center(timeout=10)
+        return uid
     
     def move_to_start():
         # Move motors back to start for repeatability

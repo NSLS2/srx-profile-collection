@@ -175,7 +175,8 @@ def dark_decorator(dets, N_dark=10, shutter=True):
             yield from _continuous_dark_fields(dets,
                                                N_dark=N_dark,
                                                shutter=shutter)
-            yield from func(*args, **kwargs)
+            ret = yield from func(*args, **kwargs)
+            return ret
         return func_with_dark
     return inner_decorator
 

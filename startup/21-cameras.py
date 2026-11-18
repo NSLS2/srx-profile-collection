@@ -283,14 +283,14 @@ def vlm_decorator(vlm_snapshot=True, after=True, position=None):
                     yield from mv(*position)
 
                 yield from _camera_snapshot([nano_vlm])
-                yield from func(*args, **kwargs)
+                ret = yield from func(*args, **kwargs)
                 if after:
                     if position is not None:
                         yield from mv(*position)
                     yield from _camera_snapshot([nano_vlm])
             else:
-                yield from func(*args, **kwargs)
-        
+                ret = yield from func(*args, **kwargs)
+            return ret
         return func_with_snapshot
     return inner_decorator
 
