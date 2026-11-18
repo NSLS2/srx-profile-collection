@@ -167,7 +167,11 @@ def flush_tiled(timeout=30):
     Raises RuntimeError if a buffer does not drain within ``timeout``
     seconds or its worker thread has died.
     '''
+    PRINT_ONCE = True
     for label, buffer in (("raw", tiled_inserter),):
+        if PRINT_ONCE:
+            print(f"Flushing tiled inserter...")
+            PRINT_ONCE = False
         if not buffer.flush(timeout):
             raise RuntimeError(
                 f"Tiled {label} buffer was not flushed within {timeout} s "

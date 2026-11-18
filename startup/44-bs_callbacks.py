@@ -24,9 +24,7 @@ def cb_print_scaninfo(name, doc):
         str3 = f"Start Time: {ttime.ctime(doc['time'])}"
         banner([str1, str2, str3])
     elif name == "stop":
-        # Look the start document up in the local cache: the legacy Mongo
-        # broker is disconnected and Tiled lags behind Bluesky (documents
-        # are buffered).
+        # Look the start document up in the local cache
         start_doc = _start_doc_cache.get(doc['run_start'])
 
         if start_doc is not None:

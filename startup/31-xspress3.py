@@ -678,6 +678,8 @@ def clear_set_xs_ts(xs, num=None):
 
 
 
+# Unused
+# This function was used to convert old data for tiled
 def rechunk_fluor(uid):
     """
     Improve the fluor chunk shapes.
@@ -685,8 +687,6 @@ def rechunk_fluor(uid):
     """
     STREAM_NAME='stream0'
     FIELD_NAME='xs_fluor'
-
-    flush_tiled()  # wait for buffered documents to reach Tiled
 
     # Find the shape of the fluor data.
     run = tiled_reading_client[uid]

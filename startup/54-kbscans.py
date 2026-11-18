@@ -108,8 +108,7 @@ def nano_knife_edge(motor, start, stop, stepsize, dwell,
         return
 
     # Always return parameters: look the run up by its uid. Tiled may lag
-    # behind Bluesky (documents are buffered), and `db` is the disconnected
-    # legacy Mongo broker.
+    # behind Bluesky (documents are buffered)
     flush_tiled()  # wait for buffered documents to reach Tiled
     return fit_knife_edge(scanid=uid,
                           plot=plot,
@@ -149,42 +148,27 @@ def fit_knife_edge(scanid=-1, fluor_key='xs_fluor', use_trans=False, normalize=T
     # Get the information from the previous scan
     ds = bs_run['stream0']['data']
     ds_keys = list(ds.keys())
-    
-    # Get the data, iterate for a minute waiting for inserter
-    t0 = ttime.monotonic()
-    while ttime.monotonic() - t0 < 60: # Only wait for a minute
-        # Redefine to maybe knock something loose
-        bs_run = c[scanid] if isinstance(scanid, str) else c[int(scanid)]
-        ds = bs_run['stream0']['data']
-        ds_keys = list(ds.keys())
 
-        if (use_trans == True):
-            y = ds['it'].read() / ds['im'].read()
-        else:
-            if bin_low is None:
-                bin_low = xs.channel01.mcaroi01.min_x.get()
-            if bin_high is None:
-                bin_high = xs.channel01.mcaroi01.min_x.get() + xs.channel01.mcaroi01.size_x.get()
-            d = ds[fluor_key][..., bin_low:bin_high].sum(axis=(-2, -1)).squeeze()
-            if 'i0' in ds_keys:
-                I0 = ds['i0'].read().squeeze()
-            elif 'sclr_i0' in ds_keys:
-                I0 = ds['sclr_i0'].read().squeeze()
-            else:
-                raise KeyError
-            if (normalize):
-                y = np.array(d / I0).astype(np.float64)
-            else:
-                y = d.astype(np.float64)
-        x = ds[pos].read().squeeze().astype(np.float64)
-        
-        # Check for data
-        if len(x) != 0 and len(y) != 0:
-            break
-        else:
-            ttime.sleep(0.1)
+    # Get the data
+    if (use_trans == True):
+        y = ds['it'].read() / ds['im'].read()
     else:
-        print('Data could not be loaded completely after 60 sec!')
+        if bin_low is None:
+            bin_low = xs.channel01.mcaroi01.min_x.get()
+        if bin_high is None:
+            bin_high = xs.channel01.mcaroi01.min_x.get() + xs.channel01.mcaroi01.size_x.get()
+        d = ds[fluor_key][..., bin_low:bin_high].sum(axis=(-2, -1)).squeeze()
+        if 'i0' in ds_keys:
+            I0 = ds['i0'].read().squeeze()
+        elif 'sclr_i0' in ds_keys:
+            I0 = ds['sclr_i0'].read().squeeze()
+        else:
+            raise KeyError
+        if (normalize):
+            y = np.array(d / I0).astype(np.float64)
+        else:
+            y = d.astype(np.float64)
+    x = ds[pos].read().squeeze().astype(np.float64)
     
     # Calculate gradient
     dydx = np.gradient(y, x)

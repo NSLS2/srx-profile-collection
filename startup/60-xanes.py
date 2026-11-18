@@ -1590,6 +1590,7 @@ def plot_flyer_id_mono_data(uid_or_scanid,
     # return res
 
 # Export data function
+# This function has been moved to Prefect and should only be used when Prefect fails
 def export_flyer_id_mono_data(uid_or_scanid,
                               roi=1, e_min=None, e_max=None,
                               fname=None, root='/home/xf05id1/test_flyingID/',
