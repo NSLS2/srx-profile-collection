@@ -204,20 +204,20 @@ def scan_and_fly_base(detectors,
     # Check for reasonable step sizes
     xstep, ystep = 0, 0
     if xnum != 1:
-        xstep = np.abs((xstop - xstart) / (xnum - 1))
+        xstep = np.abs(np.round(xstop - xstart, 6) / (xnum - 1))
     if ynum != 1:
-        ystep = np.abs((ystop - ystart) / (ynum - 1))
+        ystep = np.abs(np.round(ystop - ystart, 6) / (ynum - 1))
     reasonable_steps = {0, 1, 1.25, 2, 2.5, 3, 4, 5, 6, 7, 7.5, 8, 9}
     step_err = []
     for step, motor in ([xstep, xmotor], [ystep, ymotor]):
         if verbose:
             print(f'Step size of {step} {motor.motor_egu.get()} for {motor.name}.')
         if (step not in reasonable_steps
-            and np.round(step * 1e-1, 5) not in reasonable_steps
-            and np.round(step * 1e-2, 5) not in reasonable_steps
-            and np.round(step * 1e1, 5) not in reasonable_steps
-            and np.round(step * 1e2, 5) not in reasonable_steps
-            and np.round(step * 1e3, 5) not in reasonable_steps):
+            and step * 1e-1 not in reasonable_steps
+            and step * 1e-2 not in reasonable_steps
+            and step * 1e1 not in reasonable_steps
+            and step * 1e2 not in reasonable_steps
+            and step * 1e3 not in reasonable_steps):
             step_err.append((f'Calculated step size of {step:.5f} {motor.motor_egu.get()} '
                              + f'for motor {motor.name} does not seem reasonable.'))
     if (step_check is True

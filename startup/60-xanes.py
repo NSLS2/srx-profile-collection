@@ -2074,7 +2074,7 @@ def check_energy_steps(e_start, e_stop, e_num, energy_step_check=True, verbose=F
 
     # Check for reasonable step sizes
     if e_num != 1:
-        e_step = np.abs((e_stop - e_start) / (e_num - 1))
+        e_step = np.abs(np.round(e_stop - e_start, 6) / (e_num - 1))
     else:
         e_step = 0
 
@@ -2083,8 +2083,8 @@ def check_energy_steps(e_start, e_stop, e_num, energy_step_check=True, verbose=F
     if verbose:
         print(f'Step size of {e_step} eV for energy.')
     if (e_step not in reasonable_steps
-        and np.round(e_step * 1e-1, 5) not in reasonable_steps
-        and np.round(e_step * 1e1, 5) not in reasonable_steps):
+        and e_step * 1e-1 not in reasonable_steps
+        and e_step * 1e1 not in reasonable_steps):
         step_err.append((f'Calculated step size of {e_step:.5f} eV '
                             + f'for energy does not seem reasonable.'))
     if (energy_step_check is True
