@@ -214,22 +214,6 @@ def step_rsm_base(start, stop, num,
     dets = [xs, sclr1] + xrd_dets
     setup_xrd_dets(dets, dwell, num)
 
-    # Some pseudo stage-sigs to protect xs and sclr1
-    sigs = [
-            (xs, 'external_trig', False),
-            (xs, 'total_points', num),
-            (get_me_the_cam(xs), 'acquire_time', dwell),
-            (sclr1, 'preset_time', dwell)
-            ]
-    original_sigs = []
-    xs.mode = SRXMode.step
-    row_str = short_uid('row')
-    for obj, key, value in sigs:
-        original_sigs.append((obj, key, getattr(obj, key).get()))
-        yield from abs_set(getattr(obj, key), value, group=row_str)
-    yield from bps.wait(group=row_str, timeout=10)
-
-
     # Defining scan metadata
     md = get_stock_md(md)
     md['scan']['type'] = f'{rocking_axis}_RC'
@@ -252,9 +236,11 @@ def step_rsm_base(start, stop, num,
         yield from abs_set(scanrecord.time_rem_str, time_rem_convert(0))
 
         # Reset xs and sclr1
+        xs_str = short_uid('row')
         for obj, key, value in original_sigs:
-            yield from abs_set(getattr(obj, key), value)
-        
+            st = yield from abs_set(getattr(obj, key), value, group=xs_str)
+        yield from bps.wait(group=xs_str, timeout=10)
+
         if return_to_start:
             yield from mov(rocking_motor, curr_pos)
 
@@ -276,17 +262,33 @@ def step_rsm_base(start, stop, num,
         scanrecord.time_rem_str.put(time_rem_convert(time_rem))
 
     # Live Callbacks
-    livecallbacks = [LiveTable(['energy_energy', 'dexela_stats2_total'])]
+    livecallbacks = [LiveTable(['energy_energy'])]
     livecallbacks.append(time_per_point)
     
     if plotme:
-        livecallbacks.append(LivePlot('dexela_stats2_total', x='energy_energy'))
+        pass
+        # livecallbacks.append(LivePlot('dexela_stats2_total', x='energy_energy'))
 
     # Move to center energy and perform peakup
     if peakup_flag and rocking_axis == 'ENERGY':
         print('Performing center energy peakup.')
         yield from mov(rocking_motor, cen_val)
         yield from peakup(shutter=shutter)
+
+    # Some pseudo stage-sigs to protect xs and sclr1
+    sigs = [
+            (xs, 'external_trig', False),
+            (xs, 'total_points', num),
+            (get_me_the_cam(xs), 'acquire_time', dwell),
+            (sclr1, 'preset_time', dwell)
+            ]
+    original_sigs = []
+    xs.mode = SRXMode.step
+    xs_str = short_uid('row')
+    for obj, key, value in sigs:
+        original_sigs.append((obj, key, getattr(obj, key).get()))
+        yield from abs_set(getattr(obj, key), value, group=xs_str)
+    yield from bps.wait(group=xs_str, timeout=10)
 
     # Define actual plan
     @run_decorator(md=md)
@@ -353,16 +355,16 @@ def extended_energy_rsm(start, stop, num,
                 vlm_snapshot=False
 
             yield from step_rsm_base(pts_rsm[0], pts_rsm[-1], len(pts_rsm),
-                                    dwell,
-                                    xrd_dets,
-                                    md=md,
-                                    rocking_motor=energy,
-                                    N_dark=N_dark,
-                                    vlm_snapshot=vlm_snapshot,
-                                    shutter=shutter,
-                                    peakup_flag=peakup_flag,
-                                    plotme=plotme,
-                                    return_to_start=False)
+                                     dwell,
+                                     xrd_dets,
+                                     md=md,
+                                     rocking_motor=energy,
+                                     N_dark=N_dark,
+                                     vlm_snapshot=vlm_snapshot,
+                                     shutter=shutter,
+                                     peakup_flag=peakup_flag,
+                                     plotme=plotme,
+                                     return_to_start=False)
             
     def finalize_scan():
         if return_to_start:
@@ -467,7 +469,7 @@ def continuous_energy_rsm(start, stop, num,
     if return_to_start:
         yield from mov(energy, start_energy)
 
-
+@append_srx_kwargs_md
 def flying_angle_rsm(start, stop, num,
                      dwell,
                      xrd_dets,
@@ -814,11 +816,12 @@ def energy_rocking_curve(e_low,
                 ))
 
     # Live Callbacks
-    livecallbacks = [LiveTable(['energy_energy', 'dexela_stats2_total'])]
+    livecallbacks = [LiveTable(['energy_energy'])]
     # livecallbacks.append(time_per_point)
     
     if plotme:
-        livecallbacks.append(LivePlot('dexela_stats2_total', x='energy_energy'))
+        # livecallbacks.append(LivePlot('dexela_stats2_total', x='energy_energy'))
+        pass
 
     # Move to center energy and perform peakup
     if peakup_flag:  # Find optimal c2_fine position
