@@ -23,6 +23,19 @@ class SRXSuspCryo(SuspendBoolHigh):
         return True 
 
 
+class SRXSuspBISSC(SuspendBoolHigh):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._tripped_message= \
+            "\n\n----------------------------------------------------------\n" \
+            " BISS-C Error Detected!\n" \
+            " Contact control room (x2550) or beamline staff to reset!\n" \
+            "----------------------------------------------------------\n"
+
+    def __repr__(self):
+        return self._sig.name
+
+
 def shuttergenerator(shutter, value):
     return (yield from bpp.rewindable_wrapper(bps.mv(shutter, value), False))
 
@@ -41,6 +54,9 @@ susp_cryo = SuspendCeil(cryo_v19, 0.8, resume_thresh=0.2, sleep=15*60,
                         post_plan=list(shuttergenerator(shut_b, 'Open')))
 susp_cryo_eps = SRXSuspCryo(EpicsSignalRO("XF:05IDA-UT{Cryo:1}:ALARMSTATUS",
                                           name="Cryocooler EPS"))
+susp_bissc = SRXSuspBISSC(EpicsSignalRO("SR:C5-ID:G1{IVU21:1}BISS-Error-Sts",
+                                        name="BISS-C"),
+                          sleep=30)
 
 # Shutter status suspender
 susp_shut_fe = SuspendBoolHigh(EpicsSignalRO(shut_fe.status.pvname, name="FE shutter"),
@@ -59,3 +75,4 @@ RE.install_suspender(susp_rc)
 # RE.install_suspender(susp_shut_b)
 RE.install_suspender(susp_dcm_bragg_temp)
 RE.install_suspender(susp_cryo_eps)
+RE.install_suspender(susp_bissc)
