@@ -157,7 +157,7 @@ tiled_inserter = TiledInserter(srx_raw, 'srx',
 tiled_inserter = BufferingWrapper(tiled_inserter)
 
 
-def flush_tiled(timeout=30):
+def flush_tiled(timeout=600):
     '''Block until all buffered documents have been written to Tiled.
 
     Call this before reading a just-acquired run back from Tiled: documents
