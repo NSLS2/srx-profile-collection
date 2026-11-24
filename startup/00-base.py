@@ -149,6 +149,7 @@ RE.unsubscribe(0)
 
 # Define tiled catalog
 srx_raw = from_profile("srx", api_key=os.environ["TILED_BLUESKY_WRITING_API_KEY_SRX"])
+srx_raw.context.http_client.headers['tiled-qos'] = 'acquisition'
 TILED_BACKUP_ROOT = "/nsls2/data/srx/shared/config/bluesky/tiled_backup"
 tiled_inserter = TiledInserter(srx_raw, 'srx',
                                backup_directory=f"{TILED_BACKUP_ROOT}/raw",
